@@ -25,7 +25,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 # Базовый URL шаблон: подставляется ISO 4217 код (USD, RUB, THB, …)
 OPEN_ER_API_LATEST = "https://open.er-api.com/v6/latest/{base}"
@@ -182,7 +182,7 @@ def _print_matrix(matrix: Dict[str, Dict[str, float]]) -> None:
     print("\nСмысл: умножьте сумму в строке FROM на число в колонке TO.")
 
 
-def _main(argv: Optional[list] = None) -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Курсы RUB / THB / USD через open.er-api.com (ExchangeRate-API, без ключа)."
     )
@@ -212,7 +212,11 @@ def _main(argv: Optional[list] = None) -> int:
 
     p_matrix = sub.add_parser("matrix", help="Матрица RUB/THB/USD")
     p_matrix.add_argument("--base", default=CCY_USD, help="База запроса к API")
+    return parser
 
+
+def cli_main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = build_arg_parser()
     args = parser.parse_args(argv)
 
     try:
@@ -237,4 +241,4 @@ def _main(argv: Optional[list] = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_main())
+    raise SystemExit(cli_main())

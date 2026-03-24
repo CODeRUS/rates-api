@@ -238,7 +238,7 @@ def load_params(fetch: bool, html_file: Optional[str]) -> AskMoneyParams:
     return AskMoneyParams(**DEFAULT_PARAMS)  # type: ignore[arg-type]
 
 
-def _main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="askmoney.pro RUB→THB и курс")
     p.add_argument("rub", type=float, nargs="?", help="Сумма в RUB")
     p.add_argument(
@@ -275,7 +275,11 @@ def _main() -> int:
         metavar="RUB",
         help="Верхняя граница поиска для --min-rate (по умолчанию 50 млн)",
     )
-    args = p.parse_args()
+    return p
+
+
+def cli_main(argv=None) -> int:
+    args = build_arg_parser().parse_args(argv)
 
     try:
         params = load_params(args.fetch, args.html_file)
@@ -358,4 +362,4 @@ def _main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_main())
+    raise SystemExit(cli_main())

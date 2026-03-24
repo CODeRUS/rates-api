@@ -19,10 +19,10 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional, Set
+from typing import Optional, Sequence, Set
 
-import card_fx_calculator as cfx
-import unionpay_rates
+from . import card_fx_calculator as cfx
+from . import unionpay_rates
 
 @dataclass
 class ReportContext:
@@ -253,7 +253,7 @@ def parse_sections(s: str) -> Set[int]:
     return out
 
 
-def main() -> int:
+def cli_main(argv: Optional[Sequence[str]] = None) -> int:
     p = argparse.ArgumentParser(
         description="Отчёты UnionPay+MOEX+РСХБ по разделам 1–5",
     )
@@ -274,7 +274,7 @@ def main() -> int:
         metavar="N",
         help="Номера разделов 1–5 (альтернатива --sections / --all), напр.: 1 3 5",
     )
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
     if args.all:
         wanted = {1, 2, 3, 4, 5}
@@ -315,4 +315,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli_main())

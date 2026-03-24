@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Наличные ttexchange: курс RUB за 1 THB по витрине филиала (API как CLI ``rates``).
-
-Котировки в API — THB за 1 RUB по курсу **покупки RUB** у клиента (обменник забирает рубли,
-отдаёт баты). Тогда RUB за 1 THB = 1 / current_buy_rate. ``current_sell_rate`` — обратная
-операция (покупка RUB за THB), для сводки RUB→THB не используем.
 """
 from __future__ import annotations
 
@@ -19,15 +15,16 @@ CATEGORY = SourceCategory.CASH
 
 
 def help_text() -> str:
-    return "TT Exchange наличные: курс филиала (API ttexchange), RUB/THB по покупке RUB."
+    return (
+        "TT Exchange: наличные RUB/THB по API филиала; CLI — полный клиент ttexchange_api "
+        "(stores, rates, …). См. ttexchange --help."
+    )
 
 
 def command(argv: list[str]) -> int:
-    if not argv or "--help" in argv or "-h" in argv:
-        print(help_text())
-        return 0
-    print(help_text())
-    return 0
+    from .ttexchange_api import cli_main
+
+    return cli_main(argv)
 
 
 def _branch_display_name(stores: Any, branch_id: str) -> str:
@@ -53,7 +50,6 @@ def _pick_rub_row(currencies: Any) -> Optional[Any]:
             candidates.append(row)
     if not candidates:
         return None
-    # Предпочитаем точное имя RUB без суффиксов деноминации, если есть
     for row in candidates:
         if str(row.get("name") or "").strip() == "RUB":
             return row
@@ -61,7 +57,7 @@ def _pick_rub_row(currencies: Any) -> Optional[Any]:
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    import ttexchange_api as ttx
+    from . import ttexchange_api as ttx
 
     try:
         stores = ttx.get_stores("ru")

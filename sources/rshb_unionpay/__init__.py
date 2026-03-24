@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
+"""Плагин rshb_unionpay: UnionPay + MOEX + РСХБ + отчёты (бывшие корневые модули)."""
 from __future__ import annotations
 
+import sys
 from datetime import date
 from typing import List, Optional
 
@@ -11,21 +13,65 @@ EMOJI = "💳"
 IS_BASELINE = False
 CATEGORY = SourceCategory.TRANSFER
 
+_SUBCOMMANDS = (
+    ("cardfx", "Калькулятор THB/RUB/CNY (бывший card_fx_calculator.py)"),
+    ("unionpay", "UnionPay daily JSON (unionpay_rates.py)"),
+    ("moex", "CNY/RUB с MOEX одной строкой (moex_fx.py)"),
+    ("rshb-offline", "РСХБ offline HTML (rshb_offline_rates.py)"),
+    ("rshb-online", "РСХБ online HTML (rshb_online_rates.py)"),
+    ("reports", "Отчёты разделы 1–5 (fx_reports.py)"),
+)
+
 
 def help_text() -> str:
-    return "РСХБ UnionPay/MOEX: CNY-путь и сценарии снятия (card_fx_calculator)."
+    lines = [
+        "РСХБ / UnionPay / MOEX: сводка через card_fx_calculator.",
+        "Подкоманды CLI (полные опции: rshb_unionpay <подкоманда> --help):",
+    ]
+    for name, desc in _SUBCOMMANDS:
+        lines.append(f"  {name:12} {desc}")
+    return "\n".join(lines)
 
 
 def command(argv: list[str]) -> int:
-    if not argv or "--help" in argv or "-h" in argv:
+    if not argv or argv[0] in ("--help", "-h"):
         print(help_text())
+        print(
+            "\nПример: rates_summary_thb_rub.py rshb_unionpay cardfx --date 2026-03-20",
+            file=sys.stderr,
+        )
         return 0
-    print(help_text())
-    return 0
+    head, *tail = argv
+    if head == "cardfx":
+        from .card_fx_calculator import cli_main
+
+        return cli_main(tail)
+    if head == "unionpay":
+        from .unionpay_rates import cli_main
+
+        return cli_main(tail)
+    if head == "moex":
+        from .moex_fx import cli_main
+
+        return cli_main(tail)
+    if head == "rshb-offline":
+        from .rshb_offline_rates import cli_main
+
+        return cli_main(tail)
+    if head == "rshb-online":
+        from .rshb_online_rates import cli_main
+
+        return cli_main(tail)
+    if head == "reports":
+        from .fx_reports import cli_main
+
+        return cli_main(tail)
+    print(f"Неизвестная подкоманда {head!r}. {help_text()}", file=sys.stderr)
+    return 2
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    import card_fx_calculator as cfx
+    from . import card_fx_calculator as cfx
 
     on = date.fromisoformat(ctx.unionpay_date) if ctx.unionpay_date else None
     (

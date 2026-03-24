@@ -12,19 +12,17 @@ CATEGORY = SourceCategory.TRANSFER
 
 
 def help_text() -> str:
-    return "KoronaPay тарифы (крупная и малая сумма)."
+    return "KoronaPay API — тарифы RUB→THB. Полный список подкоманд и опций: korona --help"
 
 
 def command(argv: list[str]) -> int:
-    if not argv or "--help" in argv or "-h" in argv:
-        print(help_text())
-        return 0
-    print(help_text())
-    return 0
+    from .koronapay_tariffs import cli_main
+
+    return cli_main(argv)
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    import koronapay_tariffs as kp
+    from . import koronapay_tariffs as kp
 
     out: List[SourceQuote] = []
     large = ctx.korona_large_thb

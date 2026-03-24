@@ -222,7 +222,7 @@ def _print_table(rows: List[KwikQuote]) -> None:
         print(" | ".join(str(c).ljust(w[i]) for i, c in enumerate(cells)))
 
 
-def main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="KwikPay: эффективный RUB/THB и комиссия для разных значений поля amount"
     )
@@ -235,7 +235,11 @@ def main() -> int:
     p.add_argument("--country", default="THA")
     p.add_argument("--currency", default="THB")
     p.add_argument("--json", action="store_true", help="Вывод JSON в stdout")
-    args = p.parse_args()
+    return p
+
+
+def cli_main(argv=None) -> int:
+    args = build_arg_parser().parse_args(argv)
     amounts = [int(x.strip()) for x in args.amounts.split(",") if x.strip()]
     try:
         quotes = fetch_quotes_for_amounts(
@@ -262,4 +266,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli_main())

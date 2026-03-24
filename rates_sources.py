@@ -223,6 +223,11 @@ def build_registry(*extra: RateSource) -> List[RateSource]:
     return out
 
 
-from sources import load_default_sources
+def _load_default_sources() -> Tuple[RateSource, ...]:
+    """Отложенный импорт :mod:`sources`, чтобы разорвать цикл импортов плагинов ↔ типы."""
+    from sources import load_default_sources
 
-DEFAULT_SOURCES: Tuple[RateSource, ...] = load_default_sources()
+    return load_default_sources()
+
+
+DEFAULT_SOURCES: Tuple[RateSource, ...] = _load_default_sources()

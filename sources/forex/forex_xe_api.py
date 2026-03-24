@@ -219,7 +219,7 @@ def midmarket_convert(
     }
 
 
-def _main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Xe: платный convert_from или публичный midmarket-converter"
     )
@@ -249,8 +249,11 @@ def _main() -> int:
         "--interval",
         help="daily | hourly | 15minutes | minutely (зависит от тарифа)",
     )
+    return parser
 
-    args = parser.parse_args()
+
+def cli_main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_arg_parser().parse_args(argv)
 
     try:
         if args.cmd == "midmarket":
@@ -295,4 +298,4 @@ def _main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_main())
+    raise SystemExit(cli_main())

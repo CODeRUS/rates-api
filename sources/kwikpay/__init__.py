@@ -12,19 +12,17 @@ CATEGORY = SourceCategory.TRANSFER
 
 
 def help_text() -> str:
-    return "KwikPay котировки (фиксированная сумма 30001 RUB)."
+    return "KwikPay котировки. Полные опции: kwikpay --help"
 
 
 def command(argv: list[str]) -> int:
-    if not argv or "--help" in argv or "-h" in argv:
-        print(help_text())
-        return 0
-    print(help_text())
-    return 0
+    from .kwikpay_rates import cli_main
+
+    return cli_main(argv)
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    import kwikpay_rates as kw
+    from . import kwikpay_rates as kw
 
     kq = kw.fetch_quotes_for_amounts([30_001])
     if not kq:

@@ -12,21 +12,25 @@ CATEGORY = SourceCategory.TRANSFER
 
 
 def help_text() -> str:
-    return "Ex24.pro курс RUB→THB с сайта."
+    return "ex24.pro RUB→THB. Полные опции: ex24 --help"
 
 
 def command(argv: list[str]) -> int:
-    if not argv or "--help" in argv or "-h" in argv:
-        print(help_text())
-        return 0
-    print(help_text())
-    return 0
+    from .ex24_rub_thb import cli_main
+
+    return cli_main(argv)
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    import ex24_rub_thb as e24
+    from . import ex24_rub_thb as e24
 
     rr = e24.try_fetch_real_rate_rub_thb() or e24.DEFAULT_REAL_RATE
     rub_best = float(e24.RUB_MIN_FOR_ZERO_MARKUP)
     r_ex = e24.customer_rate_rub_per_thb(rub_best, rr)
-    return [SourceQuote(r_ex, "Ex24.pro", note=f"от {fmt_money_ru(rub_best)} RUB")]
+    return [
+        SourceQuote(
+            r_ex,
+            "Ex24.pro",
+            note=f"от {fmt_money_ru(rub_best)} RUB",
+        )
+    ]

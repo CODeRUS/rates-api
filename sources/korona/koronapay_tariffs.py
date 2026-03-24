@@ -24,7 +24,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 TARIFFS_URL = "https://api.koronapay.com/transfers/tariffs"
 
@@ -185,7 +185,7 @@ def compare_rub_100k_tier(
     }
 
 
-def _main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Korona Pay API — тарифы переводов")
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -204,8 +204,11 @@ def _main() -> int:
         action="store_true",
         help="Печатать полный JSON первого тарифа",
     )
+    return p
 
-    args = p.parse_args()
+
+def cli_main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_arg_parser().parse_args(argv)
     try:
         if args.cmd == "compare-100k":
             r = compare_rub_100k_tier(
@@ -249,4 +252,4 @@ def _main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_main())
+    raise SystemExit(cli_main())

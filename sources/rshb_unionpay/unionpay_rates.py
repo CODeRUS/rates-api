@@ -20,7 +20,7 @@ import json
 import ssl
 import urllib.request
 from datetime import date
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 UNIONPAY_DAILY_JSON = "https://www.unionpayintl.com/upload/jfimg/{yyyymmdd}.json"
 USER_AGENT = "unionpay-rates/1.0 (python; research)"
@@ -91,16 +91,21 @@ def cny_per_thb(d: Optional[date] = None, cache: Optional[Dict[str, Any]] = None
     return rate_trans_to_base("THB", "CNY", d=d, cache=cache)
 
 
-if __name__ == "__main__":
+def cli_main(argv: Optional[Sequence[str]] = None) -> int:
     import argparse
 
     p = argparse.ArgumentParser(description="UnionPay daily JSON helper")
     p.add_argument("--date", help="YYYY-MM-DD", default=None)
     p.add_argument("--trans", default="THB")
     p.add_argument("--base", default="CNY")
-    args = p.parse_args()
+    args = p.parse_args(argv)
     dt = date.fromisoformat(args.date) if args.date else None
     raw = fetch_daily_file(dt)
     v = rate_trans_to_base(args.trans, args.base, cache=raw)
     print(f"1 {args.trans} = {v} {args.base}")
     print(f"1 CNY = {thb_per_cny(cache=raw)} THB")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli_main())

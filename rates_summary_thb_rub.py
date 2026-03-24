@@ -29,9 +29,8 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
-import koronapay_tariffs as _korona_ref
-
 from rates_sources import RateRow, SourceCategory, collect_rows
+from sources.korona.koronapay_tariffs import RUB_MIN_SENDING_FOR_BEST_TIER
 from sources import plugin_by_id, registered_source_ids
 
 CACHE_FILE = _SCRIPT_DIR / ".rates_summary_cache.json"
@@ -87,7 +86,7 @@ def rows_from_cached(raw: Dict[str, Any]) -> Tuple[List[RateRow], float]:
 DEFAULT_THB_REF = 30_000.0
 DEFAULT_ATM_FEE_THB = 250.0
 DEFAULT_KORONA_LARGE_THB = 40_000.0
-DEFAULT_KORONA_SMALL_RUB = float(_korona_ref.RUB_MIN_SENDING_FOR_BEST_TIER) - 1.0
+DEFAULT_KORONA_SMALL_RUB = float(RUB_MIN_SENDING_FOR_BEST_TIER) - 1.0
 DEFAULT_AVOSEND_RUB = 10_000.0
 
 
@@ -188,14 +187,14 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
 def print_summary_text(rows: List[RateRow], baseline: float, warnings: List[str], file: TextIO) -> None:
     print("RUB ➔ THB", file=file)
     print(file=file)
+    first_cash = True
     prev_cat: Optional[SourceCategory] = None
     for r in rows:
-        if (
-            prev_cat is not None
-            and r.category != prev_cat
-            and r.category == SourceCategory.CASH
-        ):
-            print(file=file)
+        if r.category == SourceCategory.CASH and first_cash:
+            if prev_cat is not None:
+                print(file=file)
+            print("Наличные", file=file)
+            first_cash = False
         print(r.format_line(baseline), file=file)
         prev_cat = r.category
     if warnings:
@@ -237,13 +236,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     source_ids = frozenset(registered_source_ids())
 
     if getattr(args, "help", False):
-        if len(rest) == 1 and rest[0] in source_ids:
+        if len(rest) >= 1 and rest[0] in source_ids:
             mod = plugin_by_id(rest[0])
             if mod is None:
                 print(f"Нет модуля для источника {rest[0]!r}", file=sys.stderr)
                 return 2
-            print(mod.help_text())
-            return 0
+            tail = list(rest[1:]) + ["--help"]
+            return mod.command(tail)
         if len(rest) >= 1 and rest[0] == "sources":
             print("sources — вывести список id зарегистрированных источников курса.")
             return 0

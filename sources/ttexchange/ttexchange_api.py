@@ -558,7 +558,7 @@ def _print_rates_table(rows: Any) -> None:
         print(f"{name}  {buy_s:>7}  {sell_s:>7}  {note}")
 
 
-def _main(argv: Optional[List[str]] = None) -> int:
+def cli_main(argv: Optional[List[str]] = None) -> int:
     """
     Точка входа для режима командной строки: демонстрация вызовов без отдельного кода.
 
@@ -652,4 +652,4 @@ def _main(argv: Optional[List[str]] = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_main())
+    raise SystemExit(cli_main())

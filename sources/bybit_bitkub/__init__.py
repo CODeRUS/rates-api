@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import sys
 from typing import List, Optional
 
 from rates_sources import FetchContext, SourceCategory, SourceQuote
@@ -12,20 +13,34 @@ CATEGORY = SourceCategory.TRANSFER
 
 
 def help_text() -> str:
-    return "Bybit P2P USDT/RUB + Bitkub USDT/THB (перевод и cash deposit)."
+    return (
+        "Bybit P2P USDT/RUB + Bitkub THB/USDT.\n"
+        "  bitkub …  — тикер Bitkub (подкоманда, см. bybit_bitkub bitkub --help)\n"
+        "  иначе     — аргументы передаются в Bybit P2P CLI (bybit_p2p_usdt_rub)"
+    )
 
 
 def command(argv: list[str]) -> int:
-    if not argv or "--help" in argv or "-h" in argv:
+    if not argv or argv[0] in ("--help", "-h"):
         print(help_text())
+        print(
+            "\nПример: rates_summary_thb_rub.py bybit_bitkub --json\n"
+            "         rates_summary_thb_rub.py bybit_bitkub bitkub --json",
+            file=sys.stderr,
+        )
         return 0
-    print(help_text())
-    return 0
+    if argv[0] == "bitkub":
+        from .bitkub_usdt_thb import cli_main
+
+        return cli_main(argv[1:])
+    from .bybit_p2p_usdt_rub import cli_main
+
+    return cli_main(argv)
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    import bitkub_usdt_thb as bk
-    import bybit_p2p_usdt_rub as bp
+    from . import bitkub_usdt_thb as bk
+    from . import bybit_p2p_usdt_rub as bp
 
     items = bp.fetch_all_online_items(size=20, verification_filter=0)
     a = bp.filter_cash_deposit_to_bank(items, 99.0)

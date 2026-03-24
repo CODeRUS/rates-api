@@ -12,19 +12,17 @@ CATEGORY = SourceCategory.TRANSFER
 
 
 def help_text() -> str:
-    return "Avosend комиссии (на счёт / наличные)."
+    return "Avosend API (comission.php). Полные опции: avosend --help"
 
 
 def command(argv: list[str]) -> int:
-    if not argv or "--help" in argv or "-h" in argv:
-        print(help_text())
-        return 0
-    print(help_text())
-    return 0
+    from .avosend_commission import cli_main
+
+    return cli_main(argv)
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    import avosend_commission as av
+    from . import avosend_commission as av
 
     amt = ctx.avosend_rub
     note = f"от {fmt_money_ru(amt)} RUB"

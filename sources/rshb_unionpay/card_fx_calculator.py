@@ -59,21 +59,22 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
     ZoneInfo = None  # type: ignore
 
-# Локальные импорты модулей проекта
-import moex_fx
-import rshb_offline_rates
-import rshb_online_rates
-import unionpay_rates
+from . import moex_fx
+from . import rshb_offline_rates
+from . import rshb_online_rates
+from . import unionpay_rates
 
+# Корень репозитория: sources/rshb_unionpay/this_file -> parents[2]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 # Последний успешный снимок UnionPay + MOEX + РСХБ (для расчётов при таймауте сети).
-LIVE_INPUTS_CACHE_FILE = Path(__file__).resolve().parent / ".card_fx_live_inputs_cache.json"
+LIVE_INPUTS_CACHE_FILE = _REPO_ROOT / ".card_fx_live_inputs_cache.json"
 
 
 def _is_timeout_error(exc: BaseException) -> bool:
@@ -541,7 +542,7 @@ def demo_report(
         print(f"  {total:,.2f} RUB | {c.name} | 1 THB = {total/thb:.3f} RUB")
 
 
-def main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Калькулятор THB/RUB/CNY UnionPay+MOEX+РСХБ")
     p.add_argument("--date", help="YYYY-MM-DD (UnionPay файл + таблица РСХБ)", default=None)
     p.add_argument("--thb", type=float, default=30_000.0)
@@ -552,7 +553,11 @@ def main() -> int:
         action="store_true",
         help="Вывод как в примере 1): оплата + снятие, эмодзи и проценты",
     )
-    args = p.parse_args()
+    return p
+
+
+def cli_main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_arg_parser().parse_args(argv)
     d = date.fromisoformat(args.date) if args.date else None
     if getattr(args, "example1", False):
         report_example1(
@@ -588,4 +593,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli_main())

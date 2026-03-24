@@ -266,7 +266,7 @@ def quote(amount_rub: float, real_rate: float = DEFAULT_REAL_RATE) -> Quote:
     )
 
 
-def _main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="ex24.pro RUB→THB: курс с наценкой и THB к получению")
     p.add_argument("amount_rub", type=float, nargs="?", help="Сумма в RUB")
     p.add_argument(
@@ -293,7 +293,11 @@ def _main() -> int:
         metavar="N",
         help="Округлить отображаемый курс до N знаков (как на сайте, часто 3)",
     )
-    args = p.parse_args()
+    return p
+
+
+def cli_main(argv=None) -> int:
+    args = build_arg_parser().parse_args(argv)
 
     if args.table:
         rr = args.real_rate if args.real_rate is not None else DEFAULT_REAL_RATE
@@ -362,4 +366,4 @@ def _main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_main())
+    raise SystemExit(cli_main())

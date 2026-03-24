@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import ssl
+import sys
 import urllib.request
 from typing import Any, Dict, List, Optional
 
@@ -63,5 +64,13 @@ def cny_rub_tom(
     raise RuntimeError("Не удалось извлечь курс CNY/RUB из ответа MOEX")
 
 
-if __name__ == "__main__":
+def cli_main(argv=None) -> int:
+    if argv:
+        print("moex_fx: без подкоманд; печатается CNY/RUB TOM.", file=sys.stderr)
+        return 2
     print("CNY/RUB (CNYRUB_TOM LAST, CETS если есть):", cny_rub_tom())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli_main())

@@ -139,10 +139,20 @@ def cny_rur_buy(*, on: Optional[date] = None, html: Optional[str] = None) -> Dec
     raise KeyError("Пара CNY/RUR не найдена")
 
 
-if __name__ == "__main__":
+def cli_main(argv=None) -> int:
+    if argv:
+        import sys
+
+        print("rshb_offline_rates: без аргументов; выгрузка последней таблицы.", file=sys.stderr)
+        return 2
     raw = fetch_offline_page()
     tabs = parse_offline_html(raw)
     print("Даты в архиве (пример):", sorted(tabs.keys(), reverse=True)[:5])
     t = get_table_for_date(raw)
     for q in t:
         print(q)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli_main())

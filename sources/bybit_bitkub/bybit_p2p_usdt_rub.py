@@ -326,7 +326,7 @@ def item_brief(it: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Bybit P2P: лучшие цены USDT/RUB (два фильтра по способам оплаты)")
     ap.add_argument("--min-completion", type=float, default=99.0, metavar="PCT", help="Мин. recentExecuteRate (по умолчанию 99)")
     ap.add_argument("--size", type=int, default=20, help="Размер страницы item/online")
@@ -339,7 +339,11 @@ def _main() -> int:
     ap.add_argument("--payments-only", action="store_true", help="Только запрос справочника способов оплаты")
     ap.add_argument("--json", action="store_true", help="Вывод в JSON")
     ap.add_argument("--max-pages", type=int, default=None, help="Ограничить число страниц (отладка)")
-    args = ap.parse_args()
+    return ap
+
+
+def cli_main(argv=None) -> int:
+    args = build_arg_parser().parse_args(argv)
 
     try:
         if args.payments_only:
@@ -403,4 +407,4 @@ def _main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_main())
+    raise SystemExit(cli_main())

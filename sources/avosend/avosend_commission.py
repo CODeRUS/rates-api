@@ -157,7 +157,7 @@ def format_summary(data: Dict[str, Any]) -> str:
     return " | ".join(str(p) for p in parts)
 
 
-def _main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Avosend API — comission.php")
     p.add_argument(
         "mode",
@@ -167,7 +167,11 @@ def _main() -> int:
     p.add_argument("amount", type=float, help="Сумма отправки (RUB), например 7000")
     p.add_argument("--json", action="store_true", help="Печатать полный JSON")
     p.add_argument("--raw", action="store_true", help="Сырой ответ сервера в stdout")
-    args = p.parse_args()
+    return p
+
+
+def cli_main(argv=None) -> int:
+    args = build_arg_parser().parse_args(argv)
 
     mode = TransferMode(args.mode)
     try:
@@ -214,4 +218,4 @@ def _main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_main())
+    raise SystemExit(cli_main())

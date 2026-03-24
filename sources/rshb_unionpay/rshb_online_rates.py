@@ -19,7 +19,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Dict, List, Optional
 
-import rshb_offline_rates as _off
+from . import rshb_offline_rates as _off
 
 RSHB_ONLINE_URL = "https://old.rshb.ru/natural/cards/rates/rates_online/"
 
@@ -69,3 +69,22 @@ def cny_rur_sell(*, on: Optional[date] = None, html: Optional[str] = None) -> De
         if q.pair.replace(" ", "").upper() in ("CNY/RUR", "CNY/RUB"):
             return q.sell
     raise KeyError("Пара CNY/RUR не найдена на rates_online")
+
+
+def cli_main(argv=None) -> int:
+    import sys
+
+    if argv:
+        print("rshb_online_rates: без аргументов; печать последней таблицы rates_online.", file=sys.stderr)
+        return 2
+    raw = fetch_online_page()
+    tabs = parse_online_html(raw)
+    print("Даты (пример):", sorted(tabs.keys(), reverse=True)[:5])
+    t = get_table_for_date(raw)
+    for q in t:
+        print(q)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli_main())

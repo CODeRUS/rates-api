@@ -12,19 +12,17 @@ CATEGORY = SourceCategory.TRANSFER
 
 
 def help_text() -> str:
-    return "askmoney.pro эффективный курс с главной страницы."
+    return "askmoney.pro калькулятор. Полные опции: askmoney --help"
 
 
 def command(argv: list[str]) -> int:
-    if not argv or "--help" in argv or "-h" in argv:
-        print(help_text())
-        return 0
-    print(help_text())
-    return 0
+    from .askmoney_rub_thb import cli_main
+
+    return cli_main(argv)
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    import askmoney_rub_thb as am
+    from . import askmoney_rub_thb as am
 
     html = am.fetch_homepage_html()
     params = am.parse_params_from_html(html)

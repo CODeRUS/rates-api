@@ -57,10 +57,14 @@ def fetch_ticker(*, timeout: float = 30.0) -> Dict[str, Any]:
     return t
 
 
-def _main() -> int:
+def build_arg_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Bitkub: курс THB_USDT (USDT/THB)")
     ap.add_argument("--json", action="store_true", help="Вывести сырой JSON тикера")
-    args = ap.parse_args()
+    return ap
+
+
+def cli_main(argv=None) -> int:
+    args = build_arg_parser().parse_args(argv)
     try:
         t = fetch_ticker()
     except RuntimeError as e:
@@ -81,4 +85,4 @@ def _main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(_main())
+    raise SystemExit(cli_main())
