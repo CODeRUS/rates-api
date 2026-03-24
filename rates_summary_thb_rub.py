@@ -28,11 +28,11 @@ if str(_SCRIPT_DIR) not in sys.path:
 
 import koronapay_tariffs as _korona_ref
 
-from rates_sources import RateRow, collect_rows
+from rates_sources import RateRow, SourceCategory, collect_rows
 
 CACHE_FILE = _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
-CACHE_VERSION = 15
+CACHE_VERSION = 16
 
 
 def _cache_key(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -58,8 +58,21 @@ def cache_valid(raw: Dict[str, Any], saved: float, key: Dict[str, Any]) -> bool:
     return raw.get("key") == key
 
 
+def _row_from_cache_dict(r: Dict[str, Any]) -> RateRow:
+    d = dict(r)
+    cat = d.get("category")
+    if isinstance(cat, str):
+        try:
+            d["category"] = SourceCategory[cat]
+        except KeyError:
+            d["category"] = SourceCategory.TRANSFER
+    elif cat is None:
+        d["category"] = SourceCategory.TRANSFER
+    return RateRow(**d)
+
+
 def rows_from_cached(raw: Dict[str, Any]) -> Tuple[List[RateRow], float]:
-    rows = [RateRow(**r) for r in raw.get("rows", [])]
+    rows = [_row_from_cache_dict(r) for r in raw.get("rows", [])]
     baseline = float(raw.get("baseline", 0))
     return rows, baseline
 
@@ -130,12 +143,17 @@ def main() -> int:
             moex_override=args.moex_override,
         )
         bl = next((r.rate for r in rows if r.is_baseline), baseline)
+        def _row_cache_dict(row: RateRow) -> Dict[str, Any]:
+            d = asdict(row)
+            d["category"] = row.category.name
+            return d
+
         save_payload = {
             "v": CACHE_VERSION,
             "saved_unix": time.time(),
             "key": cache_key,
             "baseline": bl,
-            "rows": [asdict(r) for r in rows],
+            "rows": [_row_cache_dict(r) for r in rows],
             "warnings": warnings,
         }
         try:
@@ -153,7 +171,9 @@ def main() -> int:
     if args.json:
         out = {
             "baseline_rub_per_thb": baseline,
-            "rows": [asdict(r) for r in rows],
+            "rows": [
+                {**asdict(r), "category": r.category.name} for r in rows
+            ],
             "warnings": warnings,
         }
         print(json.dumps(out, ensure_ascii=False, indent=2))
@@ -161,8 +181,16 @@ def main() -> int:
 
     print("RUB ➔ THB")
     print()
+    prev_cat: Optional[SourceCategory] = None
     for r in rows:
+        if (
+            prev_cat is not None
+            and r.category != prev_cat
+            and r.category == SourceCategory.CASH
+        ):
+            print()
         print(r.format_line(baseline))
+        prev_cat = r.category
     if warnings:
         print()
         print("Предупреждения:")
