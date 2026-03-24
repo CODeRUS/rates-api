@@ -55,3 +55,18 @@ def load_default_sources() -> Tuple[RateSource, ...]:
             )
         )
     return tuple(out)
+
+
+def plugin_by_id(source_id: str):
+    """Модуль плагина по ``SOURCE_ID`` (например ``forex``) или ``None``."""
+    m = _MODS.get(source_id)
+    if m is not None and getattr(m, "SOURCE_ID", None) == source_id:
+        return m
+    for mod in _MODS.values():
+        if getattr(mod, "SOURCE_ID", None) == source_id:
+            return mod
+    return None
+
+
+def registered_source_ids() -> Tuple[str, ...]:
+    return tuple(_MODS[k].SOURCE_ID for k in PLUGIN_ORDER)

@@ -3,13 +3,16 @@
 """
 Сводка курсов **RUB за 1 THB** (направление **RUB → THB**: сколько рублей отдаёте за бат).
 
-Источники подключаются через :mod:`rates_sources`: у каждого своя функция ``fetch(ctx)``,
-возвращающая список котировок (курс + метка). **Первым всегда идёт Forex** — база для %%.
+Источники — пакет :mod:`sources`; реестр в :mod:`rates_sources`. **Первым всегда Forex** — база для %%.
 
 Пример::
 
     python rates_summary_thb_rub.py
     python rates_summary_thb_rub.py --refresh --json
+    python rates_summary_thb_rub.py --help
+    python rates_summary_thb_rub.py sources
+    python rates_summary_thb_rub.py save out.txt
+    python rates_summary_thb_rub.py forex --help
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ import sys
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, TextIO, Tuple
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
@@ -29,10 +32,13 @@ if str(_SCRIPT_DIR) not in sys.path:
 import koronapay_tariffs as _korona_ref
 
 from rates_sources import RateRow, SourceCategory, collect_rows
+from sources import plugin_by_id, registered_source_ids
 
 CACHE_FILE = _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
 CACHE_VERSION = 16
+
+_RESERVED = frozenset({"sources", "save"})
 
 
 def _cache_key(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -85,8 +91,13 @@ DEFAULT_KORONA_SMALL_RUB = float(_korona_ref.RUB_MIN_SENDING_FOR_BEST_TIER) - 1.
 DEFAULT_AVOSEND_RUB = 10_000.0
 
 
-def main() -> int:
-    p = argparse.ArgumentParser(description="Сводка RUB/THB из скриптов проекта (кеш 30 мин)")
+def build_arg_parser(*, add_help: bool = True) -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        description="Сводка RUB/THB из скриптов проекта (кеш 30 мин)",
+        add_help=add_help,
+    )
+    if not add_help:
+        p.add_argument("-h", "--help", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--refresh", action="store_true", help="Игнорировать кеш")
     p.add_argument("--json", action="store_true", help="JSON в stdout")
     p.add_argument("--thb-ref", type=float, default=DEFAULT_THB_REF, help="Нетто THB для сценариев снятия")
@@ -107,8 +118,16 @@ def main() -> int:
         default=CACHE_FILE,
         help="Файл кеша",
     )
-    args = p.parse_args()
+    return p
 
+
+def _row_cache_dict(row: RateRow) -> Dict[str, Any]:
+    d = asdict(row)
+    d["category"] = row.category.name
+    return d
+
+
+def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float, List[str]]:
     key_params = {
         "thb_ref": args.thb_ref,
         "atm_fee": args.atm_fee,
@@ -143,11 +162,6 @@ def main() -> int:
             moex_override=args.moex_override,
         )
         bl = next((r.rate for r in rows if r.is_baseline), baseline)
-        def _row_cache_dict(row: RateRow) -> Dict[str, Any]:
-            d = asdict(row)
-            d["category"] = row.category.name
-            return d
-
         save_payload = {
             "v": CACHE_VERSION,
             "saved_unix": time.time(),
@@ -168,19 +182,12 @@ def main() -> int:
     if baseline <= 0 and rows:
         baseline = min(r.rate for r in rows)
 
-    if args.json:
-        out = {
-            "baseline_rub_per_thb": baseline,
-            "rows": [
-                {**asdict(r), "category": r.category.name} for r in rows
-            ],
-            "warnings": warnings,
-        }
-        print(json.dumps(out, ensure_ascii=False, indent=2))
-        return 0
+    return rows, baseline, warnings
 
-    print("RUB ➔ THB")
-    print()
+
+def print_summary_text(rows: List[RateRow], baseline: float, warnings: List[str], file: TextIO) -> None:
+    print("RUB ➔ THB", file=file)
+    print(file=file)
     prev_cat: Optional[SourceCategory] = None
     for r in rows:
         if (
@@ -188,15 +195,124 @@ def main() -> int:
             and r.category != prev_cat
             and r.category == SourceCategory.CASH
         ):
-            print()
-        print(r.format_line(baseline))
+            print(file=file)
+        print(r.format_line(baseline), file=file)
         prev_cat = r.category
     if warnings:
-        print()
-        print("Предупреждения:")
+        print(file=file)
+        print("Предупреждения:", file=file)
         for w in warnings:
-            print(f"  • {w}")
-    return 0
+            print(f"  • {w}", file=file)
+
+
+def print_json_summary(rows: List[RateRow], baseline: float, warnings: List[str], file: TextIO) -> None:
+    out = {
+        "baseline_rub_per_thb": baseline,
+        "rows": [{**asdict(r), "category": r.category.name} for r in rows],
+        "warnings": warnings,
+    }
+    print(json.dumps(out, ensure_ascii=False, indent=2), file=file)
+
+
+def print_global_help(parser: argparse.ArgumentParser) -> None:
+    parser.print_help()
+    print("\nКоманды:")
+    print("  sources              Список id доступных источников.")
+    print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
+    print("  <source_id> [args]   Подкоманды источника (см. python ... <id> --help).")
+    print("\nИсточники (кратко; полное: <id> --help):")
+    for sid in registered_source_ids():
+        mod = plugin_by_id(sid)
+        if mod is None:
+            continue
+        ht = mod.help_text().strip().replace("\n", " ")
+        print(f"  {sid}")
+        print(f"      {ht}")
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    parser = build_arg_parser(add_help=False)
+    args, rest = parser.parse_known_args(argv)
+    source_ids = frozenset(registered_source_ids())
+
+    if getattr(args, "help", False):
+        if len(rest) == 1 and rest[0] in source_ids:
+            mod = plugin_by_id(rest[0])
+            if mod is None:
+                print(f"Нет модуля для источника {rest[0]!r}", file=sys.stderr)
+                return 2
+            print(mod.help_text())
+            return 0
+        if len(rest) >= 1 and rest[0] == "sources":
+            print("sources — вывести список id зарегистрированных источников курса.")
+            return 0
+        if len(rest) >= 1 and rest[0] == "save":
+            print("save <файл> — записать сводку в файл (опции --json, --refresh и др. как у обычного запуска).")
+            return 0
+        print_global_help(build_arg_parser(add_help=True))
+        return 0
+
+    if not rest:
+        rows, baseline, warnings = compute_summary_rows(args)
+        if args.json:
+            print_json_summary(rows, baseline, warnings, sys.stdout)
+        else:
+            print_summary_text(rows, baseline, warnings, sys.stdout)
+        return 0
+
+    head = rest[0]
+    if head in ("--help", "-h"):
+        print_global_help(build_arg_parser(add_help=True))
+        return 0
+
+    if head == "sources":
+        if any(x in ("--help", "-h") for x in rest[1:]):
+            print("sources — вывести список id зарегистрированных источников курса.")
+            return 0
+        for sid in registered_source_ids():
+            print(sid)
+        return 0
+
+    if head == "save":
+        if len(rest) < 2:
+            print("save: укажите имя файла, например: save out.txt", file=sys.stderr)
+            return 2
+        out_path = Path(rest[1])
+        tail = rest[2:]
+        if tail:
+            args2, unk = parser.parse_known_args(tail)
+            if unk:
+                print(f"Неизвестные аргументы: {' '.join(unk)}", file=sys.stderr)
+                return 2
+            for k, v in vars(args2).items():
+                setattr(args, k, v)
+        rows, baseline, warnings = compute_summary_rows(args)
+        try:
+            with out_path.open("w", encoding="utf-8") as f:
+                if args.json:
+                    print_json_summary(rows, baseline, warnings, f)
+                else:
+                    print_summary_text(rows, baseline, warnings, f)
+        except OSError as e:
+            print(f"Не удалось записать файл: {e}", file=sys.stderr)
+            return 1
+        return 0
+
+    if head in source_ids:
+        mod = plugin_by_id(head)
+        if mod is None:
+            print(f"Внутренняя ошибка: нет модуля для {head!r}", file=sys.stderr)
+            return 2
+        return mod.command(rest[1:])
+
+    if head in _RESERVED:
+        print(f"Зарезервированная команда {head!r} уже обработана — внутренняя ошибка.", file=sys.stderr)
+        return 2
+
+    print(f"Неизвестная команда или источник: {head!r}", file=sys.stderr)
+    print("Подсказка: --help, sources, save <файл>, или id источника.", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":
