@@ -1,0 +1,2 @@
+# Bybit x-api: Akamai режет TLS-отпечаток stdlib urllib; в Docker нужен curl-cffi.
+curl-cffi>=0.7.4

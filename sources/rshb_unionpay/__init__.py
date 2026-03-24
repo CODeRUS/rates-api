@@ -2,15 +2,17 @@
 """Плагин rshb_unionpay: UnionPay + MOEX + РСХБ + отчёты (бывшие корневые модули)."""
 from __future__ import annotations
 
+# Константы до импорта rates_sources — чтобы при циклическом импорте уже были SOURCE_ID и т.д.
+SOURCE_ID = "rshb_unionpay"
+EMOJI = "💳"
+IS_BASELINE = False
+
 import sys
 from datetime import date
 from typing import List, Optional
 
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
-SOURCE_ID = "rshb_unionpay"
-EMOJI = "💳"
-IS_BASELINE = False
 CATEGORY = SourceCategory.TRANSFER
 
 _SUBCOMMANDS = (

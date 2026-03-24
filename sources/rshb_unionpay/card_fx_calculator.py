@@ -315,11 +315,10 @@ def fetch_live_inputs(
         )
         return cpt, moex, sell, rshb_on, online_sell, rshb_online_on, False, up
     except BaseException as e:
-        if (
-            use_cache_on_timeout
-            and _is_timeout_error(e)
-            and (cached := _load_live_inputs_cache()) is not None
-        ):
+        cached = None
+        if use_cache_on_timeout and _is_timeout_error(e):
+            cached = _load_live_inputs_cache()
+        if cached is not None:
             cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up = cached
             return (
                 cpt,

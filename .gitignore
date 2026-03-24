@@ -1,0 +1,9 @@
+Dockerfile
+docker-compose.yml
+*_cache.json
+PROJECT_NOTES.md
+*.cpython
+__pycache__
+*.code-workspace
+*.swp
+docs

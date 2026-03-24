@@ -81,13 +81,13 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
             return None
         rub_per_thb = 1.0 / thb_per_rub
         desc = rub_row.get("description")
-        note = "наличные, покупка RUB (THB за 1 RUB) → RUB/THB"
+        note = "наличные RUB → THB"
         if desc:
             note = f"{note}; {desc}"
         return [
             SourceQuote(
                 rub_per_thb,
-                f"ttexchange (филиал {branch_name})",
+                f"TT Currency Exchange (филиал {branch_name})",
                 note=note,
             )
         ]
