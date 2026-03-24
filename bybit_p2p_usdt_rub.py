@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Bybit P2P: минимальная цена покупки USDT за RUB по объявлениям «онлайн».
+
+Два сценария (как на сайте):
+  A) есть способ **Cash Deposit to Bank** (payment id **18**);
+  B) есть **Bank Transfer** (**14**), но **нет** Cash Deposit to Bank (**18**).
+
+В запросе: ``vaMaker`` и ``canTrade`` (как в веб-форме Verified / Eligible).
+Completion rate: ``recentExecuteRate >= min_completion`` (по умолчанию 99).
+
+Публичные POST без API-ключа (как у сайта).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import ssl
+import sys
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
+QUERY_PAYMENTS_URL = "https://www.bybit.com/x-api/fiat/otc/configuration/queryAllPaymentList"
+ITEM_ONLINE_URL = "https://www.bybit.com/x-api/fiat/otc/item/online"
+
+# RUB fiat payment ids (справочник на сайте)
+PAYMENT_BANK_TRANSFER = "14"
+PAYMENT_CASH_DEPOSIT_BANK = "18"
+
+DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    "Origin": "https://www.bybit.com",
+    "Referer": "https://www.bybit.com/fiat/trade/otc/",
+}
+
+
+def post_json(url: str, body: Any, *, timeout: float = 60.0) -> Dict[str, Any]:
+    ctx = ssl.create_default_context()
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=dict(DEFAULT_HEADERS), method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            raw = resp.read().decode(resp.headers.get_content_charset() or "utf-8")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code} для {url}") from e
+    except urllib.error.URLError as e:
+        raise RuntimeError(f"Сеть: {e}") from e
+    return json.loads(raw)
+
+
+def fetch_payment_list() -> Dict[str, Any]:
+    """Справочник способов оплаты (POST body ``{}``)."""
+    out = post_json(QUERY_PAYMENTS_URL, {})
+    if out.get("ret_code") not in (0, "0", None):
+        raise RuntimeError(f"queryAllPaymentList: {out.get('ret_msg')!r} ({out!r})")
+    return out.get("result") or {}
+
+
+def build_online_body(
+    *,
+    page: int,
+    size: int,
+    verification_filter: int,
+    side: str = "1",
+) -> Dict[str, Any]:
+    """Тело как у веб-клиента: покупка USDT за RUB (side=1)."""
+    return {
+        "userId": "",
+        "tokenId": "USDT",
+        "currencyId": "RUB",
+        "payment": [],
+        "side": side,
+        "size": str(size),
+        "page": str(page),
+        "amount": "",
+        "vaMaker": True,
+        "bulkMaker": False,
+        "canTrade": True,
+        "verificationFilter": verification_filter,
+        "sortType": "OVERALL_RANKING",
+        "paymentPeriod": [],
+        "itemRegion": 1,
+    }
+
+
+def fetch_all_online_items(
+    *,
+    size: int = 20,
+    verification_filter: int = 0,
+    side: str = "1",
+    max_pages: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    first = post_json(ITEM_ONLINE_URL, build_online_body(page=1, size=size, verification_filter=verification_filter, side=side))
+    if first.get("ret_code") not in (0, "0", None):
+        raise RuntimeError(f"item/online: {first.get('ret_msg')!r}")
+    result = first.get("result") or {}
+    count = int(result.get("count") or 0)
+    items: List[Dict[str, Any]] = list(result.get("items") or [])
+    if count <= 0:
+        return items
+    total_pages = max(1, math.ceil(count / size))
+    if max_pages is not None:
+        total_pages = min(total_pages, max_pages)
+    for page in range(2, total_pages + 1):
+        nxt = post_json(
+            ITEM_ONLINE_URL,
+            build_online_body(page=page, size=size, verification_filter=verification_filter, side=side),
+        )
+        if nxt.get("ret_code") not in (0, "0", None):
+            raise RuntimeError(f"item/online page {page}: {nxt.get('ret_msg')!r}")
+        chunk = list((nxt.get("result") or {}).get("items") or [])
+        items.extend(chunk)
+        if not chunk:
+            break
+    return items
+
+
+def payment_ids(item: Dict[str, Any]) -> List[str]:
+    return [str(x) for x in (item.get("payments") or [])]
+
+
+def completion_ok(item: Dict[str, Any], min_completion: float) -> bool:
+    try:
+        return float(item.get("recentExecuteRate")) >= min_completion
+    except (TypeError, ValueError):
+        return False
+
+
+def filter_cash_deposit_to_bank(items: List[Dict[str, Any]], min_completion: float) -> List[Dict[str, Any]]:
+    """A: есть 18, completion >= порога."""
+    out = []
+    for it in items:
+        p = payment_ids(it)
+        if PAYMENT_CASH_DEPOSIT_BANK in p and completion_ok(it, min_completion):
+            out.append(it)
+    return out
+
+
+def filter_bank_transfer_no_cash(items: List[Dict[str, Any]], min_completion: float) -> List[Dict[str, Any]]:
+    """B: есть 14, нет 18, completion >= порога."""
+    out = []
+    for it in items:
+        p = payment_ids(it)
+        if PAYMENT_BANK_TRANSFER in p and PAYMENT_CASH_DEPOSIT_BANK not in p and completion_ok(it, min_completion):
+            out.append(it)
+    return out
+
+
+def min_by_price(items: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not items:
+        return None
+    best: Optional[Dict[str, Any]] = None
+    best_price = math.inf
+    for it in items:
+        try:
+            px = float(it.get("price"))
+        except (TypeError, ValueError):
+            continue
+        if px < best_price:
+            best_price = px
+            best = it
+    return best
+
+
+@dataclass
+class BestQuote:
+    label: str
+    item: Optional[Dict[str, Any]]
+    min_price: Optional[float]
+    matched_count: int
+
+
+def summarize(label: str, items: List[Dict[str, Any]]) -> BestQuote:
+    best = min_by_price(items)
+    mp = float(best["price"]) if best else None
+    return BestQuote(label=label, item=best, min_price=mp, matched_count=len(items))
+
+
+def item_brief(it: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "nickName": it.get("nickName"),
+        "price": it.get("price"),
+        "payments": payment_ids(it),
+        "recentExecuteRate": it.get("recentExecuteRate"),
+        "minAmount": it.get("minAmount"),
+        "maxAmount": it.get("maxAmount"),
+        "id": it.get("id"),
+    }
+
+
+def _main() -> int:
+    ap = argparse.ArgumentParser(description="Bybit P2P: лучшие цены USDT/RUB (два фильтра по способам оплаты)")
+    ap.add_argument("--min-completion", type=float, default=99.0, metavar="PCT", help="Мин. recentExecuteRate (по умолчанию 99)")
+    ap.add_argument("--size", type=int, default=20, help="Размер страницы item/online")
+    ap.add_argument(
+        "--verification-filter",
+        type=int,
+        default=0,
+        help="Поле verificationFilter в теле запроса (как в браузере; 0 — типичное значение)",
+    )
+    ap.add_argument("--payments-only", action="store_true", help="Только запрос справочника способов оплаты")
+    ap.add_argument("--json", action="store_true", help="Вывод в JSON")
+    ap.add_argument("--max-pages", type=int, default=None, help="Ограничить число страниц (отладка)")
+    args = ap.parse_args()
+
+    try:
+        if args.payments_only:
+            plist = fetch_payment_list()
+            if args.json:
+                print(json.dumps(plist, ensure_ascii=False, indent=2))
+            else:
+                print(json.dumps(plist, ensure_ascii=False, indent=2)[:4000])
+                if len(json.dumps(plist)) > 4000:
+                    print("\n… (усечено, используйте --json)", file=sys.stderr)
+            return 0
+
+        items = fetch_all_online_items(
+            size=args.size,
+            verification_filter=args.verification_filter,
+            max_pages=args.max_pages,
+        )
+        a_items = filter_cash_deposit_to_bank(items, args.min_completion)
+        b_items = filter_bank_transfer_no_cash(items, args.min_completion)
+        qa = summarize("Cash Deposit to Bank (18)", a_items)
+        qb = summarize("Bank Transfer без Cash Deposit (14, без 18)", b_items)
+
+        if args.json:
+            out = {
+                "total_items_fetched": len(items),
+                "min_completion": args.min_completion,
+                "verification_filter": args.verification_filter,
+                "cash_deposit_to_bank": {
+                    "matched": qa.matched_count,
+                    "min_price": qa.min_price,
+                    "best": item_brief(qa.item) if qa.item else None,
+                },
+                "bank_transfer_only": {
+                    "matched": qb.matched_count,
+                    "min_price": qb.min_price,
+                    "best": item_brief(qb.item) if qb.item else None,
+                },
+            }
+            print(json.dumps(out, ensure_ascii=False, indent=2))
+            return 0
+
+        print(f"Загружено объявлений: {len(items)} (completion ≥ {args.min_completion:g} % после отбора по сценариям)")
+        print()
+        for q in (qa, qb):
+            print(f"=== {q.label} ===")
+            print(f"  Подошло объявлений: {q.matched_count}")
+            if q.item is None:
+                print("  Минимальная цена: —")
+            else:
+                it = q.item
+                print(f"  Минимальная цена: {q.min_price:g} RUB за 1 USDT")
+                print(f"  Продавец: {it.get('nickName')}")
+                print(f"  payments: {payment_ids(it)}")
+                print(f"  recentExecuteRate: {it.get('recentExecuteRate')}")
+                print(f"  minAmount / maxAmount: {it.get('minAmount')} / {it.get('maxAmount')}")
+            print()
+        return 0
+    except RuntimeError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())
