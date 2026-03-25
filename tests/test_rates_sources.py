@@ -43,6 +43,7 @@ class TestRatesSources(unittest.TestCase):
                 "askmoney",
                 "ttexchange",
                 "tbank",
+                "unired_bkb",
             ],
         )
         cats = {s.id: s.category for s in rs.DEFAULT_SOURCES}

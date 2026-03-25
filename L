@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Unired – Telegram</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta http-equiv="X-UA-Compatible"
+     content="IE=edge" />
+    <meta name="MobileOptimized" content="176" />
+    <meta name="HandheldFriendly" content="True" />
+    
+<meta property="og:title" content="Unired">
+<meta property="og:image" content="https://cdn4.telesco.pe/file/fecAgDPuJJhoCyRJh02xj3DF87gfs-8eJu9_CKU54kBjCuajLDEzhzH_GCnscIZZGrUh8T-iYTYN02Ul6VlVpBrN6ZOhRbHENL_8RHtqSfWuE3Km8Lb_Q-Ot1M9iTxPKY-XfcBafUlXRj_42MN0OW2zmWo8gbiTD4UBeTVFP3mdUF16DGps7MZECaCIDyWunXf61fy-WUp16gCJPc2qHZM1W_r9udT6PwvMH-1rvmzXMXPhZX5hICPJhK-uUz5RvbfCNd6poQv6i1g1ihqX5uSMbMm-AkQrJA_CdXO761PMfvXootfYYIYpS_SIeJVgWQqmxb9TlLmAqEQZDaLfREg.jpg">
+<meta property="og:site_name" content="Telegram">
+<meta property="og:description" content="💸Xalqaro va mahalliy pul oʻtkazmalar
+⚡️Barcha xizmatlar uchun toʻlovlar
+🤝24/7 qoʻllab quvvatlash
+📞55-511-00-08
+📲https://onelink.to/uniredmobile
+🌐Sayt: https://unired.uz">
+
+<meta property="twitter:title" content="Unired">
+<meta property="twitter:image" content="https://cdn4.telesco.pe/file/fecAgDPuJJhoCyRJh02xj3DF87gfs-8eJu9_CKU54kBjCuajLDEzhzH_GCnscIZZGrUh8T-iYTYN02Ul6VlVpBrN6ZOhRbHENL_8RHtqSfWuE3Km8Lb_Q-Ot1M9iTxPKY-XfcBafUlXRj_42MN0OW2zmWo8gbiTD4UBeTVFP3mdUF16DGps7MZECaCIDyWunXf61fy-WUp16gCJPc2qHZM1W_r9udT6PwvMH-1rvmzXMXPhZX5hICPJhK-uUz5RvbfCNd6poQv6i1g1ihqX5uSMbMm-AkQrJA_CdXO761PMfvXootfYYIYpS_SIeJVgWQqmxb9TlLmAqEQZDaLfREg.jpg">
+<meta property="twitter:site" content="@Telegram">
+
+<meta property="al:ios:app_store_id" content="686449807">
+<meta property="al:ios:app_name" content="Telegram Messenger">
+<meta property="al:ios:url" content="tg://resolve?domain=uniredmobile">
+
+<meta property="al:android:url" content="tg://resolve?domain=uniredmobile">
+<meta property="al:android:app_name" content="Telegram">
+<meta property="al:android:package" content="org.telegram.messenger">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:site" content="@Telegram">
+<meta name="twitter:description" content="💸Xalqaro va mahalliy pul oʻtkazmalar
+⚡️Barcha xizmatlar uchun toʻlovlar
+🤝24/7 qoʻllab quvvatlash
+📞55-511-00-08
+📲https://onelink.to/uniredmobile
+🌐Sayt: https://unired.uz
+">
+
+    <link rel="prev" href="/s/uniredmobile?before=1784">
+<link rel="canonical" href="/s/uniredmobile?before=1804">
+
+    <script>window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches&&document.documentElement&&document.documentElement.classList&&document.documentElement.classList.add('theme_dark');</script>
+    <link rel="icon" type="image/svg+xml" href="//telegram.org/img/website_icon.svg?4">
+<link rel="apple-touch-icon" sizes="180x180" href="//telegram.org/img/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="//telegram.org/img/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="//telegram.org/img/favicon-16x16.png">
+<link rel="alternate icon" href="//telegram.org/img/favicon.ico" type="image/x-icon" />
+    <link href="//telegram.org/css/font-roboto.css?1" rel="stylesheet" type="text/css">
+    <link href="//telegram.org/css/widget-frame.css?73" rel="stylesheet" media="screen">
+    <link href="//telegram.org/css/telegram-web.css?39" rel="stylesheet" media="screen">
+    <script>TBaseUrl='/';</script>
+    <style>        .user-color-12 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #3391d4 0px, #3391d4 5px, #7dd3f0 5px, #7dd3f0 10px);
+          --user-accent-color: #3391d4;
+          --user-background: #3391d41f;
+        }        .user-color-10 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #27a910 0px, #27a910 5px, #a7dc57 5px, #a7dc57 10px);
+          --user-accent-color: #27a910;
+          --user-background: #27a9101f;
+        }        .user-color-8 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #e0802b 0px, #e0802b 5px, #fac534 5px, #fac534 10px);
+          --user-accent-color: #e0802b;
+          --user-background: #e0802b1f;
+        }        .user-color-7 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #e15052 0px, #e15052 5px, #f9ae63 5px, #f9ae63 10px);
+          --user-accent-color: #e15052;
+          --user-background: #e150521f;
+        }        .user-color-9 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #a05ff3 0px, #a05ff3 5px, #f48fff 5px, #f48fff 10px);
+          --user-accent-color: #a05ff3;
+          --user-background: #a05ff31f;
+        }        .user-color-11 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #27acce 0px, #27acce 5px, #82e8d6 5px, #82e8d6 10px);
+          --user-accent-color: #27acce;
+          --user-background: #27acce1f;
+        }        .user-color-13 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #dd4371 0px, #dd4371 5px, #ffbe9f 5px, #ffbe9f 10px);
+          --user-accent-color: #dd4371;
+          --user-background: #dd43711f;
+        }        .user-color-14 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #247bed 0px, #247bed 5px, #f04856 5px, #f04856 10px, #ffffff 10px, #ffffff 15px);
+          --user-accent-color: #247bed;
+          --user-background: #247bed1f;
+        }        .user-color-15 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #d67722 0px, #d67722 5px, #1ea011 5px, #1ea011 10px, #ffffff 10px, #ffffff 15px);
+          --user-accent-color: #d67722;
+          --user-background: #d677221f;
+        }        .user-color-16 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #179e42 0px, #179e42 5px, #e84a3f 5px, #e84a3f 10px, #ffffff 10px, #ffffff 15px);
+          --user-accent-color: #179e42;
+          --user-background: #179e421f;
+        }        .user-color-17 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #2894af 0px, #2894af 5px, #6fc456 5px, #6fc456 10px, #ffffff 10px, #ffffff 15px);
+          --user-accent-color: #2894af;
+          --user-background: #2894af1f;
+        }        .user-color-18 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #0c9ab3 0px, #0c9ab3 5px, #ffad95 5px, #ffad95 10px, #ffe6b5 10px, #ffe6b5 15px);
+          --user-accent-color: #0c9ab3;
+          --user-background: #0c9ab31f;
+        }        .user-color-19 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #7757d6 0px, #7757d6 5px, #f79610 5px, #f79610 10px, #ffde8e 10px, #ffde8e 15px);
+          --user-accent-color: #7757d6;
+          --user-background: #7757d61f;
+        }        .user-color-20 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #1585cf 0px, #1585cf 5px, #f2ab1d 5px, #f2ab1d 10px, #ffffff 10px, #ffffff 15px);
+          --user-accent-color: #1585cf;
+          --user-background: #1585cf1f;
+        }        body.dark .user-color-12, html.theme_dark .user-color-12 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #52bfff 0px, #52bfff 5px, #0b5494 5px, #0b5494 10px);
+          --user-accent-color: #52bfff;
+          --user-background: #52bfff1f;
+        }        body.dark .user-color-10, html.theme_dark .user-color-10 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #a7eb6e 0px, #a7eb6e 5px, #167e2d 5px, #167e2d 10px);
+          --user-accent-color: #a7eb6e;
+          --user-background: #a7eb6e1f;
+        }        body.dark .user-color-8, html.theme_dark .user-color-8 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #ecb04e 0px, #ecb04e 5px, #c35714 5px, #c35714 10px);
+          --user-accent-color: #ecb04e;
+          --user-background: #ecb04e1f;
+        }        body.dark .user-color-7, html.theme_dark .user-color-7 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #ff9380 0px, #ff9380 5px, #992f37 5px, #992f37 10px);
+          --user-accent-color: #ff9380;
+          --user-background: #ff93801f;
+        }        body.dark .user-color-9, html.theme_dark .user-color-9 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #c697ff 0px, #c697ff 5px, #5e31c8 5px, #5e31c8 10px);
+          --user-accent-color: #c697ff;
+          --user-background: #c697ff1f;
+        }        body.dark .user-color-11, html.theme_dark .user-color-11 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #40d8d0 0px, #40d8d0 5px, #045c7f 5px, #045c7f 10px);
+          --user-accent-color: #40d8d0;
+          --user-background: #40d8d01f;
+        }        body.dark .user-color-13, html.theme_dark .user-color-13 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #ff86a6 0px, #ff86a6 5px, #8e366e 5px, #8e366e 10px);
+          --user-accent-color: #ff86a6;
+          --user-background: #ff86a61f;
+        }        body.dark .user-color-14, html.theme_dark .user-color-14 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #3fa2fe 0px, #3fa2fe 5px, #e5424f 5px, #e5424f 10px, #ffffff 10px, #ffffff 15px);
+          --user-accent-color: #3fa2fe;
+          --user-background: #3fa2fe1f;
+        }        body.dark .user-color-15, html.theme_dark .user-color-15 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #ff905e 0px, #ff905e 5px, #32a527 5px, #32a527 10px, #ffffff 10px, #ffffff 15px);
+          --user-accent-color: #ff905e;
+          --user-background: #ff905e1f;
+        }        body.dark .user-color-16, html.theme_dark .user-color-16 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #66d364 0px, #66d364 5px, #d5444f 5px, #d5444f 10px, #ffffff 10px, #ffffff 15px);
+          --user-accent-color: #66d364;
+          --user-background: #66d3641f;
+        }        body.dark .user-color-17, html.theme_dark .user-color-17 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #22bce2 0px, #22bce2 5px, #3da240 5px, #3da240 10px, #ffffff 10px, #ffffff 15px);
+          --user-accent-color: #22bce2;
+          --user-background: #22bce21f;
+        }        body.dark .user-color-18, html.theme_dark .user-color-18 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #22bce2 0px, #22bce2 5px, #ff9778 5px, #ff9778 10px, #ffda6b 10px, #ffda6b 15px);
+          --user-accent-color: #22bce2;
+          --user-background: #22bce21f;
+        }        body.dark .user-color-19, html.theme_dark .user-color-19 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #9791ff 0px, #9791ff 5px, #f2731d 5px, #f2731d 10px, #ffdb59 10px, #ffdb59 15px);
+          --user-accent-color: #9791ff;
+          --user-background: #9791ff1f;
+        }        body.dark .user-color-20, html.theme_dark .user-color-20 {
+          --user-line-gradient: repeating-linear-gradient(-45deg, #3da6eb 0px, #3da6eb 5px, #eea51d 5px, #eea51d 10px, #ffffff 10px, #ffffff 15px);
+          --user-accent-color: #3da6eb;
+          --user-background: #3da6eb1f;
+        }.user-color-6, .user-color-4, .user-color-2, .user-color-0, .user-color-1, .user-color-3, .user-color-5,   .user-color-default {
+    --user-accent-color: var(--accent-color);
+    --user-accent-background: var(--accent-background);
+    --user-line-gradient: linear-gradient(45deg, var(--accent-color), var(--accent-color));
+  }</style>
+  </head>
+  <body class="widget_frame_base tgme_webpreview emoji_image thin_box_shadow tme_mode no_transitions">
+    <div class="tgme_background_wrap">
+      <canvas id="tgme_background" class="tgme_background" width="50" height="50" data-colors="dbddbb,6ba587,d5d88d,88b884"></canvas>
+      <div class="tgme_background_pattern"></div>
+    </div>
+    <header class="tgme_header search_collapsed">
+  <div class="tgme_container">
+    <div class="tgme_header_search">
+      <form class="tgme_header_search_form" action="/s/uniredmobile">
+        <svg class="tgme_header_search_form_icon" width="20" height="20" viewBox="0 0 20 20"><g fill="none" stroke="#7D7F81" stroke-width="1.4"><circle cx="9" cy="9" r="6"></circle><path d="M13.5,13.5 L17,17" stroke-linecap="round"></path></g></svg>
+        <input class="tgme_header_search_form_input js-header_search" placeholder="Search" name="q" autocomplete="off" value="" />
+        <a href="/s/uniredmobile" class="tgme_header_search_form_clear"><svg class="tgme_action_button_icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20"><g class="icon_body" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke="#000000" stroke-width="1.5"><path d="M6 14l8-8m0 8L6 6" stroke-dasharray="0,11.314" stroke-dashoffset="5.657"/><path d="M26 14l8-8m0 8l-8-8" stroke-dasharray="0.371,10.943" stroke-dashoffset="5.842"/><path d="M46 14l8-8m0 8l-8-8" stroke-dasharray="1.982,9.332" stroke-dashoffset="6.647756"/><path d="M66 14l8-8m0 8l-8-8" stroke-dasharray="5.173,6.14" stroke-dashoffset="8.243"/><path d="M86 14l8-8m0 8l-8-8" stroke-dasharray="7.866,3.448" stroke-dashoffset="9.59"/><path d="M106 14l8-8m0 8l-8-8" stroke-dasharray="9.471,1.843" stroke-dashoffset="10.392"/><path d="M126 14l8-8m0 8l-8-8" stroke-dasharray="10.417,0.896" stroke-dashoffset="10.866"/><path d="M146 14l8-8m0 8l-8-8" stroke-dasharray="10.961,0.353" stroke-dashoffset="11.137"/><path d="M166 14l8-8m0 8l-8-8" stroke-dasharray="11.234,0.08" stroke-dashoffset="11.274"/><path d="M186 14l8-8m0 8l-8-8"/></g></svg></a>
+      </form>
+    </div>
+    <div class="tgme_header_right_column">
+      <section class="tgme_right_column">
+        <div class="tgme_channel_info">
+          <div class="tgme_channel_info_header">
+            <i class="tgme_page_photo_image bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i>
+            <div class="tgme_channel_info_header_title_wrap">
+              <div class="tgme_channel_info_header_title"><span dir="auto">Unired</span></div>
+              <div class="tgme_channel_info_header_labels"></div>
+            </div>
+            <div class="tgme_channel_info_header_username"><a href="https://t.me/uniredmobile">@uniredmobile</a></div>
+          </div>
+          <div class="tgme_channel_info_counters"><div class="tgme_channel_info_counter"><span class="counter_value">2.18K</span> <span class="counter_type">subscribers</span></div><div class="tgme_channel_info_counter"><span class="counter_value">278</span> <span class="counter_type">photos</span></div><div class="tgme_channel_info_counter"><span class="counter_value">158</span> <span class="counter_type">videos</span></div><div class="tgme_channel_info_counter"><span class="counter_value">4</span> <span class="counter_type">files</span></div><div class="tgme_channel_info_counter"><span class="counter_value">1.3K</span> <span class="counter_type">links</span></div></div>
+          <div class="tgme_channel_info_description"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B8.png')"><b>💸</b></i>Xalqaro va mahalliy pul oʻtkazmalar<br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29AA1.png')"><b>⚡️</b></i>Barcha xizmatlar uchun toʻlovlar<br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09FA49D.png')"><b>🤝</b></i>24/7 qoʻllab quvvatlash<br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i>55-511-00-08<br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F93B2.png')"><b>📲</b></i><a href="https://onelink.to/uniredmobile" target="_blank" rel="noopener">https://onelink.to/uniredmobile</a><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F8C90.png')"><b>🌐</b></i>Sayt: <a href="https://unired.uz/" target="_blank" rel="noopener">https://unired.uz</a></div>
+          <a class="tgme_channel_download_telegram" href="//telegram.org/dl?tme=0de955191dcd75853e_5923995881890479750">
+            <svg class="tgme_channel_download_telegram_icon" width="21px" height="18px" viewBox="0 0 21 18"><g fill="none"><path fill="#ffffff" d="M0.554,7.092 L19.117,0.078 C19.737,-0.156 20.429,0.156 20.663,0.776 C20.745,0.994 20.763,1.23 20.713,1.457 L17.513,16.059 C17.351,16.799 16.62,17.268 15.88,17.105 C15.696,17.065 15.523,16.987 15.37,16.877 L8.997,12.271 C8.614,11.994 8.527,11.458 8.805,11.074 C8.835,11.033 8.869,10.994 8.905,10.958 L15.458,4.661 C15.594,4.53 15.598,4.313 15.467,4.176 C15.354,4.059 15.174,4.037 15.036,4.125 L6.104,9.795 C5.575,10.131 4.922,10.207 4.329,10.002 L0.577,8.704 C0.13,8.55 -0.107,8.061 0.047,7.614 C0.131,7.374 0.316,7.182 0.554,7.092 Z"></path></g></svg>Download Telegram
+          </a>
+          <div class="tgme_footer">
+            <div class="tgme_footer_column">
+              <h5><a href="//telegram.org/faq">About</a></h5>
+            </div>
+            <div class="tgme_footer_column">
+              <h5><a href="//telegram.org/blog">Blog</a></h5>
+            </div>
+            <div class="tgme_footer_column">
+              <h5><a href="//telegram.org/apps">Apps</a></h5>
+            </div>
+            <div class="tgme_footer_column">
+              <h5><a href="//core.telegram.org/">Platform</a></h5>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="tgme_header_info">
+      <a class="tgme_channel_join_telegram" href="//telegram.org/dl?tme=0de955191dcd75853e_5923995881890479750">
+        <svg class="tgme_channel_join_telegram_icon" width="19px" height="16px" viewBox="0 0 19 16"><g fill="none"><path fill="#ffffff" d="M0.465,6.638 L17.511,0.073 C18.078,-0.145 18.714,0.137 18.932,0.704 C19.009,0.903 19.026,1.121 18.981,1.33 L16.042,15.001 C15.896,15.679 15.228,16.111 14.549,15.965 C14.375,15.928 14.211,15.854 14.068,15.748 L8.223,11.443 C7.874,11.185 7.799,10.694 8.057,10.345 C8.082,10.311 8.109,10.279 8.139,10.249 L14.191,4.322 C14.315,4.201 14.317,4.002 14.195,3.878 C14.091,3.771 13.926,3.753 13.8,3.834 L5.602,9.138 C5.112,9.456 4.502,9.528 3.952,9.333 L0.486,8.112 C0.077,7.967 -0.138,7.519 0.007,7.11 C0.083,6.893 0.25,6.721 0.465,6.638 Z"></path></g></svg>Join
+      </a>
+      <a class="tgme_header_link" href="https://t.me/uniredmobile">
+        <i class="tgme_page_photo_image bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i>
+        <div class="tgme_header_title_wrap">
+          <div class="tgme_header_title"><span dir="auto">Unired</span></div>
+          <div class="tgme_header_labels"></div>
+        </div>
+        <div class="tgme_header_counter">2.18K subscribers</div>
+      </a>
+    </div>
+  </div>
+</header>
+<main class="tgme_main" data-url="/uniredmobile">
+  <div class="tgme_container">
+    <section class="tgme_channel_history js-message_history">
+      <div class="tgme_widget_message_centered js-messages_more_wrap"><a href="/s/uniredmobile?before=1784" class="tme_messages_more js-messages_more" data-before="1784"></a></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1784" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc4NCwidCI6MTc3NDQ0OTk1OSwiaCI6IjJhMzU2M2I5OWI1ZDk5MzFmYiJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 13.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 150 000 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 154 600 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 80,64 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 279 380 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 853 570 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 122,01 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 315 300 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 141 792 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29DA4.png')"><b>❤</b></i>2</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>1</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">866</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1784"><time datetime="2026-03-12T19:00:03+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1785" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc4NSwidCI6MTc3NDQ0OTk1OSwiaCI6IjhjMjA5Mzc2MDFjMzRlMmM0OCJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 14.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 146 500 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 151 500 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 81,91 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 279 030 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 816 530 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 122,16 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 284 751 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 141 160 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29DA4.png')"><b>❤</b></i>3</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">846</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1785"><time datetime="2026-03-13T19:00:04+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1786" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc4NiwidCI6MTc3NDQ0OTk1OSwiaCI6IjhjY2UxZjY3ODIyN2RiYTU4OCJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 15.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 146 500 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 151 500 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 81,91 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 279 090 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 816 530 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 122,08 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 304 534 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 141 160 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>2</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29DA4.png')"><b>❤</b></i>1</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">852</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1786"><time datetime="2026-03-14T19:00:03+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1787" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc4NywidCI6MTc3NDQ0OTk1OSwiaCI6IjQxOTMwMWE0ZTA5NTYyYjM2YiJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 16.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 146 500 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 151 500 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 81,91 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 279 090 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 816 530 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 122,58 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 304 534 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 141 160 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>2</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">823</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1787"><time datetime="2026-03-15T19:00:04+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1788" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6IjE3ODhnIiwidCI6MTc3NDQ0OTk1OSwiaCI6IjZmZTQzZWIxOGVjNzYyMTBkNCJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="media_supported_cont"><div class="tgme_widget_message_one_media js-message_media"><div class="media_supported_cont"><div class="tgme_widget_message_grouped_wrap js-message_grouped_wrap" data-margin-w="2" data-margin-h="2" style="width:453px;">
+  <div class="tgme_widget_message_grouped js-message_grouped" style="padding-top:110.817%">
+    <div class="tgme_widget_message_grouped_layer js-message_grouped_layer" style="width:453px;height:502px">
+      <a class="tgme_widget_message_photo_wrap grouped_media_wrap blured js-message_photo" style="left:0px;top:0px;width:225px;height:300px;margin-right:2px;margin-bottom:2px;background-image:url('https://cdn4.telesco.pe/file/kxc6PvBc-XqQSHhWPyGaMAeVgB1v5jf7NJ9ehXFjGAkGC0UMiyvkxW3famQjyPy5kbXZQDyWcJIODFDqnHrkmATKFPq07sEuLJhRd6gv-AG8g0zE4ltc35fUBsyEXgl0aHHURABeNPfYBoHFVQ3RTq3ypaZaGxjI3iolu8RBG52JJ3klbbagNkNT95QM9lRg8SJN1EkgTspUU5qpakpYgMXhipfrNwe4zdJ8kGULIfCZ6LW4bFJTLlG3RYzKIaVEn3X18ve-exBq9umbBS8_ATzV1cNtr6FSbeMBFpvM20D1ky86Y-53Z3H_FPSAoKIdXqyl-CuXuoXixSkisV_NMw.jpg')" data-ratio="0.75" href="https://t.me/uniredmobile/1788?single">
+  <div class="grouped_media_helper" style="top:0;bottom:0;left:38px;right:38px;">
+    <div class="tgme_widget_message_photo grouped_media" style="top:0;bottom:0;left:0px;right:0px;"></div>
+  </div>
+</a><a class="tgme_widget_message_photo_wrap grouped_media_wrap blured js-message_photo" style="left:227px;top:0px;width:226px;height:300px;margin-right:0px;margin-bottom:2px;background-image:url('https://cdn4.telesco.pe/file/m6BNTm5aEYaodCPpNW_2IgAHH6WGEbuLrWWAqU0UtQFEz-uqYmS5-0VFNUSkTvV8DMBXn_XcOn1LweA9u0h-LpLEJMXAVGPvFHfArFM1Ki_nPvD6UFOXoElRfqyTufcMqwVV9FxvggC4lredIOK1DVo9oF3Kz_trAACLPpk5y5k9DXXz2Pt15PNIfn7ExTaNA4ADUZ-GSuQiTUyeTouzrXGBGRNHJzKFGXsxxgUTDh1OW7GUFVgiFznvYOKzKuU-5toE2aVjuzMNJvZRzIwhKMaFxOaaXGERG-h6xTsTwVVu66WhWEw96X1z039vfWwORYjZ5AFHyXx42Ey9PcsIKw.jpg')" data-ratio="0.75" href="https://t.me/uniredmobile/1789?single">
+  <div class="grouped_media_helper" style="top:0;bottom:0;left:38px;right:38px;">
+    <div class="tgme_widget_message_photo grouped_media" style="left:0;right:0;top:-1px;bottom:-1px;"></div>
+  </div>
+</a><a class="tgme_widget_message_photo_wrap grouped_media_wrap blured js-message_photo" style="left:0px;top:302px;width:150px;height:200px;margin-right:2px;margin-bottom:0px;background-image:url('https://cdn4.telesco.pe/file/dSgY_XhM33qOm_GGa-I6ftsDWU-rMvzlAItQRlf8Uzyyuy1-qDbvj2hUgosfi-0Ivs_dF4XW9ggbPU-olRH3cC806pl6L6QoLOnN7ns_VCPynWOWLqBcFCzYAaf61BuTudXm3k0hhwezaDyYS88PN5kznSKSQolTCIUqXJqOAScFjBjYfLjZTpjQzMOA0rMDErt3mj1_w6FcJiX_6rOniu5djnzgeZax_CfiSRSoYdX-ldl0pQ_3iyUaUSQHObC-mXpzeSzyJy1juqDqkzK09gnMw9LMxLFb7Bj4i2__rf_DCVzb9kXc8L-dFm58sFPTqFv2jXX5FUr81GylYRfljQ.jpg')" data-ratio="0.75" href="https://t.me/uniredmobile/1790?single">
+  <div class="grouped_media_helper" style="top:0;bottom:0;left:38px;right:38px;">
+    <div class="tgme_widget_message_photo grouped_media" style="top:0;bottom:0;left:0px;right:0px;"></div>
+  </div>
+</a><a class="tgme_widget_message_photo_wrap grouped_media_wrap blured js-message_photo" style="left:152px;top:302px;width:150px;height:200px;margin-right:2px;margin-bottom:0px;background-image:url('https://cdn4.telesco.pe/file/tb9MQi1irLdkdMeFWi8fJAJ0EHuCucK6Xfhf1GEn76kn3AlIXizSGKu4y72gkW4-hx0mb7dLdIap04-ICUkmeNWQ8GqyldYqr50H-QnDOEfHBrhACKYKduKFkh9Q7J7GJZe4MUs6oFed5zipsGVn3RI4MBEAvGDCl2Vx4Z3imfcSLWJWS5VFrVSyZeIEoi6MiAVlmCkGzT9MnDoP7dZSIIycwHzoTlg0C_XZsi3xrO55mxuU1FdLOcIG6iYZOEy0BF5PQ5uy5ZTVCz_e2QZcu6jcCEAALmX8RgJ_q_uSNt_ELHKQMVQS957XjimXIoR_WVrRDsNmBIqt4FfTEU6ZGg.jpg')" data-ratio="0.75" href="https://t.me/uniredmobile/1791?single">
+  <div class="grouped_media_helper" style="top:0;bottom:0;left:38px;right:38px;">
+    <div class="tgme_widget_message_photo grouped_media" style="top:0;bottom:0;left:0px;right:0px;"></div>
+  </div>
+</a><a class="tgme_widget_message_photo_wrap grouped_media_wrap blured js-message_photo" style="left:304px;top:302px;width:149px;height:200px;margin-right:0px;margin-bottom:0px;background-image:url('https://cdn4.telesco.pe/file/rqDjOjNczr1oQd0g-TRyB4xQJx8ZNye8_tfTCtVG20Od-KPwKlQQltLaPkiOGOuRzYzra4fbszl81VPlXhSJtKJ3cd4UfAE7kaLgY0YKVX0q2_vIgD_2BF2Ue5DWTKZxvX0dlyixRZE6IhS6O9mIPOD3TEFivvliNen_TltdbWFPRKeZX_O9DygluAulnc5h-5jiQKmy9oq6-UFc--G7TOxO0Z9NSHrAxOPR3xe3FP1RozK6ofZq1ppIpFdiDoxEyA-48wld--GEREcz7LHh4bQUJJnBnTGOoj_zNuhv81TSDjOEFkerhCCRHVMnoB9SBTckVio-s3FFsX6dUCBAfA.jpg')" data-ratio="0.75" href="https://t.me/uniredmobile/1792?single">
+  <div class="grouped_media_helper" style="top:0;bottom:0;left:38px;right:38px;">
+    <div class="tgme_widget_message_photo grouped_media" style="top:0;bottom:0;left:-1px;right:0px;"></div>
+  </div>
+</a>
+    </div>
+  </div>
+</div><div class="tgme_widget_message_text js-message_text" dir="auto">2026-yil 1-apreldan boshlab <b>O‘zbekiston</b>da ayrim to‘lovlar faqat naqd pulsiz shaklda amalga oshiriladi.<br/><br/><tg-emoji emoji-id="5314307354831897742"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316685950670093609"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316679173211701440"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5317010985205120884"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316658875196259676"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316534394159118969"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji> ilovasi orqali tez va qulay tarzda smartfonda to‘lash mumkin:<br/><blockquote><tg-emoji emoji-id="5980930633298350051"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29C85.png')"><b>✅</b></i></tg-emoji>Mahalliy o‘tkazmalar<br/><tg-emoji emoji-id="5980930633298350051"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29C85.png')"><b>✅</b></i></tg-emoji>Xalqaro o‘tkazmalar<br/><tg-emoji emoji-id="5980930633298350051"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29C85.png')"><b>✅</b></i></tg-emoji>Xalqaro xizmatlar uchun to‘lovlar<br/><tg-emoji emoji-id="5980930633298350051"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29C85.png')"><b>✅</b></i></tg-emoji>Kommunal to‘lovlar<br/><tg-emoji emoji-id="5980930633298350051"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29C85.png')"><b>✅</b></i></tg-emoji>QR orqali to‘lovlar </blockquote><br/><br/>Qanday o‘zgarishlar kuchga kirishi haqida batafsil ma’lumotni post orqali bilib oling.<br/><br/>Ilovasini App store yoki Play marketdan yuklab oling&#33;<br/><br/>————————————————————————————<br/><br/>С 1 апреля 2026 года некоторые платежи в Узбекистане будут осуществляться только в безналичной форме.<br/><br/>С помощью приложения <tg-emoji emoji-id="5314307354831897742"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316685950670093609"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316679173211701440"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5317010985205120884"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316658875196259676"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316534394159118969"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji> можно быстро и удобно оплатить на смартфоне:<br/><blockquote><tg-emoji emoji-id="5980930633298350051"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29C85.png')"><b>✅</b></i></tg-emoji>Местные переводы<br/><tg-emoji emoji-id="5980930633298350051"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29C85.png')"><b>✅</b></i></tg-emoji>Международные переводы<br/><tg-emoji emoji-id="5980930633298350051"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29C85.png')"><b>✅</b></i></tg-emoji>Плата за международные услуги<br/><tg-emoji emoji-id="5980930633298350051"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29C85.png')"><b>✅</b></i></tg-emoji>Коммунальные платежи<br/><tg-emoji emoji-id="5980930633298350051"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29C85.png')"><b>✅</b></i></tg-emoji>Платежи через QR</blockquote><br/><br/>Узнайте больше о том, какие изменения вступят в силу, в публикации.<br/><br/>Скачайте приложение из App Store или Play Market&#33;</div></div><div class="media_not_supported_cont"><div class="message_media_not_supported_wrap">
+  <div class="message_media_not_supported">
+    <div class="message_media_not_supported_label">Please open Telegram to view this post</div>
+    <a href="https://t.me/uniredmobile/1788?single" class="message_media_view_in_telegram">VIEW IN TELEGRAM</a>
+  </div>
+</div></div></div></div><div class="media_not_supported_cont"><div class="message_media_not_supported_wrap">
+  <div class="message_media_not_supported">
+    <div class="message_media_not_supported_label">Please open Telegram to view this post</div>
+    <a href="https://t.me/uniredmobile/1788" class="message_media_view_in_telegram">VIEW IN TELEGRAM</a>
+  </div>
+</div></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29DA4.png')"><b>❤</b></i>2</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>1</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918F.png')"><b>👏</b></i>1</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F8E89.png')"><b>🎉</b></i>1</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">854</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1788"><time datetime="2026-03-16T11:40:01+00:00" class="time">11:40</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1793" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc5MywidCI6MTc3NDQ0OTk1OSwiaCI6IjUxMzIxYWIzMGI1MWJmMDI3MSJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 17.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 145 600 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 150 200 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 82,68 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 278 800 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 856 320 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 121,83 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 287 905 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 141 272 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>2</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">856</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1793"><time datetime="2026-03-16T19:00:03+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1794" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc5NCwidCI6MTc3NDQ0OTk1OSwiaCI6IjU2MTlkOTliMTVmY2Y0ZWQxZCJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 18.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 144 000 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 149 000 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 83,60 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 279 550 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 868 460 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 121,11 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 298 701 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 141 714 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F98A2.png')"><b>😢</b></i>2</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>1</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">819</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1794"><time datetime="2026-03-17T19:00:03+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1795" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc5NSwidCI6MTc3NDQ0OTk1OSwiaCI6ImM1M2U1MDljZTRlNGE4YzRmNSJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 19.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 143 000 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 147 500 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 84,77 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 280 440 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 849 800 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 121,91 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 296 943 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 142 296 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>4</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">734</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1795"><time datetime="2026-03-18T19:00:03+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1796" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc5NiwidCI6MTc3NDQ0OTk1OSwiaCI6IjdmY2FlYmZlZTg2NGE1ZjdkZiJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="media_supported_cont"><a class="tgme_widget_message_photo_wrap 5323465179049694414 1239465824_460002510" href="https://t.me/uniredmobile/1796" style="width:600px;background-image:url('https://cdn4.telesco.pe/file/tEn3mZCWigxlTYdEMNcVJ0bcO8hapWGTRYRw7gdWoxnCFjks0NmSANqPlzP1xJVRNGh1RlUyOSFT0eXBb4TdofQYG-yGP3YTfpwneuZ2WniOBMSaiXSLPL09cdNmXgPILSQVkfhMYz-ysA7SmstaoI9DZDusUT40oNy1cJkestykZmO4wY56ipbOQ8BvhhpcjS0V3QJo8tykZ_l01Qm77jVu_8Xb49FECPdz6F0KP-6RA4I9J18QGEKw_Vy1ZIbVF9sX1JAc0HotRSfZFENc1cogdYfZPE1t5MC6l7L9CBlJiE0lG0AHoEtXZ1ap3jFk5hyA6R8BSyxYRQWZx48ImA.jpg')">
+  <div class="tgme_widget_message_photo" style="padding-top:133.33333333333%"></div>
+</a><div class="tgme_widget_message_text js-message_text" dir="auto"><b>Istalgan VISA kartaga tez va qulay pul o‘tkazing </b><b><tg-emoji emoji-id="5472250091332993630"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i></tg-emoji></b><br/><br/><tg-emoji emoji-id="5314307354831897742"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316685950670093609"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316679173211701440"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5317010985205120884"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316658875196259676"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji><tg-emoji emoji-id="5316534394159118969"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9388.png')"><b>📈</b></i></tg-emoji> orqali O‘zbekistondagi istalgan <b>UZCARD</b> va <b>HUMO</b> kartalaridan istalgan <b>VISA</b> kartalariga eng past komissiya bilan pul o‘tkazishingiz mumkin.<br/><br/><blockquote><b>Unired sizga taklif qiladi:<br/></b><b><tg-emoji emoji-id="5258113901106580375"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E28C9B.png')"><b>⌛</b></i></tg-emoji></b><b> Tezkorlik<br/></b><b><tg-emoji emoji-id="6228527749791745554"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9281E2808DE29982.png')"><b>💁‍♂️</b></i></tg-emoji></b><b> Qulay interfeys<br/></b><b><tg-emoji emoji-id="5224257782013769471"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B0.png')"><b>💰</b></i></tg-emoji></b><b> Minimal komissiya</b></blockquote><br/><br/>Endi hech qanday qiyinchiliklarsiz - hammasi smartfoningizda oddiy va tushunarli.<br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F93B2.png')"><b>📲</b></i> Unired ilovasini hoziroq yuklab oling <br/><tg-emoji emoji-id="5415758949129404605"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9189.png')"><b>👉</b></i></tg-emoji> <a href="https://onelink.to/uniredtg" target="_blank" rel="noopener"><b>https://onelink.to/uniredtg</b></a><b> </b><tg-emoji emoji-id="5416113713428057601"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9188.png')"><b>👈</b></i></tg-emoji></div></div><div class="media_not_supported_cont"><div class="message_media_not_supported_wrap">
+  <div class="message_media_not_supported">
+    <div class="message_media_not_supported_label">Please open Telegram to view this post</div>
+    <a href="https://t.me/uniredmobile/1796" class="message_media_view_in_telegram">VIEW IN TELEGRAM</a>
+  </div>
+</div></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29DA4.png')"><b>❤</b></i>3</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>2</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F94A5.png')"><b>🔥</b></i>1</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09FA5B0.png')"><b>🥰</b></i>1</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918F.png')"><b>👏</b></i>1</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F8E89.png')"><b>🎉</b></i>1</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">794</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1796"><time datetime="2026-03-19T07:09:43+00:00" class="time">07:09</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1797" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc5NywidCI6MTc3NDQ0OTk1OSwiaCI6ImE2ZGE0YzQ4Mzc5ZjAyMjkzZSJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 20.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 138 700 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 144 000 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 87,82 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 279 870 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 805 710 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 121,51 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 283 186 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 142 296 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F98B1.png')"><b>😱</b></i>3</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">715</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1797"><time datetime="2026-03-19T19:00:05+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1798" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc5OCwidCI6MTc3NDQ0OTk1OSwiaCI6IjJiN2Y4ZjkzYWMzOTQ2NDQzNSJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 21.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 138 700 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 144 000 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 87,82 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 279 930 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 805 710 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 122,05 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 283 186 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 142 296 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>4</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">668</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1798"><time datetime="2026-03-20T19:00:03+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1799" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTc5OSwidCI6MTc3NDQ0OTk1OSwiaCI6IjQzODY3ZThlNjljY2UzY2U5MSJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 22.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 138 700 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 144 000 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 87,82 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 280 120 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 805 710 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 121,92 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 283 186 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 142 296 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>2</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29DA4.png')"><b>❤</b></i>1</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">612</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1799"><time datetime="2026-03-21T19:00:06+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1800" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTgwMCwidCI6MTc3NDQ0OTk1OSwiaCI6ImJhMTEwZjkxM2IyNzk5Mzk3MyJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 23.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 138 700 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 144 000 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 87,82 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 280 120 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 805 710 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 122,08 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 283 186 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 142 296 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>2</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09FA494.png')"><b>🤔</b></i>2</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F98B1.png')"><b>😱</b></i>1</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">568</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1800"><time datetime="2026-03-22T19:00:04+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1801" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTgwMSwidCI6MTc3NDQ0OTk1OSwiaCI6IjFkMzg4MDU3YzRhZGQzNzkwZSJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 24.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 138 700 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 144 000 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 87,82 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 279 610 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 805 710 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 120,23 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 335 175 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 142 296 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>1</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F98B1.png')"><b>😱</b></i>1</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">494</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1801"><time datetime="2026-03-23T19:00:04+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1802" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTgwMiwidCI6MTc3NDQ0OTk1OSwiaCI6IjE3ZTBlNWFiM2M5ZWM0ZDgyNyJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<a class="tgme_widget_message_photo_wrap 5336775450203722523 1242564863_460002075" href="https://t.me/uniredmobile/1802" style="width:600px;background-image:url('https://cdn4.telesco.pe/file/jQwW8jKfxaQTkRSbsPD6p-CgnZjgAjbwVfQGhjOjG0a3UCd_YATF1QBbAH6Smm9k_jkVEeCIikGafxxbT58SyRiKx6r2Sw0py53mAgrNo6Xo5Q_Yr1_949vvYLBfjvndaFn1YgVXg8vvJqH8QkgK-d9BetrJZ9b3gRd_-Jqe3fKTAEhCwzYtw-pc-YHJRb6o6p1uAq7Ta2pcY0dZPYuQV_H7djBmfM-wmWDHyKoEFcMebZ8kfaFdEOIeVmTIYq-cn56mR0D9rWajaRrHku69KHc93mroYQnanorMlSAXCMB00LNLmDMQNyo_oqn7t9_MmcEUVAGBOEX43WbA-vy7tg.jpg')">
+  <div class="tgme_widget_message_photo" style="padding-top:133.33333333333%"></div>
+</a><div class="tgme_widget_message_text js-message_text" dir="auto">Qirg‘izistonga pul yuborish endi juda oson&#33;<br/><br/>Unired orqali O‘zbekistondan Qirg‘izistonning istalgan bank kartasiga atigi bir necha bosish bilan pul o‘tkazishingiz mumkin.<br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E28C9B.png')"><b>⌛️</b></i>Pul bir daqiqada yetib boradi<br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B0.png')"><b>💰</b></i> Komissiya esa yo‘q<br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F93B2.png')"><b>📲</b></i> Ilovani hoziroq App store yoki Play marketdan yuklab oling&#33;</div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>5</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/E29DA4.png')"><b>❤</b></i>2</span><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F8E89.png')"><b>🎉</b></i>1</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">480</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1802"><time datetime="2026-03-24T02:43:05+00:00" class="time">02:43</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div><div class="tgme_widget_message_wrap js-widget_message_wrap"><div class="tgme_widget_message text_not_supported_wrap js-widget_message" data-post="uniredmobile/1803" data-view="eyJjIjotMTM4MDQwNTQ3NSwicCI6MTgwMywidCI6MTc3NDQ0OTk1OSwiaCI6IjkwMjk4YTNmNWY3ZTAzN2FjZSJ9">
+  <div class="tgme_widget_message_user"><a href="https://t.me/uniredmobile"><i class="tgme_widget_message_user_photo bgcolor1" data-content="U"><img src="https://cdn4.telesco.pe/file/XNGUluDzikcESix3ty1yg4kiqT4hi0c9lWhAFeR4oriy_-aWYMoBkKiXwANDIViAc2KWLcVWGJTMwdqQNL3-sdT0xjimRmOXKHxKPQLNs4PmA1d3Ib8fp_Dbe8U0u4NWpg7GeVQamyrMygrPZlc3Um0BhGS0IrftjG47jo4aJC4AVslScxk9huahLaZQG4bAlQDSl6B-PMivioq3UqKqYT4Xtif53EECV73UpubbuVT1TtfvexcYfXYxpAawjhXi4ftOYV2d7sIAPSGOnhEnpY1FSmXt8rVI-UrtFLdHMrHO3No5Jwo-mPb-MnuQ-10Y3gN0hQ_wknrGKX9Ai4_D0g.jpg"></i></a></div>
+  <div class="tgme_widget_message_bubble">
+    
+        <i class="tgme_widget_message_bubble_tail">
+      <svg class="bubble_icon" width="9px" height="20px" viewBox="0 0 9 20">
+        <g fill="none">
+          <path class="background" fill="#ffffff" d="M8,1 L9,1 L9,20 L8,20 L8,18 C7.807,15.161 7.124,12.233 5.950,9.218 C5.046,6.893 3.504,4.733 1.325,2.738 L1.325,2.738 C0.917,2.365 0.89,1.732 1.263,1.325 C1.452,1.118 1.72,1 2,1 L8,1 Z"></path>
+          <path class="border_1x" fill="#d7e3ec" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0 L9,0 L9,20 L7,20 L7,20 L7.002,18.068 C6.816,15.333 6.156,12.504 5.018,9.58 C4.172,7.406 2.72,5.371 0.649,3.475 C-0.165,2.729 -0.221,1.464 0.525,0.649 C0.904,0.236 1.439,0 2,0 Z"></path>
+          <path class="border_2x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.5 L9,0.5 L9,20 L7.5,20 L7.5,20 L7.501,18.034 C7.312,15.247 6.64,12.369 5.484,9.399 C4.609,7.15 3.112,5.052 0.987,3.106 C0.376,2.547 0.334,1.598 0.894,0.987 C1.178,0.677 1.579,0.5 2,0.5 Z"></path>
+          <path class="border_3x" d="M9,1 L2,1 C1.72,1 1.452,1.118 1.263,1.325 C0.89,1.732 0.917,2.365 1.325,2.738 C3.504,4.733 5.046,6.893 5.95,9.218 C7.124,12.233 7.807,15.161 8,18 L8,20 L9,20 L9,1 Z M2,0.667 L9,0.667 L9,20 L7.667,20 L7.667,20 L7.668,18.023 C7.477,15.218 6.802,12.324 5.64,9.338 C4.755,7.064 3.243,4.946 1.1,2.983 C0.557,2.486 0.52,1.643 1.017,1.1 C1.269,0.824 1.626,0.667 2,0.667 Z"></path>
+        </g>
+      </svg>
+    </i>
+    <div class="tgme_widget_message_author accent_color"><a class="tgme_widget_message_owner_name" href="https://t.me/uniredmobile"><span dir="auto">Unired</span></a></div>
+
+
+<div class="tgme_widget_message_text js-message_text" dir="auto"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F9494.png')"><b>🔔</b></i> <b>Курс 25.03.2026 00:00</b><br/><br/>Россиядан - Узбекистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87BAF09F87BF.png')"><b>🇺🇿</b></i><br/><b>1000 RUB = 148 700 UZS</b><br/><br/>Узбекистондан - Россияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B7F09F87BA.png')"><b>🇷🇺</b></i><br/><b>1000 RUB = 152 800 UZS</b><br/><br/>Россиядан - VISAга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F92B3.png')"><b>💳</b></i><br/><b>1 &#036; = 81,98 RUB</b><br/><br/>Ўзбекистондан - Туркияга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87B7.png')"><b>🇹🇷</b></i><br/><b>1000 TRY = 279 690 UZS</b><br/><br/>Ўзбекистондан - Хитойга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87A8F09F87B3.png')"><b>🇨🇳</b></i><br/><b>1000 CNY = 1 949 700 UZS</b><br/><br/>Ўзбекистондан - Кореяга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87B7.png')"><b>🇰🇷</b></i><br/><b>1000 UZS = 121,24 KRW</b><br/><br/>Ўзбекистондан - Тожикистанга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B9F09F87AF.png')"><b>🇹🇯</b></i><br/><b>1000 TJS = 1 416 206 UZS</b><br/><br/>Ўзбекистондан - Қирғизистонга <i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F87B0F09F87AC.png')"><b>🇰🇬</b></i><br/><b>1000 KGS = 142 496 UZS</b><br/><br/>Unired Mobile - Қулай пул ўтказмалар: <a href="https://onelink.to/unired_mobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">юклаб олиш</a><br/><br/>Илованинг расмий телеграм канали: <a href="http://t.me/uniredmobile" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile</a><br/><br/><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F939E.png')"><b>📞</b></i> Bizning telegram operatorimiz:<br/><a href="https://t.me/uniredmobile_bot" target="_blank" rel="noopener" onclick="return confirm('Open this link?\n\n'+this.href);">@uniredmobile_bot</a></div>
+<div class="tgme_widget_message_reactions js-message_reactions"><span class="tgme_reaction"><i class="emoji" style="background-image:url('//telegram.org/img/emoji/40/F09F918D.png')"><b>👍</b></i>4</span></div><div class="tgme_widget_message_footer compact js-message_footer">
+  
+  <div class="tgme_widget_message_info short js-message_info">
+    <span class="tgme_widget_message_views">373</span><span class="copyonly"> views</span><span class="tgme_widget_message_meta"><a class="tgme_widget_message_date" href="https://t.me/uniredmobile/1803"><time datetime="2026-03-24T19:00:04+00:00" class="time">19:00</time></a></span>
+  </div>
+</div>
+  </div>
+  
+</div></div>
+    </section>
+  </div>
+</main>
+    <script src="//telegram.org/js/jquery.min.js"></script>
+    <script src="//telegram.org/js/jquery-ui.min.js"></script>
+    <script src="//telegram.org/js/tgwallpaper.min.js?3"></script>
+<script src="//telegram.org/js/tgsticker.js?31"></script>
+
+    <script src="//telegram.org/js/widget-frame.js?66"></script>
+    <script src="//telegram.org/js/telegram-web.js?14"></script>
+    <script>TWeb.init();
+</script>
+    
+  </body>
+</html>
+<!-- page generated in 171.67ms -->

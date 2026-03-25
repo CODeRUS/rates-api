@@ -15,6 +15,7 @@ PLUGIN_ORDER = (
     "askmoney",
     "ttexchange",
     "tbank",
+    "unired_bkb",
 )
 
 _MODS_CACHE: Dict[str, object] = {}
@@ -35,6 +36,7 @@ def _mods() -> Dict[str, object]:
         from . import rshb_unionpay
         from . import tbank
         from . import ttexchange
+        from . import unired_bkb
 
         _MODS_CACHE.update(
             {
@@ -51,6 +53,7 @@ def _mods() -> Dict[str, object]:
                 "askmoney": askmoney,
                 "ttexchange": ttexchange,
                 "tbank": tbank,
+                "unired_bkb": unired_bkb,
             }
         )
     return _MODS_CACHE

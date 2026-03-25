@@ -14,21 +14,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
+from rates_categories import SourceCategory
 
-# --- Публичные типы ---
 
-
-class SourceCategory(Enum):
-    """Категория источника: переводы vs наличные в обменнике (по валюте наличных)."""
-
-    TRANSFER = "transfer"
-    CASH_RUB = "cash_rub"
-    CASH_USD = "cash_usd"
-    CASH_EUR = "cash_eur"
-    CASH_CNY = "cash_cny"
+# --- Публичные типы --- (SourceCategory — в :mod:`rates_categories`, без цикла с плагинами)
 
 
 # Порядок блоков «наличные» в сводке (подкатегории не смешиваются сортировкой по курсу).
