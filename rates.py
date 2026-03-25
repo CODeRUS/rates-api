@@ -37,7 +37,7 @@ from sources import plugin_by_id, registered_source_ids
 _CACHE_OVERRIDE = (os.environ.get("RATES_CACHE_FILE") or "").strip()
 CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
-CACHE_VERSION = 21
+CACHE_VERSION = 25
 
 _RESERVED = frozenset({"sources", "save"})
 

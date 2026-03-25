@@ -35,6 +35,7 @@ class TestRatesSources(unittest.TestCase):
                 "forex",
                 "rshb_unionpay",
                 "bybit_bitkub",
+                "htx_bitkub",
                 "korona",
                 "avosend",
                 "ex24",
@@ -328,6 +329,137 @@ class TestRatesSources(unittest.TestCase):
             '\\"USD 100 Old\\":{\\"buy\\":\\"32.0\\"'
         )
         self.assertAlmostEqual(parse_ex24_cash_fiat_thb_per_fiat_unit(frag, "USD"), 32.5)
+
+    def test_htx_row_has_cash_by_id_and_name(self):
+        from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+
+        self.assertTrue(
+            hx.row_has_cash(
+                {
+                    "payMethods": [{"payMethodId": 169, "name": "Cash in Person"}],
+                    "payMethod": "69",
+                    "tradeCount": 200,
+                }
+            )
+        )
+        self.assertTrue(
+            hx.row_has_cash(
+                {"payMethods": [{"payMethodId": 70, "name": "Наличный расчёт"}], "payMethod": ""}
+            )
+        )
+        self.assertFalse(
+            hx.row_has_cash(
+                {
+                    "payMethods": [{"payMethodId": 69, "name": "SBP - Fast Bank Transfer"}],
+                    "payMethod": "69",
+                }
+            )
+        )
+
+    def test_htx_partition_respects_target_usdt_and_rub_limits(self):
+        from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+
+        rows = [
+            {
+                "price": "80",
+                "tradeCount": 50,
+                "minTradeLimit": "1",
+                "maxTradeLimit": "1e9",
+                "payMethods": [{"payMethodId": 169, "name": "Cash in Person"}],
+            },
+            {
+                "price": "81",
+                "tradeCount": 150,
+                "minTradeLimit": "8100",
+                "maxTradeLimit": "9000",
+                "payMethods": [{"payMethodId": 169, "name": "Cash in Person"}],
+            },
+            {
+                "price": "79",
+                "tradeCount": 200,
+                "minTradeLimit": "7900",
+                "maxTradeLimit": "20000",
+                "payMethods": [{"payMethodId": 69, "name": "SBP"}],
+            },
+        ]
+        wc, wo = hx.partition_cash_non_cash(rows, target_usdt=100)
+        self.assertEqual(len(wc), 1)
+        self.assertEqual(float(wc[0]["price"]), 81.0)
+        self.assertEqual(len(wo), 1)
+        self.assertEqual(float(wo[0]["price"]), 79.0)
+
+    def test_htx_rub_rejects_when_min_trade_limit_below_target_rub(self):
+        from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+
+        row = {
+            "price": "80",
+            "tradeCount": 500,
+            "minTradeLimit": "1000",
+            "maxTradeLimit": "50000",
+            "payMethods": [{"payMethodId": 69, "name": "SBP"}],
+        }
+        self.assertFalse(hx.row_rub_limits_allow_target_usdt(row, target_usdt=100))
+        wc, wo = hx.partition_cash_non_cash([row], target_usdt=100)
+        self.assertEqual(wc, [])
+        self.assertEqual(wo, [])
+
+    def test_htx_rub_accepts_min_equal_target_rub(self):
+        from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+
+        row = {
+            "price": "80",
+            "tradeCount": 500,
+            "minTradeLimit": "8000",
+            "payMethods": [{"payMethodId": 69, "name": "SBP"}],
+        }
+        self.assertTrue(hx.row_rub_limits_allow_target_usdt(row, target_usdt=100))
+
+    def test_htx_pay_method_field_only_ids(self):
+        from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+
+        self.assertTrue(
+            hx.row_has_cash({"payMethods": [], "payMethod": "69,21,28"})
+        )
+
+    def test_bybit_item_passes_target_usdt_quantity_and_min_amount(self):
+        from sources.bybit_bitkub.bybit_p2p_usdt_rub import item_passes_target_usdt_filters
+
+        ok = {
+            "price": "80",
+            "minAmount": "9000",
+            "lastQuantity": "500",
+            "payments": ["18"],
+            "recentExecuteRate": 99.0,
+        }
+        self.assertTrue(item_passes_target_usdt_filters(ok, target_usdt=100))
+
+    def test_bybit_item_rejects_low_last_quantity(self):
+        from sources.bybit_bitkub.bybit_p2p_usdt_rub import item_passes_target_usdt_filters
+
+        bad = {
+            "price": "80",
+            "minAmount": "9000",
+            "lastQuantity": "50",
+            "payments": ["18"],
+        }
+        self.assertFalse(item_passes_target_usdt_filters(bad, target_usdt=100))
+
+    def test_bybit_item_rejects_min_amount_below_target_rub(self):
+        from sources.bybit_bitkub.bybit_p2p_usdt_rub import item_passes_target_usdt_filters
+
+        bad = {
+            "price": "80",
+            "minAmount": "5000",
+            "lastQuantity": "500",
+            "payments": ["18"],
+        }
+        self.assertFalse(item_passes_target_usdt_filters(bad, target_usdt=100))
+
+    def test_bybit_tradable_quantity_falls_back_to_quantity(self):
+        from sources.bybit_bitkub.bybit_p2p_usdt_rub import item_passes_target_usdt_filters
+
+        it = {"price": "80", "minAmount": "8000", "quantity": "200", "payments": []}
+        self.assertTrue(item_passes_target_usdt_filters(it, target_usdt=100))
 
 
 if __name__ == "__main__":

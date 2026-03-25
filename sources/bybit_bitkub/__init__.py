@@ -43,6 +43,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     from . import bybit_p2p_usdt_rub as bp
 
     items = bp.fetch_all_online_items(size=20, verification_filter=0)
+    items = bp.filter_by_target_usdt(items, target_usdt=bp.DEFAULT_TARGET_USDT)
     a = bp.filter_cash_deposit_to_bank(items, 99.0)
     b = bp.filter_bank_transfer_no_cash(items, 99.0)
     ia = bp.min_by_price(a)
@@ -57,9 +58,15 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     if ia:
         out.append(SourceQuote(float(ia["price"]) / thb_usdt, "Bybit P2P (cash) → Bitkub"))
     else:
-        ctx.warnings.append("Bybit: нет объявлений Cash Deposit (18) с completion≥99")
+        ctx.warnings.append(
+            "Bybit: нет объявлений Cash Deposit (18) с completion≥99 "
+            "(100 USDT, minAmount≥100·price)"
+        )
     if ib:
         out.append(SourceQuote(float(ib["price"]) / thb_usdt, "Bybit P2P (перевод) → Bitkub"))
     else:
-        ctx.warnings.append("Bybit: нет объявлений только перевод (14, без 18) с completion≥99")
+        ctx.warnings.append(
+            "Bybit: нет объявлений только перевод (14, без 18) с completion≥99 "
+            "(100 USDT, minAmount≥100·price)"
+        )
     return out or None

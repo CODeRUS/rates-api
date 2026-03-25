@@ -8,6 +8,7 @@ PLUGIN_ORDER = (
     "forex",
     "rshb_unionpay",
     "bybit_bitkub",
+    "htx_bitkub",
     "korona",
     "avosend",
     "ex24",
@@ -27,6 +28,7 @@ def _mods() -> Dict[str, object]:
         from . import bybit_bitkub
         from . import ex24
         from . import forex
+        from . import htx_bitkub
         from . import korona
         from . import kwikpay
         from . import rshb_unionpay
@@ -38,6 +40,7 @@ def _mods() -> Dict[str, object]:
                 "forex": forex,
                 "rshb_unionpay": rshb_unionpay,
                 "bybit_bitkub": bybit_bitkub,
+                "htx_bitkub": htx_bitkub,
                 "korona": korona,
                 "avosend": avosend,
                 "ex24": ex24,
