@@ -8,9 +8,11 @@ Telegram-бот (Telethon) для команды /rates.
     export TELEGRAM_API_ID="611335"
     export TELEGRAM_API_HASH="…"
     export TELEGRAM_BOT_TOKEN="…"
+    export BOT_ADMIN_ID="123456789"  # опционально: Telegram user id — только он может /refresh
     python -m bot.main
 
 Секреты не коммитьте. Файл сессии: ``bot/rates_bot.session`` (в .gitignore).
+Опционально ``BOT_ADMIN_ID`` — принудительное обновление кеша командой ``/refresh``.
 """
 from __future__ import annotations
 
@@ -74,33 +76,21 @@ async def _main_async() -> None:
     rates_busy_guard = asyncio.Lock()
     rates_busy_chats: Set[int] = set()
 
-    @client.on(events.NewMessage(pattern=r"(?i)^/start(?:@\S+)?$"))
-    async def on_start(event: events.NewMessage.Event) -> None:
-        await event.respond("Команда /rates — сводка курсов THB")
-
-    @client.on(events.NewMessage(pattern=r"(?i)^/rates(?:@\S+)?"))
-    async def on_rates(event: events.NewMessage.Event) -> None:
+    async def _send_rates_summary(event: events.NewMessage.Event, *, refresh: bool) -> None:
         chat_id = event.chat_id
         async with rates_busy_guard:
             if chat_id in rates_busy_chats:
                 await event.respond(
-                    "Уже выполняется предыдущий /rates. Дождитесь результата."
+                    "Уже выполняется запрос к сводке. Дождитесь результата."
                 )
                 return
             rates_busy_chats.add(chat_id)
-
-        msg = event.message.message or ""
-        tokens = msg.split()
-        refresh = (
-            len(tokens) > 1
-            and tokens[1].lower() in ("refresh", "r", "--refresh")
-        )
         try:
             status_msg = await event.respond("Идёт получение…")
             try:
                 text = await asyncio.to_thread(get_summary_text, refresh=refresh)
             except Exception:
-                logger.exception("compute_summary_rows failed")
+                logger.exception("get_summary_text failed (refresh=%s)", refresh)
                 await status_msg.edit("Не удалось собрать сводку. Попробуйте позже.")
                 return
             chunks = split_for_telegram(text)
@@ -113,6 +103,35 @@ async def _main_async() -> None:
         finally:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
+
+    @client.on(events.NewMessage(pattern=r"(?i)^/start(?:@\S+)?$"))
+    async def on_start(event: events.NewMessage.Event) -> None:
+        await event.respond("Команда /rates — сводка курсов THB; /refresh — обновить кеш (админ).")
+
+    @client.on(events.NewMessage(pattern=r"(?i)^/rates(?:@\S+)?"))
+    async def on_rates(event: events.NewMessage.Event) -> None:
+        msg = event.message.message or ""
+        tokens = msg.split()
+        refresh = (
+            len(tokens) > 1
+            and tokens[1].lower() in ("refresh", "r", "--refresh")
+        )
+        await _send_rates_summary(event, refresh=refresh)
+
+    @client.on(events.NewMessage(pattern=r"(?i)^/refresh(?:@\S+)?$"))
+    async def on_refresh(event: events.NewMessage.Event) -> None:
+        admin_id = _env_int("BOT_ADMIN_ID")
+        if admin_id is None:
+            await event.respond(
+                "Команда /refresh не настроена (задайте BOT_ADMIN_ID в окружении)."
+            )
+            return
+        sender = event.sender_id
+        if sender is None or int(sender) != admin_id:
+            await event.respond("Доступно только администратору.")
+            return
+        logger.info("Admin /refresh from sender_id=%s", sender)
+        await _send_rates_summary(event, refresh=True)
 
     logger.info("Telethon polling (bot)…")
     await client.start(bot_token=bot_token)
