@@ -70,7 +70,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     return [
         SourceQuote(
             rub_per_thb,
-            "Unired RUB → USB -> Bank",
+            "Unired RUB → USD → Bank",
             note="",
         )
     ]

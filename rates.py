@@ -38,7 +38,7 @@ from sources import plugin_by_id, registered_source_ids
 _CACHE_OVERRIDE = (os.environ.get("RATES_CACHE_FILE") or "").strip()
 CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
-CACHE_VERSION = 30
+CACHE_VERSION = 31
 
 _RESERVED = frozenset({"sources", "save", "usdt"})
 
@@ -94,7 +94,7 @@ DEFAULT_THB_REF = 30_000.0
 DEFAULT_ATM_FEE_THB = 250.0
 DEFAULT_KORONA_LARGE_THB = 40_000.0
 DEFAULT_KORONA_SMALL_RUB = float(RUB_MIN_SENDING_FOR_BEST_TIER) - 1.0
-DEFAULT_AVOSEND_RUB = 10_000.0
+DEFAULT_AVOSEND_RUB = 50_000.0
 
 
 def build_arg_parser(*, add_help: bool = True) -> argparse.ArgumentParser:

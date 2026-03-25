@@ -38,6 +38,7 @@ class TestRatesSources(unittest.TestCase):
                 "bybit_bitkub",
                 "korona",
                 "avosend",
+                "avosend_bkb",
                 "ex24",
                 "kwikpay",
                 "askmoney",
