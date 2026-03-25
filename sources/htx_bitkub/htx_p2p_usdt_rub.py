@@ -301,7 +301,7 @@ def cli_main(argv: Optional[List[str]] = None) -> int:
     if bcash:
         print(f"  мин. цена (наличные):     {bcash.get('price')} RUB/USDT  id={bcash.get('id')}")
     if bno:
-        print(f"  мин. цена (без наличных): {bno.get('price')} RUB/USDT  id={bno.get('id')}")
+        print(f"  мин. цена (перевод): {bno.get('price')} RUB/USDT  id={bno.get('id')}")
     return 0
 
 

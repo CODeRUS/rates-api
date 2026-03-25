@@ -12,6 +12,7 @@
     python rates.py --help
     python rates.py sources
     python rates.py save out.txt
+    python rates.py usdt [--refresh]
     python rates.py forex --help
 """
 
@@ -37,9 +38,9 @@ from sources import plugin_by_id, registered_source_ids
 _CACHE_OVERRIDE = (os.environ.get("RATES_CACHE_FILE") or "").strip()
 CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
-CACHE_VERSION = 28
+CACHE_VERSION = 29
 
-_RESERVED = frozenset({"sources", "save"})
+_RESERVED = frozenset({"sources", "save", "usdt"})
 
 
 def _cache_key(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -237,6 +238,7 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print("\nКоманды:")
     print("  sources              Список id доступных источников.")
     print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
+    print("  usdt [--refresh] [--json] [--cache-file ПУТЬ]  Отчёт P2P RUB/USDT и USDT/THB (отдельный кеш).")
     print("  <source_id> [args]   Подкоманды источника (см. python ... <id> --help).")
     print("\nИсточники (кратко; полное: <id> --help):")
     for sid in registered_source_ids():
@@ -267,6 +269,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
         if len(rest) >= 1 and rest[0] == "save":
             print("save <файл> — записать сводку в файл (опции --json, --refresh и др. как у обычного запуска).")
+            return 0
+        if len(rest) >= 1 and rest[0] == "usdt":
+            import usdt_report as _ur
+
+            print(_ur.usdt_subcommand_help())
             return 0
         print_global_help(build_arg_parser(add_help=True))
         return 0
@@ -317,6 +324,27 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 1
         return 0
 
+    if head == "usdt":
+        import usdt_report as ur
+
+        if any(x in ("--help", "-h") for x in rest[1:]):
+            print(ur.usdt_subcommand_help())
+            return 0
+        u_parser = argparse.ArgumentParser(add_help=False)
+        u_parser.add_argument("--refresh", action="store_true")
+        u_parser.add_argument("--json", action="store_true")
+        u_parser.add_argument("--cache-file", type=Path, default=ur.USDT_CACHE_FILE)
+        u_args, u_rest = u_parser.parse_known_args(rest[1:])
+        if u_rest:
+            print(f"Неизвестные аргументы usdt: {' '.join(u_rest)}", file=sys.stderr)
+            return 2
+        data, uw = ur.compute_usdt_report(refresh=u_args.refresh, cache_file=u_args.cache_file)
+        if u_args.json:
+            ur.print_usdt_report_json(data, uw, sys.stdout)
+        else:
+            print(ur.format_usdt_report_text(data, uw), end="")
+        return 0
+
     if head in source_ids:
         mod = plugin_by_id(head)
         if mod is None:
@@ -329,7 +357,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     print(f"Неизвестная команда или источник: {head!r}", file=sys.stderr)
-    print("Подсказка: --help, sources, save <файл>, или id источника.", file=sys.stderr)
+    print("Подсказка: --help, sources, save <файл>, usdt, или id источника.", file=sys.stderr)
     return 2
 
 

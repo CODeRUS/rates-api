@@ -12,7 +12,8 @@ Telegram-бот (Telethon) для команды /rates.
     python -m bot.main
 
 Секреты не коммитьте. Файл сессии: ``bot/rates_bot.session`` (в .gitignore).
-Опционально ``BOT_ADMIN_ID`` — принудительное обновление кеша командой ``/refresh``.
+Опционально ``BOT_ADMIN_ID`` — принудительное обновление кеша **сводки** командой ``/refresh``
+(кеш отчёта ``/usdt`` отдельный; обновить его из бота пока нельзя — используйте ``rates.py usdt --refresh``).
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ if str(_ROOT) not in sys.path:
 
 from telethon import TelegramClient, events
 
-from bot.summary_adapter import get_summary_text, split_for_telegram
+from bot.summary_adapter import get_summary_text, get_usdt_text, split_for_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ async def _main_async() -> None:
         async with rates_busy_guard:
             if chat_id in rates_busy_chats:
                 await event.respond(
-                    "Уже выполняется запрос к сводке. Дождитесь результата."
+                    "Уже выполняется запрос (/rates или /usdt). Дождитесь результата."
                 )
                 return
             rates_busy_chats.add(chat_id)
@@ -104,9 +105,44 @@ async def _main_async() -> None:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
 
+    async def _send_usdt_report(event: events.NewMessage.Event) -> None:
+        chat_id = event.chat_id
+        async with rates_busy_guard:
+            if chat_id in rates_busy_chats:
+                await event.respond(
+                    "Уже выполняется запрос (/rates или /usdt). Дождитесь результата."
+                )
+                return
+            rates_busy_chats.add(chat_id)
+        try:
+            status_msg = await event.respond("Идёт получение USDT…")
+            try:
+                text = await asyncio.to_thread(get_usdt_text, refresh=False)
+            except Exception:
+                logger.exception("get_usdt_text failed")
+                await status_msg.edit("Не удалось собрать отчёт USDT. Попробуйте позже.")
+                return
+            chunks = split_for_telegram(text)
+            if not chunks or (len(chunks) == 1 and not chunks[0].strip()):
+                await status_msg.edit("(пустой отчёт USDT)")
+                return
+            await status_msg.edit(chunks[0])
+            for chunk in chunks[1:]:
+                await event.respond(chunk)
+        finally:
+            async with rates_busy_guard:
+                rates_busy_chats.discard(chat_id)
+
     @client.on(events.NewMessage(pattern=r"(?i)^/start(?:@\S+)?$"))
     async def on_start(event: events.NewMessage.Event) -> None:
-        await event.respond("Команда /rates — сводка курсов THB; /refresh — обновить кеш (админ).")
+        await event.respond(
+            "Команды: /rates — сводка RUB/THB; /usdt — P2P RUB/USDT и USDT/THB; "
+            "/refresh — обновить только кеш сводки (админ)."
+        )
+
+    @client.on(events.NewMessage(pattern=r"(?i)^/usdt(?:@\S+)?$"))
+    async def on_usdt(event: events.NewMessage.Event) -> None:
+        await _send_usdt_report(event)
 
     @client.on(events.NewMessage(pattern=r"(?i)^/rates(?:@\S+)?"))
     async def on_rates(event: events.NewMessage.Event) -> None:

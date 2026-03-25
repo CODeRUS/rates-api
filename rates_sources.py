@@ -156,10 +156,10 @@ def fmt_money_ru(n: float) -> str:
 
 # Склейка *_bitkub + *_binanceth при совпадении итогового rate (см. :attr:`SourceQuote.merge_key`).
 MERGE_TH_PAIR_LABELS: Dict[str, str] = {
-    "bybit_cash": "Bybit P2P (cash) → Bitkub / Binance TH",
+    "bybit_cash": "Bybit P2P (наличные) → Bitkub / Binance TH",
     "bybit_transfer": "Bybit P2P (перевод) → Bitkub / Binance TH",
     "htx_cash": "HTX P2P (наличные) → Bitkub / Binance TH",
-    "htx_no_cash": "HTX P2P (без наличных) → Bitkub / Binance TH",
+    "htx_no_cash": "HTX P2P (перевод) → Bitkub / Binance TH",
 }
 
 MERGE_TH_RATE_EPS: float = 1e-5

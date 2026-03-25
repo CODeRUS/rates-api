@@ -38,6 +38,13 @@ class TestRatesSummaryCli(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         for name in ("forex", "askmoney", "ex24", "ttexchange", "tbank"):
             self.assertIn(name, r.stdout)
+        # Плагины вне сводки остаются в списке для CLI
+        self.assertIn("htx_bitkub", r.stdout)
+
+    def test_usdt_subcommand_help(self):
+        r = _run("usdt", "--help")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("USDT", r.stdout)
 
     def test_save_writes_file(self):
         import tempfile

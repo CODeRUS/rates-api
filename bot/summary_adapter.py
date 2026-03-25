@@ -10,6 +10,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 import rates as rates_mod  # noqa: E402
+import usdt_report as usdt_mod  # noqa: E402
 
 
 def get_summary_text(*, refresh: bool = False) -> str:
@@ -21,6 +22,12 @@ def get_summary_text(*, refresh: bool = False) -> str:
     buf = io.StringIO()
     rates_mod.print_summary_text(rows, baseline, warnings, buf)
     return buf.getvalue()
+
+
+def get_usdt_text(*, refresh: bool = False) -> str:
+    """Текст отчёта USDT (тот же, что ``rates.py usdt``); кеш не зависит от сводки."""
+    data, warnings = usdt_mod.compute_usdt_report(refresh=refresh)
+    return usdt_mod.format_usdt_report_text(data, warnings)
 
 
 def split_for_telegram(text: str, limit: int = 4000) -> list[str]:

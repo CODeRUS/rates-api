@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Отчёт USDT: P2P RUB/USDT (Bybit, HTX) и котировки USDT/THB (Bitkub, Binance TH).
+
+Кеш по умолчанию отдельный от сводки ``rates.py`` (переменная ``RATES_USDT_CACHE_FILE``).
+Команда ``/refresh`` в боте обновляет только кеш сводки, не этот отчёт.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, TextIO, Tuple
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+USDT_CACHE_VERSION = 1
+USDT_CACHE_TTL_SEC = 30 * 60
+
+_USDT_CACHE_OVERRIDE = (os.environ.get("RATES_USDT_CACHE_FILE") or "").strip()
+USDT_CACHE_FILE = (
+    Path(_USDT_CACHE_OVERRIDE) if _USDT_CACHE_OVERRIDE else _SCRIPT_DIR / ".rates_usdt_cache.json"
+)
+
+
+def _usdt_cache_key() -> Dict[str, Any]:
+    return {"v": USDT_CACHE_VERSION}
+
+
+def _load_stale_usdt_cache(path: Path) -> Optional[Tuple[Dict[str, Any], float]]:
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if raw.get("v") != USDT_CACHE_VERSION:
+        return None
+    saved = float(raw.get("saved_unix", 0))
+    return raw, saved
+
+
+def _usdt_cache_valid(raw: Dict[str, Any], saved: float, key: Dict[str, Any]) -> bool:
+    if time.time() - saved > USDT_CACHE_TTL_SEC:
+        return False
+    return raw.get("key") == key
+
+
+def fetch_usdt_payload() -> Tuple[Dict[str, Any], List[str]]:
+    """Собрать данные с API (без кеша)."""
+    from sources.bybit_bitkub import bitkub_usdt_thb as bk
+    from sources.bybit_bitkub import bybit_p2p_usdt_rub as bp
+    from sources.binance_th.usdt_thb_book import fetch_bid_thb_per_usdt
+    from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+
+    warnings: List[str] = []
+
+    rub: Dict[str, Optional[float]] = {
+        "bybit_cash": None,
+        "bybit_transfer": None,
+        "htx_cash": None,
+        "htx_no_cash": None,
+    }
+
+    items = bp.fetch_all_online_items(size=20, verification_filter=0)
+    items = bp.filter_by_target_usdt(items, target_usdt=bp.DEFAULT_TARGET_USDT)
+    a = bp.filter_cash_deposit_to_bank(items, 99.0)
+    b = bp.filter_bank_transfer_no_cash(items, 99.0)
+    ia = bp.min_by_price(a)
+    ib = bp.min_by_price(b)
+    if ia:
+        rub["bybit_cash"] = float(ia["price"])
+    else:
+        warnings.append(
+            "Bybit: нет объявлений Cash Deposit (18) с completion≥99 "
+            "(100 USDT, minAmount≥100·price)"
+        )
+    if ib:
+        rub["bybit_transfer"] = float(ib["price"])
+    else:
+        warnings.append(
+            "Bybit: нет объявлений только перевод (14, без 18) с completion≥99 "
+            "(100 USDT, minAmount≥100·price)"
+        )
+
+    try:
+        rows = hx.fetch_all_offers(max_pages=30)
+    except RuntimeError as e:
+        warnings.append(f"HTX OTC: {e}")
+    else:
+        with_cash, without_cash = hx.partition_cash_non_cash(rows)
+        ha = hx.min_by_price(with_cash)
+        hb = hx.min_by_price(without_cash)
+        if ha:
+            rub["htx_cash"] = float(ha["price"])
+        else:
+            warnings.append(
+                "HTX: нет объявлений с наличными под фильтры "
+                "(100 USDT, minTradeLimit≥100·price)"
+            )
+        if hb:
+            rub["htx_no_cash"] = float(hb["price"])
+        else:
+            warnings.append(
+                "HTX: нет объявлений без наличных под фильтры "
+                "(100 USDT, minTradeLimit≥100·price)"
+            )
+
+    thb: Dict[str, Optional[float]] = {
+        "bitkub_highest_bid": None,
+        "binance_bid": None,
+    }
+    try:
+        tk = bk.fetch_ticker()
+    except RuntimeError as e:
+        warnings.append(f"Bitkub: {e}")
+    else:
+        b = float(tk.get("highestBid") or 0)
+        if b > 0:
+            thb["bitkub_highest_bid"] = b
+        else:
+            warnings.append("Bitkub: нет highestBid для USDT")
+
+    try:
+        thb["binance_bid"] = fetch_bid_thb_per_usdt()
+    except RuntimeError as e:
+        warnings.append(f"Binance TH: {e}")
+
+    data = {"rub_per_usdt": rub, "thb_per_usdt": thb}
+    return data, warnings
+
+
+def compute_usdt_report(
+    *,
+    refresh: bool,
+    cache_file: Optional[Path] = None,
+) -> Tuple[Dict[str, Any], List[str]]:
+    path = cache_file if cache_file is not None else USDT_CACHE_FILE
+    key = _usdt_cache_key()
+
+    if not refresh:
+        hit = _load_stale_usdt_cache(path)
+        if hit is not None:
+            raw, saved = hit
+            if _usdt_cache_valid(raw, saved, key):
+                data = raw.get("data") or {}
+                w = list(raw.get("warnings", []))
+                return data, w
+
+    data, warnings = fetch_usdt_payload()
+    save_obj = {
+        "v": USDT_CACHE_VERSION,
+        "saved_unix": time.time(),
+        "key": key,
+        "data": data,
+        "warnings": warnings,
+    }
+    try:
+        path.write_text(json.dumps(save_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as e:
+        warnings.append(f"Не удалось записать кеш USDT: {path} ({e})")
+
+    return data, warnings
+
+
+def _fmt_num(x: Optional[float]) -> str:
+    if x is None or x <= 0:
+        return "—"
+    return f"{x:.4f}".rstrip("0").rstrip(".")
+
+
+def _fmt_rub_per_thb(x: Optional[float]) -> str:
+    """RUB за 1 THB в тексте отчёта: ровно два знака после запятой."""
+    if x is None or x <= 0:
+        return "—"
+    return f"{x:.2f}"
+
+
+def _cross_rub_thb(rub_u: Optional[float], thb_u: Optional[float]) -> Optional[float]:
+    if rub_u is None or thb_u is None or rub_u <= 0 or thb_u <= 0:
+        return None
+    return rub_u / thb_u
+
+
+def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
+    rub = data.get("rub_per_usdt") or {}
+    thb = data.get("thb_per_usdt") or {}
+    bk = thb.get("bitkub_highest_bid")
+    bn = thb.get("binance_bid")
+
+    lines: List[str] = [
+        "Отчёт USDT: P2P RUB/USDT и USDT/THB (отдельный кеш от сводки rates).",
+        "",
+        "RUB за 1 USDT (P2P, лучшая цена)",
+        f"  Bybit (наличные):    {_fmt_num(rub.get('bybit_cash'))} RUB/USDT",
+        f"  Bybit (перевод):         {_fmt_num(rub.get('bybit_transfer'))} RUB/USDT",
+        f"  HTX (наличные):          {_fmt_num(rub.get('htx_cash'))} RUB/USDT",
+        f"  HTX (перевод):     {_fmt_num(rub.get('htx_no_cash'))} RUB/USDT",
+        "",
+        "THB за 1 USDT",
+        f"  Bitkub (highestBid):     {_fmt_num(bk)} THB/USDT",
+        f"  Binance TH (bid):        {_fmt_num(bn)} THB/USDT",
+        "",
+        "Полные пути: RUB за 1 THB (P2P × площадка TH)",
+    ]
+
+    paths = [
+        ("Bybit P2P (наличные) → Bitkub", rub.get("bybit_cash"), bk),
+        ("Bybit P2P (наличные) → Binance TH", rub.get("bybit_cash"), bn),
+        ("Bybit P2P (перевод) → Bitkub", rub.get("bybit_transfer"), bk),
+        ("Bybit P2P (перевод) → Binance TH", rub.get("bybit_transfer"), bn),
+        ("HTX P2P (наличные) → Bitkub", rub.get("htx_cash"), bk),
+        ("HTX P2P (наличные) → Binance TH", rub.get("htx_cash"), bn),
+        ("HTX P2P (бперевод) → Bitkub", rub.get("htx_no_cash"), bk),
+        ("HTX P2P (перевод) → Binance TH", rub.get("htx_no_cash"), bn),
+    ]
+    for label, rpu, tpu in paths:
+        cr = _cross_rub_thb(
+            float(rpu) if isinstance(rpu, (int, float)) else None,
+            float(tpu) if isinstance(tpu, (int, float)) else None,
+        )
+        lines.append(f"  {label}: {_fmt_rub_per_thb(cr)} RUB/THB")
+
+    if warnings:
+        lines.append("")
+        lines.append("Предупреждения:")
+        for w in warnings:
+            lines.append(f"  • {w}")
+
+    return "\n".join(lines) + "\n"
+
+
+def print_usdt_report_json(data: Dict[str, Any], warnings: List[str], file: TextIO) -> None:
+    out: Dict[str, Any] = {
+        "rub_per_usdt": data.get("rub_per_usdt"),
+        "thb_per_usdt": data.get("thb_per_usdt"),
+        "full_paths_rub_per_thb": [],
+        "warnings": warnings,
+    }
+    rub = data.get("rub_per_usdt") or {}
+    thb = data.get("thb_per_usdt") or {}
+    bk = thb.get("bitkub_highest_bid")
+    bn = thb.get("binance_bid")
+    paths = [
+        ("Bybit P2P (наличные) → Bitkub", rub.get("bybit_cash"), bk),
+        ("Bybit P2P (наличные) → Binance TH", rub.get("bybit_cash"), bn),
+        ("Bybit P2P (перевод) → Bitkub", rub.get("bybit_transfer"), bk),
+        ("Bybit P2P (перевод) → Binance TH", rub.get("bybit_transfer"), bn),
+        ("HTX P2P (наличные) → Bitkub", rub.get("htx_cash"), bk),
+        ("HTX P2P (наличные) → Binance TH", rub.get("htx_cash"), bn),
+        ("HTX P2P (перевод) → Bitkub", rub.get("htx_no_cash"), bk),
+        ("HTX P2P (перевод) → Binance TH", rub.get("htx_no_cash"), bn),
+    ]
+    for label, rpu, tpu in paths:
+        rc = rpu if isinstance(rpu, (int, float)) else None
+        tc = tpu if isinstance(tpu, (int, float)) else None
+        cr = _cross_rub_thb(rc, tc)
+        out["full_paths_rub_per_thb"].append(
+            {"label": label, "rub_per_thb": None if cr is None else round(cr, 2)},
+        )
+    print(json.dumps(out, ensure_ascii=False, indent=2), file=file)
+
+
+def usdt_subcommand_help() -> str:
+    return (
+        "usdt — отчёт P2P RUB/USDT и USDT/THB (Bitkub, Binance TH); "
+        "кеш в RATES_USDT_CACHE_FILE или .rates_usdt_cache.json; "
+        "опции: --refresh, --json, --cache-file <путь>."
+    )

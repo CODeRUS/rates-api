@@ -8,9 +8,6 @@ PLUGIN_ORDER = (
     "forex",
     "rshb_unionpay",
     "bybit_bitkub",
-    "htx_bitkub",
-    "bybit_binanceth",
-    "htx_binanceth",
     "korona",
     "avosend",
     "ex24",
@@ -91,5 +88,9 @@ def plugin_by_id(source_id: str):
 
 
 def registered_source_ids() -> Tuple[str, ...]:
+    """Порядок для сводки — :data:`PLUGIN_ORDER`; остальные плагины в конце (для CLI ``rates.py <id>``)."""
     mods = _mods()
-    return tuple(mods[k].SOURCE_ID for k in PLUGIN_ORDER)
+    ordered = [mods[k].SOURCE_ID for k in PLUGIN_ORDER]
+    extra_keys = [k for k in sorted(mods.keys()) if k not in PLUGIN_ORDER]
+    extra = [mods[k].SOURCE_ID for k in extra_keys]
+    return tuple(ordered + extra)
