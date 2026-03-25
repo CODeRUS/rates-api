@@ -9,6 +9,8 @@ PLUGIN_ORDER = (
     "rshb_unionpay",
     "bybit_bitkub",
     "htx_bitkub",
+    "bybit_binanceth",
+    "htx_binanceth",
     "korona",
     "avosend",
     "ex24",
@@ -25,9 +27,11 @@ def _mods() -> Dict[str, object]:
     if not _MODS_CACHE:
         from . import askmoney
         from . import avosend
+        from . import bybit_binanceth
         from . import bybit_bitkub
         from . import ex24
         from . import forex
+        from . import htx_binanceth
         from . import htx_bitkub
         from . import korona
         from . import kwikpay
@@ -41,6 +45,8 @@ def _mods() -> Dict[str, object]:
                 "rshb_unionpay": rshb_unionpay,
                 "bybit_bitkub": bybit_bitkub,
                 "htx_bitkub": htx_bitkub,
+                "bybit_binanceth": bybit_binanceth,
+                "htx_binanceth": htx_binanceth,
                 "korona": korona,
                 "avosend": avosend,
                 "ex24": ex24,

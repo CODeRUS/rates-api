@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib
 import unittest
+from unittest import mock
 
 from rates_sources import (
     FetchContext,
@@ -36,6 +37,8 @@ class TestRatesSources(unittest.TestCase):
                 "rshb_unionpay",
                 "bybit_bitkub",
                 "htx_bitkub",
+                "bybit_binanceth",
+                "htx_binanceth",
                 "korona",
                 "avosend",
                 "ex24",
@@ -460,6 +463,20 @@ class TestRatesSources(unittest.TestCase):
 
         it = {"price": "80", "minAmount": "8000", "quantity": "200", "payments": []}
         self.assertTrue(item_passes_target_usdt_filters(it, target_usdt=100))
+
+    def test_binance_th_fetch_bid_uses_bid_price(self):
+        from sources.binance_th import usdt_thb_book as b
+
+        fake = {"symbol": "USDTTHB", "bidPrice": "32.5200", "askPrice": "32.5300"}
+        with mock.patch.object(b, "fetch_book_ticker", return_value=fake):
+            self.assertAlmostEqual(b.fetch_bid_thb_per_usdt(timeout=1), 32.52)
+
+    def test_binance_th_fetch_bid_rejects_zero(self):
+        from sources.binance_th import usdt_thb_book as b
+
+        with mock.patch.object(b, "fetch_book_ticker", return_value={"bidPrice": "0"}):
+            with self.assertRaises(RuntimeError):
+                b.fetch_bid_thb_per_usdt(timeout=1)
 
 
 if __name__ == "__main__":
