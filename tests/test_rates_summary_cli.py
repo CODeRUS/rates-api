@@ -36,7 +36,7 @@ class TestRatesSummaryCli(unittest.TestCase):
     def test_sources_subcommand_lists_ids(self):
         r = _run("sources")
         self.assertEqual(r.returncode, 0, r.stderr)
-        for name in ("forex", "askmoney", "ex24", "ttexchange"):
+        for name in ("forex", "askmoney", "ex24", "ttexchange", "tbank"):
             self.assertIn(name, r.stdout)
 
     def test_save_writes_file(self):

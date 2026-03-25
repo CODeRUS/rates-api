@@ -166,6 +166,8 @@ def _warn_source(src: RateSource, err: Exception, bucket: List[str]) -> None:
         bucket.append(f"askmoney: {err}")
     elif src.id == "ttexchange":
         bucket.append(f"ttexchange: {err}")
+    elif src.id == "tbank":
+        bucket.append(f"tbank: {err}")
     else:
         bucket.append(f"{src.id}: {err}")
 

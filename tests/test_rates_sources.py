@@ -41,6 +41,7 @@ class TestRatesSources(unittest.TestCase):
                 "kwikpay",
                 "askmoney",
                 "ttexchange",
+                "tbank",
             ],
         )
         cats = {s.id: s.category for s in rs.DEFAULT_SOURCES}
@@ -293,6 +294,30 @@ class TestRatesSources(unittest.TestCase):
         self.assertIn("100-50", tier_note)
         self.assertIn("20-5", tier_note)
         self.assertEqual(float(row["current_buy_rate"]), 32.5)
+
+    def test_parse_tbank_atm_cashout_rub_per_thb(self):
+        from sources.tbank import parse_atm_cashout_rub_per_thb
+
+        payload = {
+            "resultCode": "OK",
+            "payload": {
+                "rates": [
+                    {
+                        "category": "Other",
+                        "fromCurrency": {"name": "RUB"},
+                        "toCurrency": {"name": "THB"},
+                        "buy": 99.0,
+                    },
+                    {
+                        "category": "ATMCashoutRateGroup",
+                        "fromCurrency": {"name": "RUB"},
+                        "toCurrency": {"name": "THB"},
+                        "buy": 0.4,
+                    },
+                ]
+            },
+        }
+        self.assertAlmostEqual(parse_atm_cashout_rub_per_thb(payload), 2.5)
 
     def test_parse_ex24_cash_usd_max_buy_across_denoms(self):
         from sources.ex24.ex24_rub_thb import parse_ex24_cash_fiat_thb_per_fiat_unit

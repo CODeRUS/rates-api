@@ -35,7 +35,7 @@ from sources import plugin_by_id, registered_source_ids
 
 CACHE_FILE = _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
-CACHE_VERSION = 20
+CACHE_VERSION = 21
 
 _RESERVED = frozenset({"sources", "save"})
 
