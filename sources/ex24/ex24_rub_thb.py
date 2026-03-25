@@ -36,7 +36,7 @@ import ssl
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Fallback, если не удалось разобрать главную (см. :func:`try_fetch_real_rate_rub_thb`).
 DEFAULT_REAL_RATE = 2.7014
@@ -159,7 +159,7 @@ def pick_rub_thb_rate_row(
     return None
 
 
-def _load_ex24_main_html(*, timeout: float = 25.0) -> Optional[str]:
+def load_ex24_main_html(*, timeout: float = 25.0) -> Optional[str]:
     """Первый успешный HTML главной (ru root или /en)."""
     ctx = ssl.create_default_context()
     for url in ("https://ex24.pro/", "https://ex24.pro/en"):
@@ -176,6 +176,10 @@ def _load_ex24_main_html(*, timeout: float = 25.0) -> Optional[str]:
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
             continue
     return None
+
+
+# обратная совместимость внутри модуля
+_load_ex24_main_html = load_ex24_main_html
 
 
 def fetch_ex24_rub_thb_row(
@@ -216,14 +220,65 @@ def _try_fetch_real_rate_regex(html: str) -> Optional[float]:
     return None
 
 
-# Витрина «Курс обмена наличных»: в JSON встроено ``"RUB":{"buy":"0.3241","sell":"0.3919",...}``.
-# Поле ``buy`` — THB за 1 RUB; сводка везде в **RUB за 1 THB** → ``1 / buy``.
-_EX24_RUB_CASH_BUY_ESCAPED = re.compile(
-    r'\\"RUB\\":\{\\"buy\\":\\"([0-9.]+)\\"'
+# Витрина «Курс обмена наличных»: ``"RUB":{"buy":"0.3241",...}`` (на странице часто с экранированием).
+# Поле ``buy`` — THB за 1 единицу наличной валюты; в сводке для RUB показывают **RUB за 1 THB** → ``1 / buy``.
+# USD задаётся отдельно: в ``tv`` ключи вида ``"USD 100"``, ``"USD 1-50"`` (нет единого ``"USD"``).
+
+FIAT_CASH_ORDER = ("RUB", "USD", "EUR", "CNY")
+
+_EX24_USD_DENOM_BUY_ESC = re.compile(
+    r'\\"(USD[^\\]*?)\\":\{\\"buy\\":\\"([0-9.]+)\\"',
 )
-_EX24_RUB_CASH_BUY_PLAIN = re.compile(
-    r'"RUB"\s*:\s*\{\s*"buy"\s*:\s*"([0-9.]+)"'
+_EX24_USD_DENOM_BUY_PLAIN = re.compile(
+    r'"(USD[^"]*?)"\s*:\s*\{\s*"buy"\s*:\s*"([0-9.]+)"',
 )
+
+
+def _parse_ex24_cash_usd_thb_per_usd_max(html: str) -> Optional[float]:
+    """Максимум ``buy`` среди номиналов USD (лучший курс THB за доллар на витрине)."""
+    best: Optional[float] = None
+    for pat in (_EX24_USD_DENOM_BUY_ESC, _EX24_USD_DENOM_BUY_PLAIN):
+        for m in pat.finditer(html):
+            key = m.group(1).strip()
+            if not key.startswith("USD") or key.startswith("USDT"):
+                continue
+            try:
+                val = float(m.group(2))
+            except ValueError:
+                continue
+            if val <= 0:
+                continue
+            if best is None or val > best:
+                best = val
+    return best
+
+
+def _ex24_cash_buy_patterns(fiat: str) -> Tuple[re.Pattern, re.Pattern]:
+    f = re.escape(fiat)
+    return (
+        re.compile(rf'\\"{f}\\":\{{\\"buy\\":\\"([0-9.]+)\\"'),
+        re.compile(rf'"{f}"\s*:\s*\{{\s*"buy"\s*:\s*"([0-9.]+)"'),
+    )
+
+
+def parse_ex24_cash_fiat_thb_per_fiat_unit(html: str, fiat: str) -> Optional[float]:
+    """
+    С главной ex24: поле ``buy`` в блоке наличных для ``fiat`` — сколько THB за 1 единицу этой валюты.
+    """
+    if not html:
+        return None
+    if fiat == "USD":
+        return _parse_ex24_cash_usd_thb_per_usd_max(html)
+    esc, plain = _ex24_cash_buy_patterns(fiat)
+    m = esc.search(html)
+    if not m:
+        m = plain.search(html)
+    if not m:
+        return None
+    thb_per_unit = float(m.group(1))
+    if thb_per_unit <= 0:
+        return None
+    return thb_per_unit
 
 
 def parse_ex24_cash_rub_buy_rub_per_thb(html: str) -> Optional[float]:
@@ -231,15 +286,8 @@ def parse_ex24_cash_rub_buy_rub_per_thb(html: str) -> Optional[float]:
     Курс **RUB за 1 THB** по наличным с главной: объект ``RUB`` с полем ``buy``
     (колонка «Отдаёте валюту» для рубля в блоке обмена наличных).
     """
-    if not html:
-        return None
-    m = _EX24_RUB_CASH_BUY_ESCAPED.search(html)
-    if not m:
-        m = _EX24_RUB_CASH_BUY_PLAIN.search(html)
-    if not m:
-        return None
-    thb_per_rub = float(m.group(1))
-    if thb_per_rub <= 0:
+    thb_per_rub = parse_ex24_cash_fiat_thb_per_fiat_unit(html, "RUB")
+    if thb_per_rub is None:
         return None
     return 1.0 / thb_per_rub
 

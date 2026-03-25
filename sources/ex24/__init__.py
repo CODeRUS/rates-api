@@ -10,6 +10,13 @@ EMOJI = "🤑"
 IS_BASELINE = False
 CATEGORY = SourceCategory.TRANSFER
 
+_FIAT_CASH_CATEGORY = {
+    "RUB": SourceCategory.CASH_RUB,
+    "USD": SourceCategory.CASH_USD,
+    "EUR": SourceCategory.CASH_EUR,
+    "CNY": SourceCategory.CASH_CNY,
+}
+
 
 def help_text() -> str:
     return "ex24.pro RUB→THB. Полные опции: ex24 --help"
@@ -34,15 +41,29 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
             note=f"от {fmt_money_ru(rub_best)} RUB",
         )
     ]
-    cash_rub = e24.try_fetch_cash_rub_per_thb()
-    if cash_rub is not None and cash_rub > 0:
-        out.append(
-            SourceQuote(
-                cash_rub,
-                "Ex24",
-                note="наличные RUB→THB",
-                category=SourceCategory.CASH,
-                emoji="•",
+    text = e24.load_ex24_main_html()
+    if text:
+        for fiat in e24.FIAT_CASH_ORDER:
+            thb_per = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(text, fiat)
+            cat = _FIAT_CASH_CATEGORY.get(fiat)
+            if thb_per is None or cat is None or thb_per <= 0:
+                continue
+            if fiat == "RUB":
+                rate = 1.0 / thb_per
+                note = ""
+                compare = True
+            else:
+                rate = thb_per
+                note = ""
+                compare = False
+            out.append(
+                SourceQuote(
+                    rate,
+                    "Ex24",
+                    note=note,
+                    category=cat,
+                    emoji="•",
+                    compare_to_baseline=compare,
+                )
             )
-        )
     return out

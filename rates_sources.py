@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 from enum import Enum
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -23,10 +22,37 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 
 class SourceCategory(Enum):
-    """Категория источника: переводы vs наличные в обменнике."""
+    """Категория источника: переводы vs наличные в обменнике (по валюте наличных)."""
 
     TRANSFER = "transfer"
-    CASH = "cash"
+    CASH_RUB = "cash_rub"
+    CASH_USD = "cash_usd"
+    CASH_EUR = "cash_eur"
+    CASH_CNY = "cash_cny"
+
+
+# Порядок блоков «наличные» в сводке (подкатегории не смешиваются сортировкой по курсу).
+CASH_CATEGORIES_ORDER: Tuple[SourceCategory, ...] = (
+    SourceCategory.CASH_RUB,
+    SourceCategory.CASH_USD,
+    SourceCategory.CASH_EUR,
+    SourceCategory.CASH_CNY,
+)
+
+_CASH_SET = frozenset(CASH_CATEGORIES_ORDER)
+
+# THB за единицу: выше курс — выгоднее клиенту; показываем от большего к меньшему.
+_CASH_THB_PER_UNIT_DESC = frozenset(
+    {
+        SourceCategory.CASH_USD,
+        SourceCategory.CASH_EUR,
+        SourceCategory.CASH_CNY,
+    }
+)
+
+
+def is_cash_category(cat: SourceCategory) -> bool:
+    return cat in _CASH_SET
 
 
 @dataclass(frozen=True)
@@ -38,6 +64,8 @@ class SourceQuote:
     note: str = ""
     category: Optional[SourceCategory] = None
     emoji: Optional[str] = None
+    #: Если False — в сводке без %% к Forex (др. шкала, напр. THB за 1 USD в наличных).
+    compare_to_baseline: bool = True
 
 
 @dataclass
@@ -83,10 +111,16 @@ class RateRow:
     note: str = ""
     is_baseline: bool = False
     category: SourceCategory = SourceCategory.TRANSFER
+    compare_to_baseline: bool = True
 
     def format_line(self, baseline: float) -> str:
         r = f"{self.emoji} {self.rate:.3f}"
         if self.is_baseline:
+            tail = f" | {self.label}"
+            if self.note:
+                tail += f" ({self.note})"
+            return r + tail
+        if not self.compare_to_baseline:
             tail = f" | {self.label}"
             if self.note:
                 tail += f" ({self.note})"
@@ -96,6 +130,21 @@ class RateRow:
         if self.note:
             tail += f" ({self.note})"
         return r + tail
+
+
+def _cash_sort_key(row: RateRow) -> Tuple[int, int, float]:
+    """
+    Наличные: блоки по :data:`CASH_CATEGORIES_ORDER` (RUB → USD → EUR → CNY).
+
+    * ``CASH_RUB`` (RUB за 1 THB) — по возрастанию ``rate``.
+    * ``CASH_USD`` / ``CASH_EUR`` / ``CASH_CNY`` (THB за 1 единицу) — по убыванию ``rate``.
+    """
+    if row.category in CASH_CATEGORIES_ORDER:
+        cat_i = CASH_CATEGORIES_ORDER.index(row.category)
+        if row.category in _CASH_THB_PER_UNIT_DESC:
+            return (0, cat_i, -row.rate)
+        return (0, cat_i, row.rate)
+    return (1, 0, row.rate)
 
 
 def fmt_money_ru(n: float) -> str:
@@ -157,6 +206,7 @@ def run_sources(
                     note=q.note,
                     is_baseline=is_bl,
                     category=cat,
+                    compare_to_baseline=q.compare_to_baseline,
                 )
             )
 
@@ -167,15 +217,15 @@ def run_sources(
             break
     baseline = forex_rate if forex_rate is not None and forex_rate > 0 else 2.5
 
-    dedup: Dict[Tuple[str, str, str, SourceCategory], RateRow] = {}
+    dedup: Dict[Tuple[str, str, str, SourceCategory, bool], RateRow] = {}
     for row in rows:
-        key = (row.label, row.note, row.emoji, row.category)
+        key = (row.label, row.note, row.emoji, row.category, row.compare_to_baseline)
         if key not in dedup or row.rate < dedup[key].rate:
             dedup[key] = row
     rows = list(dedup.values())
 
     transfer = [r for r in rows if r.category == SourceCategory.TRANSFER]
-    cash = [r for r in rows if r.category == SourceCategory.CASH]
+    cash = [r for r in rows if is_cash_category(r.category)]
 
     baseline_rows = [r for r in transfer if r.is_baseline]
     transfer_other = sorted(
@@ -184,7 +234,7 @@ def run_sources(
     )
     transfer_ordered = baseline_rows + transfer_other
 
-    cash_ordered = sorted(cash, key=lambda x: x.rate)
+    cash_ordered = sorted(cash, key=_cash_sort_key)
 
     rows = transfer_ordered + cash_ordered
 

@@ -29,13 +29,13 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
-from rates_sources import RateRow, SourceCategory, collect_rows
+from rates_sources import RateRow, SourceCategory, collect_rows, is_cash_category
 from sources.korona.koronapay_tariffs import RUB_MIN_SENDING_FOR_BEST_TIER
 from sources import plugin_by_id, registered_source_ids
 
 CACHE_FILE = _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
-CACHE_VERSION = 18
+CACHE_VERSION = 20
 
 _RESERVED = frozenset({"sources", "save"})
 
@@ -67,12 +67,16 @@ def _row_from_cache_dict(r: Dict[str, Any]) -> RateRow:
     d = dict(r)
     cat = d.get("category")
     if isinstance(cat, str):
+        if cat == "CASH":
+            cat = "CASH_RUB"
         try:
             d["category"] = SourceCategory[cat]
         except KeyError:
             d["category"] = SourceCategory.TRANSFER
     elif cat is None:
         d["category"] = SourceCategory.TRANSFER
+    if "compare_to_baseline" not in d:
+        d["compare_to_baseline"] = True
     return RateRow(**d)
 
 
@@ -184,17 +188,30 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
     return rows, baseline, warnings
 
 
+def _cash_section_title(cat: SourceCategory) -> str:
+    return {
+        SourceCategory.CASH_RUB: "Наличные RUB ➔ THB",
+        SourceCategory.CASH_USD: "Наличные USD ➔ THB",
+        SourceCategory.CASH_EUR: "Наличные EUR ➔ THB",
+        SourceCategory.CASH_CNY: "Наличные CNY ➔ THB",
+    }.get(cat, "Наличные")
+
+
 def print_summary_text(rows: List[RateRow], baseline: float, warnings: List[str], file: TextIO) -> None:
     print("RUB ➔ THB", file=file)
     print(file=file)
-    first_cash = True
     prev_cat: Optional[SourceCategory] = None
     for r in rows:
-        if r.category == SourceCategory.CASH and first_cash:
-            if prev_cat is not None:
-                print(file=file)
-            print("Наличные", file=file)
-            first_cash = False
+        if is_cash_category(r.category):
+            new_block = (
+                prev_cat is None
+                or not is_cash_category(prev_cat)
+                or r.category != prev_cat
+            )
+            if new_block:
+                if prev_cat is not None:
+                    print(file=file)
+                print(_cash_section_title(r.category), file=file)
         print(r.format_line(baseline), file=file)
         prev_cat = r.category
     if warnings:
