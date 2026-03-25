@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from dataclasses import asdict
@@ -33,7 +34,8 @@ from rates_sources import RateRow, SourceCategory, collect_rows, is_cash_categor
 from sources.korona.koronapay_tariffs import RUB_MIN_SENDING_FOR_BEST_TIER
 from sources import plugin_by_id, registered_source_ids
 
-CACHE_FILE = _SCRIPT_DIR / ".rates_summary_cache.json"
+_CACHE_OVERRIDE = (os.environ.get("RATES_CACHE_FILE") or "").strip()
+CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
 CACHE_VERSION = 21
 
@@ -198,7 +200,7 @@ def _cash_section_title(cat: SourceCategory) -> str:
 
 
 def print_summary_text(rows: List[RateRow], baseline: float, warnings: List[str], file: TextIO) -> None:
-    print("RUB ➔ THB", file=file)
+    print("Перевод RUB ➔ THB", file=file)
     print(file=file)
     prev_cat: Optional[SourceCategory] = None
     for r in rows:

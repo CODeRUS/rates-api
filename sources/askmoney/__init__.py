@@ -31,4 +31,4 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     rt = am.effective_rate_rub_per_thb(best_rub, thb_at)
     if rt is None:
         return None
-    return [SourceQuote(rt, "askmoney.pro", note=f"от {fmt_money_ru(best_rub)} RUB")]
+    return [SourceQuote(rt, "askmoney", note=f"от {fmt_money_ru(best_rub)} RUB")]

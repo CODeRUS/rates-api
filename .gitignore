@@ -1,3 +1,6 @@
+.env
+.bot_session
+bot/*.session
 Dockerfile
 docker-compose.yml
 *_cache.json
