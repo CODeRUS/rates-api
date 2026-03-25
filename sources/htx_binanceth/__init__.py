@@ -7,7 +7,7 @@ from typing import List, Optional
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
 SOURCE_ID = "htx_binanceth"
-EMOJI = "🟡"
+EMOJI = "💸"
 IS_BASELINE = False
 CATEGORY = SourceCategory.TRANSFER
 

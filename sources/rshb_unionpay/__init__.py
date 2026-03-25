@@ -115,6 +115,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
             SourceQuote(
                 rpt,
                 f"РСХБ UP CNY (брокер, снятие {thb_ref:.0f}+{atm_fee:.0f})",
+                emoji="🏧",
             )
         )
         if rshb_app > 0:
@@ -129,6 +130,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
                 SourceQuote(
                     rpt2,
                     f"РСХБ UP CNY (приложение, снятие {thb_ref:.0f}+{atm_fee:.0f})",
+                    emoji="🏧",
                 )
             )
     if cpt > 0 and rshb_sell > 0:
@@ -144,6 +146,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
             SourceQuote(
                 rpt_rc,
                 f"РСХБ UP RUB (снятие {thb_ref:.0f}+{atm_fee:.0f})",
+                emoji="🏧",
             )
         )
 
