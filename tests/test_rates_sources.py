@@ -481,13 +481,13 @@ class TestRatesSources(unittest.TestCase):
         rows = [
             rs.RateRow(
                 2.5,
-                "Bybit P2P (cash) → Bitkub",
+                "Bybit P2P (наличные) → Bitkub",
                 "💸",
                 merge_key="bybit_cash",
             ),
             rs.RateRow(
                 2.5,
-                "Bybit P2P (cash) → Binance TH",
+                "Bybit P2P (наличные) → Binance TH",
                 "💱",
                 merge_key="bybit_cash",
             ),
@@ -496,7 +496,7 @@ class TestRatesSources(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertEqual(
             out[0].label,
-            "Bybit P2P (cash) → Bitkub / Binance TH",
+            "Bybit P2P (наличные) → Bitkub / Binance TH",
         )
         self.assertIsNone(out[0].merge_key)
 

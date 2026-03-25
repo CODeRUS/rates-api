@@ -30,6 +30,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Union
 
+from rates_http import urlopen_retriable
+
 # ---------------------------------------------------------------------------
 # Константы: базовые URL (источник — минифицированный main.*.js сайта).
 # ---------------------------------------------------------------------------
@@ -101,7 +103,7 @@ def _http_get_json(
     ctx = ssl.create_default_context()
     req = urllib.request.Request(url, method="GET", headers=dict(h))
 
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
         raw = resp.read().decode(charset, errors="replace")
     return json.loads(raw)

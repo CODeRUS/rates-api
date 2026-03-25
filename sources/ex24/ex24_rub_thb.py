@@ -38,6 +38,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from rates_http import urlopen_retriable
+
 # Fallback, если не удалось разобрать главную (см. :func:`try_fetch_real_rate_rub_thb`).
 DEFAULT_REAL_RATE = 2.7014
 
@@ -171,7 +173,7 @@ def load_ex24_main_html(*, timeout: float = 25.0) -> Optional[str]:
                     "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
                 },
             )
-            with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
                 return resp.read().decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
             continue

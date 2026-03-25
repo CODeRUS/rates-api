@@ -18,6 +18,8 @@ import sys
 import urllib.request
 from typing import Any, Dict, List, Optional
 
+from rates_http import urlopen_retriable
+
 ISS_URL = (
     "https://iss.moex.com/iss/engines/currency/markets/selt/securities/"
     "CNYRUB_TOM.json?iss.meta=off&iss.only=marketdata"
@@ -28,7 +30,7 @@ USER_AGENT = "moex-fx/1.0 (python)"
 def _get(url: str, *, timeout: float = 20.0) -> Dict[str, Any]:
     ctx = ssl.create_default_context()
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
         return json.loads(r.read().decode("utf-8"))
 
 

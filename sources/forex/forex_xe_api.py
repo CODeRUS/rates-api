@@ -34,6 +34,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Union
 
+from rates_http import urlopen_retriable
+
 XE_API_BASE = "https://xecdapi.xe.com"
 # Публичный эндпоинт конвертера (тот же Basic, что в запросах к сайту).
 XE_MIDMARKET_URL = "https://www.xe.com/api/protected/midmarket-converter/"
@@ -81,7 +83,7 @@ def xe_get(
             "Authorization": _basic_auth_header(account_id, api_key),
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
         return json.loads(resp.read().decode(charset, errors="replace"))
 
@@ -166,7 +168,7 @@ def midmarket_fetch_raw(
             "Authorization": auth,
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
         data = json.loads(resp.read().decode(charset, errors="replace"))
     if not isinstance(data, dict) or "rates" not in data:

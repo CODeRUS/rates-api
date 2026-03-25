@@ -27,6 +27,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, Optional, Sequence
 
+from rates_http import urlopen_retriable
+
 # Базовый URL шаблон: подставляется ISO 4217 код (USD, RUB, THB, …)
 OPEN_ER_API_LATEST = "https://open.er-api.com/v6/latest/{base}"
 
@@ -51,7 +53,7 @@ def _http_get_json(url: str, *, timeout: float = DEFAULT_TIMEOUT) -> Any:
             "User-Agent": USER_AGENT,
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
         return json.loads(resp.read().decode(charset, errors="replace"))
 

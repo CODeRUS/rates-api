@@ -29,6 +29,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+
+from rates_http import urlopen_retriable
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -132,7 +134,7 @@ def fetch_commission(
 
     ctx = ssl.create_default_context()
     req = urllib.request.Request(COMISSION_URL, data=body, method="POST", headers=headers)
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
         raw = resp.read().decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
 
     data = _extract_json_object(raw)
@@ -199,7 +201,7 @@ def cli_main(argv=None) -> int:
                 },
             )
             ctx = ssl.create_default_context()
-            with urllib.request.urlopen(req, timeout=30, context=ctx) as r:
+            with urlopen_retriable(req, timeout=30, context=ctx) as r:
                 sys.stdout.buffer.write(r.read())
             return 0
 

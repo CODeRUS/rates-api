@@ -26,6 +26,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Union
 
+from rates_http import urlopen_retriable
+
 TARIFFS_URL = "https://api.koronapay.com/transfers/tariffs"
 
 DEFAULT_PARAMS: Dict[str, Union[str, bool]] = {
@@ -121,7 +123,7 @@ def fetch_tariffs(
 
     ctx = ssl.create_default_context()
     req = urllib.request.Request(url, method="GET", headers=h)
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
         data = json.loads(resp.read().decode("utf-8"))
 
     if isinstance(data, dict) and data.get("type") == "error":

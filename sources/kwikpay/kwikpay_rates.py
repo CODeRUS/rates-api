@@ -30,6 +30,8 @@ import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+
+from rates_http import urlopen_retriable
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 HOME_URL = "https://kwikpay.ru/"
@@ -74,7 +76,7 @@ def _fetch(url: str, *, timeout: float = 45.0) -> str:
         url,
         headers={"User-Agent": "Mozilla/5.0 (compatible; kwikpay-rates/1.0)"},
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
         return r.read().decode("utf-8", "replace")
 
 
@@ -131,7 +133,7 @@ def _livewire_post(
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
         return json.loads(r.read().decode("utf-8"))
 
 

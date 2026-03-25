@@ -31,6 +31,8 @@ import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+
+from rates_http import urlopen_retriable
 from typing import Dict, Optional, Tuple
 
 ASKMONEY_URL = "https://askmoney.pro/"
@@ -61,7 +63,7 @@ def fetch_homepage_html(*, timeout: float = 30.0) -> str:
         ASKMONEY_URL,
         headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*"},
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
         return r.read().decode(r.headers.get_content_charset() or "utf-8", errors="replace")
 
 

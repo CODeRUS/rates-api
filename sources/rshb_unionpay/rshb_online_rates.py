@@ -16,6 +16,8 @@ from __future__ import annotations
 import ssl
 import urllib.request
 from datetime import date
+
+from rates_http import urlopen_retriable
 from decimal import Decimal
 from typing import Dict, List, Optional
 
@@ -34,7 +36,7 @@ def fetch_online_page(*, timeout: float = 60.0) -> str:
             "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
         return r.read().decode("utf-8", errors="replace")
 
 

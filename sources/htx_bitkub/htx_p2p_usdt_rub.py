@@ -30,6 +30,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from rates_http import urlopen_retriable
+
 TRADE_MARKET_URL = "https://www.htx.com/-/x/otc/v1/data/trade-market"
 
 # Подтверждено выборкой по USDT/RUB + расширяемо через :data:`CASH_NAME_RE`.
@@ -85,7 +87,7 @@ def _get_json(url: str, *, timeout: float = 60.0) -> Dict[str, Any]:
     ctx = ssl.create_default_context()
     req = urllib.request.Request(url, headers=dict(HEADERS), method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+        with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
             raw = resp.read().decode(resp.headers.get_content_charset() or "utf-8")
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code} для {url}") from e

@@ -20,6 +20,8 @@ import json
 import ssl
 import urllib.request
 from datetime import date
+
+from rates_http import urlopen_retriable
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 UNIONPAY_DAILY_JSON = "https://www.unionpayintl.com/upload/jfimg/{yyyymmdd}.json"
@@ -32,7 +34,7 @@ def _get_json(url: str, *, timeout: float = 45.0) -> Any:
         url,
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
         return json.loads(r.read().decode("utf-8"))
 
 

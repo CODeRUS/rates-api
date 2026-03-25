@@ -21,6 +21,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Dict
 
+from rates_http import urlopen_retriable
+
 BASE_URL = "https://api.binance.th"
 SYMBOL = "USDTTHB"
 
@@ -42,7 +44,7 @@ def fetch_book_ticker(*, symbol: str = SYMBOL, timeout: float = 30.0) -> Dict[st
     ctx = ssl.create_default_context()
     req = urllib.request.Request(book_ticker_url(symbol=symbol), headers=HEADERS, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+        with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
             data = json.loads(r.read().decode(r.headers.get_content_charset() or "utf-8"))
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code} при запросе bookTicker Binance TH") from e

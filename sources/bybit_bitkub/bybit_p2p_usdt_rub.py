@@ -43,6 +43,13 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from rates_http import (
+    RETRYABLE_HTTP_CODES,
+    RetryableHttpStatus,
+    call_retriable,
+    urlopen_retriable,
+)
+
 QUERY_PAYMENTS_URL = "https://www.bybit.com/x-api/fiat/otc/configuration/queryAllPaymentList"
 ITEM_ONLINE_URL = "https://www.bybit.com/x-api/fiat/otc/item/online"
 
@@ -130,13 +137,20 @@ def _post_json_curl_cffi(url: str, body: Any, *, timeout: float) -> Dict[str, An
     hdrs = dict(DEFAULT_HEADERS)
     last_err: Optional[RuntimeError] = None
     for imp in _CURL_CFFI_IMPERSONATE_TRY:
-        r = curl_requests.post(
-            url,
-            json=body,
-            headers=hdrs,
-            impersonate=imp,
-            timeout=timeout,
-        )
+
+        def one_post(impersonate: str = imp) -> Any:
+            r = curl_requests.post(
+                url,
+                json=body,
+                headers=hdrs,
+                impersonate=impersonate,
+                timeout=timeout,
+            )
+            if r.status_code in RETRYABLE_HTTP_CODES:
+                raise RetryableHttpStatus(r.status_code)
+            return r
+
+        r = call_retriable(one_post)
         if r.status_code == 200:
             try:
                 return r.json()
@@ -157,7 +171,7 @@ def _post_json_urllib(url: str, body: Any, *, timeout: float) -> Dict[str, Any]:
     data = json.dumps(body, separators=(",", ":")).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=dict(DEFAULT_HEADERS), method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+        with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
             text = _read_json_response(resp)
     except urllib.error.HTTPError as e:
         hint = ""

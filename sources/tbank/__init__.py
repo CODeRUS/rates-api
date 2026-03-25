@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
 
+from rates_http import urlopen_retriable
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
 SOURCE_ID = "tbank"
@@ -77,7 +78,7 @@ def _load_rates_json(*, timeout: float = 20.0) -> Optional[Dict[str, Any]]:
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+        with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
             raw = resp.read().decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
         return json.loads(raw)
     except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError):

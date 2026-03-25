@@ -18,6 +18,8 @@ import re
 import ssl
 import urllib.request
 from dataclasses import dataclass
+
+from rates_http import urlopen_retriable
 from datetime import date
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
@@ -51,7 +53,7 @@ def fetch_offline_page(*, timeout: float = 60.0) -> str:
             "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
         return r.read().decode("utf-8", errors="replace")
 
 

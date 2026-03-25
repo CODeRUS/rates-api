@@ -27,6 +27,8 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional
 
+from rates_http import urlopen_retriable
+
 TICKER_URL = "https://api.bitkub.com/api/market/ticker"
 SYMBOL = "THB_USDT"
 
@@ -43,7 +45,7 @@ def fetch_ticker(*, timeout: float = 30.0) -> Dict[str, Any]:
     ctx = ssl.create_default_context()
     req = urllib.request.Request(TICKER_URL, headers=HEADERS, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+        with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
             data = json.loads(r.read().decode(r.headers.get_content_charset() or "utf-8"))
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code} при запросе тикера") from e

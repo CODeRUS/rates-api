@@ -3,7 +3,7 @@
 """Отчёт USDT: P2P RUB/USDT (Bybit, HTX) и котировки USDT/THB (Bitkub, Binance TH).
 
 Кеш по умолчанию отдельный от сводки ``rates.py`` (переменная ``RATES_USDT_CACHE_FILE``).
-Команда ``/refresh`` в боте обновляет только кеш сводки, не этот отчёт.
+TTL задаётся :data:`USDT_CACHE_TTL_SEC`. В боте админ может сбросить кеш USDT: ``/refresh usdt``.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
 USDT_CACHE_VERSION = 1
-USDT_CACHE_TTL_SEC = 30 * 60
+USDT_CACHE_TTL_SEC = 60
 
 _USDT_CACHE_OVERRIDE = (os.environ.get("RATES_USDT_CACHE_FILE") or "").strip()
 USDT_CACHE_FILE = (
@@ -300,6 +300,6 @@ def print_usdt_report_json(data: Dict[str, Any], warnings: List[str], file: Text
 def usdt_subcommand_help() -> str:
     return (
         "usdt — отчёт P2P RUB/USDT и USDT/THB (Bitkub, Binance TH); "
-        "кеш в RATES_USDT_CACHE_FILE или .rates_usdt_cache.json; "
+        "кеш в RATES_USDT_CACHE_FILE или .rates_usdt_cache.json (TTL 1 мин); "
         "опции: --refresh, --json, --cache-file <путь>."
     )
