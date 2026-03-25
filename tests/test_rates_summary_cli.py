@@ -26,12 +26,20 @@ class TestRatesSummaryCli(unittest.TestCase):
         self.assertIn("forex", low)
         self.assertIn("ttexchange", low)
         self.assertIn("sources", r.stdout)
+        self.assertIn("env-status", r.stdout)
+        self.assertIn("summary", r.stdout)
 
     def test_source_help_only(self):
         r = _run("forex", "--help")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("XE", r.stdout)
         self.assertNotIn("korona", r.stdout.lower())
+
+    def test_single_source_summary_help(self):
+        r = _run("unired_bkb", "summary", "--help")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("summary", r.stdout)
+        self.assertIn("unired_bkb", r.stdout)
 
     def test_sources_subcommand_lists_ids(self):
         r = _run("sources")

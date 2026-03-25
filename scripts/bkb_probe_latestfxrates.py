@@ -93,7 +93,12 @@ def main() -> int:
         action="store_true",
         help="Добавить Referer: https://www.bangkokbank.com/",
     )
-    ap.add_argument("--timeout", type=float, default=35.0)
+    ap.add_argument(
+        "--timeout",
+        type=float,
+        default=60.0,
+        help="Таймаут чтения (сек); для CLI по умолчанию 60 (как bbl_latest_fx при отсутствии env)",
+    )
     args = ap.parse_args()
 
     key = (os.environ.get("BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY") or "").strip()

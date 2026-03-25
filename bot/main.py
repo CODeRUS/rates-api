@@ -3,6 +3,8 @@
 """
 Telegram-бот (Telethon) для команды /rates.
 
+Переменные можно задать в файле ``.env`` в корне репозитория (подхватывается при старте).
+
 Запуск из корня репозитория::
 
     export TELEGRAM_API_ID="611335"
@@ -13,6 +15,7 @@ Telegram-бот (Telethon) для команды /rates.
 
 Секреты не коммитьте. Файл сессии: ``bot/rates_bot.session`` (в .gitignore).
 Опционально ``BOT_ADMIN_ID``: ``/refresh`` — сброс кеша сводки; ``/refresh usdt`` — сброс кеша отчёта USDT.
+Опционально ``BOT_FETCH_TIMEOUT_SEC`` (по умолчанию 180): таймаут сборки сводки/USDT в потоке; иначе зависший источник оставлял бы чат «занятым».
 """
 from __future__ import annotations
 
@@ -24,8 +27,15 @@ from pathlib import Path
 from typing import Set
 
 _ROOT = Path(__file__).resolve().parent.parent
+
+# Таймаут сбора сводки/USDT в фоновом потоке (сек). Иначе один зависший HTTP оставляет чат «занятым» навсегда.
+_DEFAULT_FETCH_TIMEOUT_SEC = 180.0
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
+
+from env_loader import load_repo_dotenv
+
+load_repo_dotenv(_ROOT)
 
 from telethon import TelegramClient, events
 
@@ -46,6 +56,17 @@ def _env_int(name: str) -> int | None:
 
 def _env(name: str) -> str:
     return (os.environ.get(name) or "").strip()
+
+
+def _fetch_timeout_sec() -> float:
+    raw = (os.environ.get("BOT_FETCH_TIMEOUT_SEC") or "").strip()
+    if not raw:
+        return _DEFAULT_FETCH_TIMEOUT_SEC
+    try:
+        v = float(raw)
+        return v if v > 0 else _DEFAULT_FETCH_TIMEOUT_SEC
+    except ValueError:
+        return _DEFAULT_FETCH_TIMEOUT_SEC
 
 
 def _credentials_ok() -> bool:
@@ -75,20 +96,41 @@ async def _main_async() -> None:
 
     rates_busy_guard = asyncio.Lock()
     rates_busy_chats: Set[int] = set()
+    fetch_timeout = _fetch_timeout_sec()
 
     async def _send_rates_summary(event: events.NewMessage.Event, *, refresh: bool) -> None:
         chat_id = event.chat_id
+        # Не держим Lock во время await: иначе завершившийся запрос в finally может ждать lock
+        # у второго сообщения «уже выполняется» и долго не снимает chat_id из множества.
         async with rates_busy_guard:
             if chat_id in rates_busy_chats:
-                await event.respond(
-                    "Уже выполняется запрос (/rates или /usdt). Дождитесь результата."
-                )
-                return
-            rates_busy_chats.add(chat_id)
+                busy = True
+            else:
+                busy = False
+                rates_busy_chats.add(chat_id)
+        if busy:
+            await event.respond(
+                "Уже выполняется запрос (/rates или /usdt). Дождитесь результата."
+            )
+            return
         try:
             status_msg = await event.respond("Идёт получение…")
             try:
-                text = await asyncio.to_thread(get_summary_text, refresh=refresh)
+                text = await asyncio.wait_for(
+                    asyncio.to_thread(get_summary_text, refresh=refresh),
+                    timeout=fetch_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    "get_summary_text timed out after %.0fs (refresh=%s)",
+                    fetch_timeout,
+                    refresh,
+                )
+                await status_msg.edit(
+                    f"Таймаут {fetch_timeout:.0f} с при сборе сводки. "
+                    "Проверьте сеть или задайте BOT_FETCH_TIMEOUT_SEC."
+                )
+                return
             except Exception:
                 logger.exception("get_summary_text failed (refresh=%s)", refresh)
                 await status_msg.edit("Не удалось собрать сводку. Попробуйте позже.")
@@ -110,17 +152,31 @@ async def _main_async() -> None:
         chat_id = event.chat_id
         async with rates_busy_guard:
             if chat_id in rates_busy_chats:
-                await event.respond(
-                    "Уже выполняется запрос (/rates или /usdt). Дождитесь результата."
-                )
-                return
-            rates_busy_chats.add(chat_id)
+                busy = True
+            else:
+                busy = False
+                rates_busy_chats.add(chat_id)
+        if busy:
+            await event.respond(
+                "Уже выполняется запрос (/rates или /usdt). Дождитесь результата."
+            )
+            return
         try:
             status_msg = await event.respond(
                 "Обновление отчёта USDT…" if refresh else "Идёт получение USDT…"
             )
             try:
-                text = await asyncio.to_thread(get_usdt_text, refresh=refresh)
+                text = await asyncio.wait_for(
+                    asyncio.to_thread(get_usdt_text, refresh=refresh),
+                    timeout=fetch_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error("get_usdt_text timed out after %.0fs", fetch_timeout)
+                await status_msg.edit(
+                    f"Таймаут {fetch_timeout:.0f} с при сборе USDT. "
+                    "Проверьте сеть или задайте BOT_FETCH_TIMEOUT_SEC."
+                )
+                return
             except Exception:
                 logger.exception("get_usdt_text failed")
                 await status_msg.edit("Не удалось собрать отчёт USDT. Попробуйте позже.")

@@ -69,7 +69,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         return None
 
     try:
-        thb_per_usd = bbl.fetch_usd50_tt_thb(timeout=35.0)
+        thb_per_usd = bbl.fetch_usd50_tt_thb()
     except (RuntimeError, OSError, urllib.error.URLError, ValueError) as e:
         ctx.warnings.append(f"Avosend×BBL Bangkok Bank: {e}")
         return None

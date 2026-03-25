@@ -5,6 +5,8 @@
 
 Источники — пакет :mod:`sources`; реестр в :mod:`rates_sources`. **Первым всегда Forex** — база для %%.
 
+Файл ``.env`` в каталоге с ``rates.py`` подхватывается при запуске (см. ``env_loader``; ``export`` в shell имеет приоритет).
+
 Пример::
 
     python rates.py
@@ -13,6 +15,8 @@
     python rates.py sources
     python rates.py save out.txt
     python rates.py usdt [--refresh]
+    python rates.py unired_bkb summary
+    python rates.py unired_bkb --refresh
     python rates.py forex --help
 """
 
@@ -31,7 +35,17 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
-from rates_sources import RateRow, SourceCategory, collect_rows, is_cash_category
+from env_loader import load_repo_dotenv
+
+load_repo_dotenv(_SCRIPT_DIR)
+
+from rates_sources import (
+    FetchContext,
+    RateRow,
+    SourceCategory,
+    collect_rows,
+    is_cash_category,
+)
 from sources.korona.koronapay_tariffs import RUB_MIN_SENDING_FOR_BEST_TIER
 from sources import plugin_by_id, registered_source_ids
 
@@ -40,7 +54,7 @@ CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates
 CACHE_TTL_SEC = 30 * 60
 CACHE_VERSION = 31
 
-_RESERVED = frozenset({"sources", "save", "usdt"})
+_RESERVED = frozenset({"sources", "save", "usdt", "env-status"})
 
 
 def _cache_key(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -233,13 +247,70 @@ def print_json_summary(rows: List[RateRow], baseline: float, warnings: List[str]
     print(json.dumps(out, ensure_ascii=False, indent=2), file=file)
 
 
+def _fetch_context_from_summary_args(args: argparse.Namespace) -> FetchContext:
+    """Тот же контекст, что у :func:`collect_rows`, для вызова ``plugin.summary(ctx)``."""
+    return FetchContext(
+        thb_ref=args.thb_ref,
+        atm_fee=args.atm_fee,
+        korona_small_rub=args.korona_small,
+        korona_large_thb=args.korona_large_thb,
+        avosend_rub=args.avosend_rub,
+        unionpay_date=args.unionpay_date,
+        moex_override=args.moex_override,
+        warnings=[],
+    )
+
+
+def print_single_source_summary(mod: Any, args: argparse.Namespace) -> int:
+    """Одна или несколько котировок источника + предупреждения (без кеша полной сводки)."""
+    ctx = _fetch_context_from_summary_args(args)
+    quotes = mod.summary(ctx)
+    lines: List[str] = []
+    if quotes:
+        for q in quotes:
+            row = RateRow(
+                rate=q.rate,
+                label=q.label,
+                emoji=q.emoji or mod.EMOJI,
+                note=q.note,
+                is_baseline=False,
+                category=q.category or mod.CATEGORY,
+                compare_to_baseline=False,
+                merge_key=q.merge_key,
+            )
+            lines.append(row.format_line(0.0))
+    else:
+        lines.append("(нет котировок)")
+    if ctx.warnings:
+        lines.append("")
+        lines.append("Предупреждения:")
+        for w in ctx.warnings:
+            lines.append(f"  • {w}")
+    print("\n".join(lines))
+    return 0
+
+
+def _print_single_source_summary_usage(stream: TextIO, source_id: str) -> None:
+    print(
+        f"Использование: rates.py [общие опции] {source_id} summary [--refresh]\n\n"
+        "Запрос только этого источника. Учитываются общие параметры сводки: "
+        "--thb-ref, --atm-fee, --korona-small, --korona-large-thb, --avosend-rub, "
+        "--unionpay-date, --moex-override. Кеш полной сводки (.rates_summary_cache) "
+        "не используется; --refresh в хвосте summary допускается для единообразия с CLI.",
+        file=stream,
+    )
+
+
 def print_global_help(parser: argparse.ArgumentParser) -> None:
     parser.print_help()
     print("\nКоманды:")
     print("  sources              Список id доступных источников.")
+    print("  env-status           Файл .env и типичные переменные (без значений).")
     print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
     print("  usdt [--refresh] [--json] [--cache-file ПУТЬ]  Отчёт P2P RUB/USDT и USDT/THB (отдельный кеш).")
-    print("  <source_id> [args]   Подкоманды источника (см. python ... <id> --help).")
+    print("  <source_id> summary [--refresh]  Только этот источник (те же --korona-*, --avosend-rub, …).")
+    print("  <source_id> --refresh          То же, если других аргументов у id нет.")
+    print("  <source_id> [args]   Иные подкоманды источника (см. python ... <id> --help).")
     print("\nИсточники (кратко; полное: <id> --help):")
     for sid in registered_source_ids():
         mod = plugin_by_id(sid)
@@ -257,6 +328,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     source_ids = frozenset(registered_source_ids())
 
     if getattr(args, "help", False):
+        if len(rest) >= 2 and rest[0] in source_ids and rest[1] == "summary":
+            _print_single_source_summary_usage(sys.stdout, rest[0])
+            return 0
         if len(rest) >= 1 and rest[0] in source_ids:
             mod = plugin_by_id(rest[0])
             if mod is None:
@@ -266,6 +340,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             return mod.command(tail)
         if len(rest) >= 1 and rest[0] == "sources":
             print("sources — вывести список id зарегистрированных источников курса.")
+            return 0
+        if len(rest) >= 1 and rest[0] == "env-status":
+            print("env-status — проверить наличие .env и типичных переменных окружения.")
             return 0
         if len(rest) >= 1 and rest[0] == "save":
             print("save <файл> — записать сводку в файл (опции --json, --refresh и др. как у обычного запуска).")
@@ -297,6 +374,22 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
         for sid in registered_source_ids():
             print(sid)
+        return 0
+
+    if head == "env-status":
+        from env_loader import ENV_STATUS_KEYS
+
+        dotenv_path = _SCRIPT_DIR / ".env"
+        ok_file = dotenv_path.is_file()
+        print(f"Файл {dotenv_path}: {'найден' if ok_file else 'нет'}")
+        print(
+            "При старте rates.py и bot уже вызван load_repo_dotenv (.env → os.environ.setdefault; "
+            "уже заданные в shell переменные не меняются)."
+        )
+        print("Типичные ключи (только факт наличия в os.environ):")
+        for k in ENV_STATUS_KEYS:
+            set_yes = bool((os.environ.get(k) or "").strip())
+            print(f"  {k}: {'задано' if set_yes else 'нет'}")
         return 0
 
     if head == "save":
@@ -353,7 +446,23 @@ def main(argv: Optional[List[str]] = None) -> int:
         if mod is None:
             print(f"Внутренняя ошибка: нет модуля для {head!r}", file=sys.stderr)
             return 2
-        return mod.command(rest[1:])
+        tail = rest[1:]
+        want_summary = False
+        if tail and tail[0] == "summary":
+            want_summary = True
+            if any(x in ("-h", "--help") for x in tail[1:]):
+                _print_single_source_summary_usage(sys.stdout, head)
+                return 0
+            for x in tail[1:]:
+                if x == "--refresh":
+                    continue
+                print(f"Неизвестный аргумент после summary: {x}", file=sys.stderr)
+                return 2
+        elif args.refresh and not tail:
+            want_summary = True
+        if want_summary:
+            return print_single_source_summary(mod, args)
+        return mod.command(tail)
 
     if head in _RESERVED:
         print(f"Зарезервированная команда {head!r} уже обработана — внутренняя ошибка.", file=sys.stderr)
