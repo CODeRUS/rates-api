@@ -61,7 +61,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
             SourceQuote(
                 float(ia["price"]) / thb_usdt,
                 "HTX P2P (наличные) → Binance TH",
-                category=SourceCategory.CASH_RUB,
+                merge_key="htx_cash",
             )
         )
     else:
@@ -72,7 +72,8 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         out.append(
             SourceQuote(
                 float(ib["price"]) / thb_usdt,
-                "HTX P2P (перевод) → Binance TH",
+                "HTX P2P (пеервод) → Binance TH",
+                merge_key="htx_no_cash",
             )
         )
     else:

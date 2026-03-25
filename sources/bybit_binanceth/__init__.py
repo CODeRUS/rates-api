@@ -55,14 +55,26 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
 
     out: List[SourceQuote] = []
     if ia:
-        out.append(SourceQuote(float(ia["price"]) / thb_usdt, "Bybit P2P (cash) → Binance TH"))
+        out.append(
+            SourceQuote(
+                float(ia["price"]) / thb_usdt,
+                "Bybit P2P (cash) → Binance TH",
+                merge_key="bybit_cash",
+            )
+        )
     else:
         ctx.warnings.append(
             "Bybit: нет объявлений Cash Deposit (18) с completion≥99 "
             "(100 USDT, minAmount≥100·price)"
         )
     if ib:
-        out.append(SourceQuote(float(ib["price"]) / thb_usdt, "Bybit P2P (перевод) → Binance TH"))
+        out.append(
+            SourceQuote(
+                float(ib["price"]) / thb_usdt,
+                "Bybit P2P (перевод) → Binance TH",
+                merge_key="bybit_transfer",
+            )
+        )
     else:
         ctx.warnings.append(
             "Bybit: нет объявлений только перевод (14, без 18) с completion≥99 "

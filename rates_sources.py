@@ -66,6 +66,8 @@ class SourceQuote:
     emoji: Optional[str] = None
     #: Если False — в сводке без %% к Forex (др. шкала, напр. THB за 1 USD в наличных).
     compare_to_baseline: bool = True
+    #: Одинаковый ключ у пары bitkub + binanceth для строки одного P2P-сценария (слияние при равном rate).
+    merge_key: Optional[str] = None
 
 
 @dataclass
@@ -112,6 +114,7 @@ class RateRow:
     is_baseline: bool = False
     category: SourceCategory = SourceCategory.TRANSFER
     compare_to_baseline: bool = True
+    merge_key: Optional[str] = None
 
     def format_line(self, baseline: float) -> str:
         r = f"{self.emoji} {self.rate:.3f}"
@@ -149,6 +152,74 @@ def _cash_sort_key(row: RateRow) -> Tuple[int, int, float]:
 
 def fmt_money_ru(n: float) -> str:
     return f"{n:,.0f}".replace(",", " ")
+
+
+# Склейка *_bitkub + *_binanceth при совпадении итогового rate (см. :attr:`SourceQuote.merge_key`).
+MERGE_TH_PAIR_LABELS: Dict[str, str] = {
+    "bybit_cash": "Bybit P2P (cash) → Bitkub / Binance TH",
+    "bybit_transfer": "Bybit P2P (перевод) → Bitkub / Binance TH",
+    "htx_cash": "HTX P2P (наличные) → Bitkub / Binance TH",
+    "htx_no_cash": "HTX P2P (без наличных) → Bitkub / Binance TH",
+}
+
+MERGE_TH_RATE_EPS: float = 1e-5
+
+
+def _row_without_merge_key(r: RateRow) -> RateRow:
+    return RateRow(
+        rate=r.rate,
+        label=r.label,
+        emoji=r.emoji,
+        note=r.note,
+        is_baseline=r.is_baseline,
+        category=r.category,
+        compare_to_baseline=r.compare_to_baseline,
+        merge_key=None,
+    )
+
+
+def _merge_matching_bitkub_binanceth_rows(rows: List[RateRow]) -> List[RateRow]:
+    """Две строки с одним ``merge_key`` и (почти) одинаковым ``rate`` → одна с объединённой подписью.
+
+    Порядок строк как в исходном списке (первым остаётся место пары с Bitkub в типичном ``PLUGIN_ORDER``).
+    """
+    n = len(rows)
+    skip = [False] * n
+    out: List[RateRow] = []
+    for i, r in enumerate(rows):
+        if skip[i]:
+            continue
+        mk = r.merge_key
+        if not mk:
+            out.append(_row_without_merge_key(r))
+            continue
+        partner_j: Optional[int] = None
+        for j in range(n):
+            if j == i or skip[j]:
+                continue
+            r2 = rows[j]
+            if r2.merge_key == mk and abs(r.rate - r2.rate) <= MERGE_TH_RATE_EPS:
+                partner_j = j
+                break
+        if partner_j is not None:
+            skip[i] = True
+            skip[partner_j] = True
+            label = MERGE_TH_PAIR_LABELS.get(mk, f"{r.label} / …")
+            out.append(
+                RateRow(
+                    rate=r.rate,
+                    label=label,
+                    emoji=r.emoji,
+                    note=r.note,
+                    is_baseline=r.is_baseline,
+                    category=r.category,
+                    compare_to_baseline=r.compare_to_baseline,
+                    merge_key=None,
+                )
+            )
+        else:
+            out.append(_row_without_merge_key(r))
+    return out
 
 
 def _warn_source(src: RateSource, err: Exception, bucket: List[str]) -> None:
@@ -209,8 +280,11 @@ def run_sources(
                     is_baseline=is_bl,
                     category=cat,
                     compare_to_baseline=q.compare_to_baseline,
+                    merge_key=q.merge_key,
                 )
             )
+
+    rows = _merge_matching_bitkub_binanceth_rows(rows)
 
     forex_rate: Optional[float] = None
     for r in rows:

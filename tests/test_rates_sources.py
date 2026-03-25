@@ -478,6 +478,41 @@ class TestRatesSources(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 b.fetch_bid_thb_per_usdt(timeout=1)
 
+    def test_merge_bitkub_binanceth_when_rates_equal(self):
+        import rates_sources as rs
+
+        rows = [
+            rs.RateRow(
+                2.5,
+                "Bybit P2P (cash) → Bitkub",
+                "💸",
+                merge_key="bybit_cash",
+            ),
+            rs.RateRow(
+                2.5,
+                "Bybit P2P (cash) → Binance TH",
+                "💱",
+                merge_key="bybit_cash",
+            ),
+        ]
+        out = rs._merge_matching_bitkub_binanceth_rows(rows)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(
+            out[0].label,
+            "Bybit P2P (cash) → Bitkub / Binance TH",
+        )
+        self.assertIsNone(out[0].merge_key)
+
+    def test_merge_bitkub_binanceth_keeps_both_when_rates_differ(self):
+        import rates_sources as rs
+
+        rows = [
+            rs.RateRow(2.5, "→ Bitkub", "💸", merge_key="bybit_cash"),
+            rs.RateRow(2.6, "→ Binance TH", "💱", merge_key="bybit_cash"),
+        ]
+        out = rs._merge_matching_bitkub_binanceth_rows(rows)
+        self.assertEqual(len(out), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
