@@ -4,7 +4,7 @@
 Единое API источников курса **RUB за 1 THB** для сводки.
 
 Каждый источник — :class:`RateSource` с функцией ``fetch(ctx)``, возвращающей
-список :class:`SourceQuote` (курс + текстовая метка ``label``, опционально ``note``)
+список :class:`SourceQuote` (курс + метка ``label``, опционально ``note``, ``category``, ``emoji``)
 или ``None`` / пустой список, если данных нет.
 
 Первый зарегистрированный источник с ``is_baseline=True`` (Forex) задаёт базу для %%;
@@ -36,6 +36,8 @@ class SourceQuote:
     rate: float
     label: str
     note: str = ""
+    category: Optional[SourceCategory] = None
+    emoji: Optional[str] = None
 
 
 @dataclass
@@ -143,16 +145,18 @@ def run_sources(
 
         if not quotes:
             continue
-        is_bl = src.is_baseline and src.category == SourceCategory.TRANSFER
         for q in quotes:
+            cat = q.category if q.category is not None else src.category
+            em = q.emoji if q.emoji is not None else src.emoji
+            is_bl = src.is_baseline and cat == SourceCategory.TRANSFER
             rows.append(
                 RateRow(
                     rate=q.rate,
                     label=q.label,
-                    emoji=src.emoji,
+                    emoji=em,
                     note=q.note,
                     is_baseline=is_bl,
-                    category=src.category,
+                    category=cat,
                 )
             )
 
@@ -198,7 +202,7 @@ def collect_rows(
     moex_override: Optional[float],
     sources: Optional[Sequence[RateSource]] = None,
 ) -> Tuple[List[RateRow], float, List[str]]:
-    """Совместимость с прежним вызовом из rates_summary_thb_rub."""
+    """Совместимость с прежним вызовом из rates.py."""
     ctx = FetchContext(
         thb_ref=thb_ref,
         atm_fee=atm_fee,

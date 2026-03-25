@@ -27,10 +27,22 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     rr = e24.try_fetch_real_rate_rub_thb() or e24.DEFAULT_REAL_RATE
     rub_best = float(e24.RUB_MIN_FOR_ZERO_MARKUP)
     r_ex = e24.customer_rate_rub_per_thb(rub_best, rr)
-    return [
+    out: List[SourceQuote] = [
         SourceQuote(
             r_ex,
-            "Ex24.pro",
+            "Ex24",
             note=f"от {fmt_money_ru(rub_best)} RUB",
         )
     ]
+    cash_rub = e24.try_fetch_cash_rub_per_thb()
+    if cash_rub is not None and cash_rub > 0:
+        out.append(
+            SourceQuote(
+                cash_rub,
+                "Ex24",
+                note="наличные RUB→THB",
+                category=SourceCategory.CASH,
+                emoji="•",
+            )
+        )
+    return out

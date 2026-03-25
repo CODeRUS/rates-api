@@ -9,7 +9,7 @@ from typing import Any, List, Optional
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
 SOURCE_ID = "ttexchange"
-EMOJI = "🏧"
+EMOJI = "•"
 IS_BASELINE = False
 CATEGORY = SourceCategory.CASH
 
@@ -87,8 +87,8 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         return [
             SourceQuote(
                 rub_per_thb,
-                f"TT Currency Exchange (филиал {branch_name})",
-                note=note,
+                f"TT Currency Exchange",
+                note=branch_name,
             )
         ]
     except Exception as e:

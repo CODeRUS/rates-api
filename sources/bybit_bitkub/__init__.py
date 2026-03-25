@@ -24,8 +24,8 @@ def command(argv: list[str]) -> int:
     if not argv or argv[0] in ("--help", "-h"):
         print(help_text())
         print(
-            "\nПример: rates_summary_thb_rub.py bybit_bitkub --json\n"
-            "         rates_summary_thb_rub.py bybit_bitkub bitkub --json",
+            "\nПример: rates.py bybit_bitkub --json\n"
+            "         rates.py bybit_bitkub bitkub --json",
             file=sys.stderr,
         )
         return 0

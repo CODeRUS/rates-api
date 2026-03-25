@@ -39,7 +39,7 @@ def command(argv: list[str]) -> int:
     if not argv or argv[0] in ("--help", "-h"):
         print(help_text())
         print(
-            "\nПример: rates_summary_thb_rub.py rshb_unionpay cardfx --date 2026-03-20",
+            "\nПример: rates.py rshb_unionpay cardfx --date 2026-03-20",
             file=sys.stderr,
         )
         return 0

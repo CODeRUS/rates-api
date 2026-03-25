@@ -7,12 +7,12 @@
 
 Пример::
 
-    python rates_summary_thb_rub.py
-    python rates_summary_thb_rub.py --refresh --json
-    python rates_summary_thb_rub.py --help
-    python rates_summary_thb_rub.py sources
-    python rates_summary_thb_rub.py save out.txt
-    python rates_summary_thb_rub.py forex --help
+    python rates.py
+    python rates.py --refresh --json
+    python rates.py --help
+    python rates.py sources
+    python rates.py save out.txt
+    python rates.py forex --help
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from sources import plugin_by_id, registered_source_ids
 
 CACHE_FILE = _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
-CACHE_VERSION = 16
+CACHE_VERSION = 18
 
 _RESERVED = frozenset({"sources", "save"})
 

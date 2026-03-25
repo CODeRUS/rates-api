@@ -216,6 +216,42 @@ def _try_fetch_real_rate_regex(html: str) -> Optional[float]:
     return None
 
 
+# Витрина «Курс обмена наличных»: в JSON встроено ``"RUB":{"buy":"0.3241","sell":"0.3919",...}``.
+# Поле ``buy`` — THB за 1 RUB; сводка везде в **RUB за 1 THB** → ``1 / buy``.
+_EX24_RUB_CASH_BUY_ESCAPED = re.compile(
+    r'\\"RUB\\":\{\\"buy\\":\\"([0-9.]+)\\"'
+)
+_EX24_RUB_CASH_BUY_PLAIN = re.compile(
+    r'"RUB"\s*:\s*\{\s*"buy"\s*:\s*"([0-9.]+)"'
+)
+
+
+def parse_ex24_cash_rub_buy_rub_per_thb(html: str) -> Optional[float]:
+    """
+    Курс **RUB за 1 THB** по наличным с главной: объект ``RUB`` с полем ``buy``
+    (колонка «Отдаёте валюту» для рубля в блоке обмена наличных).
+    """
+    if not html:
+        return None
+    m = _EX24_RUB_CASH_BUY_ESCAPED.search(html)
+    if not m:
+        m = _EX24_RUB_CASH_BUY_PLAIN.search(html)
+    if not m:
+        return None
+    thb_per_rub = float(m.group(1))
+    if thb_per_rub <= 0:
+        return None
+    return 1.0 / thb_per_rub
+
+
+def try_fetch_cash_rub_per_thb(*, timeout: float = 25.0) -> Optional[float]:
+    """Главная ex24.pro → RUB за 1 THB из ``RUB.buy`` витрины наличных, или ``None``."""
+    text = _load_ex24_main_html(timeout=timeout)
+    if not text:
+        return None
+    return parse_ex24_cash_rub_buy_rub_per_thb(text)
+
+
 def try_fetch_real_rate_rub_thb(
     *,
     timeout: float = 25.0,

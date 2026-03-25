@@ -106,6 +106,71 @@ class TestRatesSources(unittest.TestCase):
         i_t = labels.index("T")
         self.assertLess(i_t, i_cash)
 
+    def test_source_quote_category_overrides_source(self):
+        """Котировка может задать CASH, не меняя категорию плагина (TRANSFER)."""
+        forex = RateSource(
+            "forex",
+            "📈",
+            True,
+            SourceCategory.TRANSFER,
+            _fake_summary([SourceQuote(2.5, "Forex")]),
+        )
+        hybrid = RateSource(
+            "hybrid",
+            "🤑",
+            False,
+            SourceCategory.TRANSFER,
+            _fake_summary(
+                [
+                    SourceQuote(3.0, "Online"),
+                    SourceQuote(
+                        3.5,
+                        "Cash desk",
+                        category=SourceCategory.CASH,
+                    ),
+                ]
+            ),
+        )
+        ctx = FetchContext(30_000, 250, 0, 40_000, 10_000, None, None)
+        rows, _, _ = run_sources(ctx, [forex, hybrid])
+        labels = [r.label for r in rows]
+        self.assertLess(labels.index("Online"), labels.index("Cash desk"))
+        cash_row = next(r for r in rows if r.label == "Cash desk")
+        self.assertEqual(cash_row.category, SourceCategory.CASH)
+
+    def test_source_quote_emoji_overrides_source(self):
+        forex = RateSource(
+            "forex",
+            "📈",
+            True,
+            SourceCategory.TRANSFER,
+            _fake_summary([SourceQuote(2.5, "Forex")]),
+        )
+        src = RateSource(
+            "x",
+            "🤑",
+            False,
+            SourceCategory.TRANSFER,
+            _fake_summary(
+                [
+                    SourceQuote(3.0, "A"),
+                    SourceQuote(3.1, "B", emoji="•"),
+                ]
+            ),
+        )
+        ctx = FetchContext(30_000, 250, 0, 40_000, 10_000, None, None)
+        rows, _, _ = run_sources(ctx, [forex, src])
+        a = next(r for r in rows if r.label == "A")
+        b = next(r for r in rows if r.label == "B")
+        self.assertEqual(a.emoji, "🤑")
+        self.assertEqual(b.emoji, "•")
+
+    def test_parse_ex24_cash_rub_buy_rub_per_thb(self):
+        from sources.ex24.ex24_rub_thb import parse_ex24_cash_rub_buy_rub_per_thb
+
+        frag = 'foo\\"RUB\\":{\\"buy\\":\\"0.5\\",\\"sell\\":\\"0.6\\"bar'
+        self.assertAlmostEqual(parse_ex24_cash_rub_buy_rub_per_thb(frag), 2.0)
+
 
 if __name__ == "__main__":
     unittest.main()

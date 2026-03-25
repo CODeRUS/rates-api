@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def _run(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(ROOT / "rates_summary_thb_rub.py"), *args],
+        [sys.executable, str(ROOT / "rates.py"), *args],
         capture_output=True,
         text=True,
         cwd=str(ROOT),
