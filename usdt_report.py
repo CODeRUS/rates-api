@@ -168,14 +168,8 @@ def compute_usdt_report(
     return data, warnings
 
 
-def _fmt_num(x: Optional[float]) -> str:
-    if x is None or x <= 0:
-        return "—"
-    return f"{x:.4f}".rstrip("0").rstrip(".")
-
-
-def _fmt_rub_per_thb(x: Optional[float]) -> str:
-    """RUB за 1 THB в тексте отчёта: ровно два знака после запятой."""
+def _fmt_pipe_value(x: Optional[float]) -> str:
+    """Левая колонка в тексте: два знака после точки или «—»."""
     if x is None or x <= 0:
         return "—"
     return f"{x:.2f}"
@@ -187,24 +181,52 @@ def _cross_rub_thb(rub_u: Optional[float], thb_u: Optional[float]) -> Optional[f
     return rub_u / thb_u
 
 
+def _sort_pipe_rows_asc(rows: List[Tuple[str, Optional[float]]]) -> List[Tuple[str, Optional[float]]]:
+    """По возрастанию курса; без числа («—») — в конце; при равенстве — по подписи."""
+
+    def sort_key(item: Tuple[str, Optional[float]]) -> Tuple[float, str]:
+        lab, v = item
+        if v is None or v <= 0:
+            return (float("inf"), lab)
+        return (v, lab)
+
+    return sorted(rows, key=sort_key)
+
+
+def _pipe_lines(rows: List[Tuple[str, Optional[float]]]) -> List[str]:
+    """Строки вида ``  79.50 | Bybit (наличные)`` — курс слева (два знака), подпись справа."""
+    if not rows:
+        return []
+    cells = [(_fmt_pipe_value(v), lab) for lab, v in rows]
+    w = max(len(s) for s, _ in cells)
+    return [f"  {s:>{w}} | {lab}" for s, lab in cells]
+
+
 def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     rub = data.get("rub_per_usdt") or {}
     thb = data.get("thb_per_usdt") or {}
     bk = thb.get("bitkub_highest_bid")
     bn = thb.get("binance_bid")
 
+    rub_rows: List[Tuple[str, Optional[float]]] = [
+        ("Bybit (наличные)", float(rub["bybit_cash"]) if isinstance(rub.get("bybit_cash"), (int, float)) else None),
+        ("Bybit (перевод)", float(rub["bybit_transfer"]) if isinstance(rub.get("bybit_transfer"), (int, float)) else None),
+        ("HTX (наличные)", float(rub["htx_cash"]) if isinstance(rub.get("htx_cash"), (int, float)) else None),
+        ("HTX (перевод)", float(rub["htx_no_cash"]) if isinstance(rub.get("htx_no_cash"), (int, float)) else None),
+    ]
+    thb_rows: List[Tuple[str, Optional[float]]] = [
+        ("Bitkub (highestBid)", float(bk) if isinstance(bk, (int, float)) and bk and bk > 0 else None),
+        ("Binance TH (bid)", float(bn) if isinstance(bn, (int, float)) and bn and bn > 0 else None),
+    ]
+
     lines: List[str] = [
-        "Отчёт USDT: P2P RUB/USDT и USDT/THB (отдельный кеш от сводки rates).",
+        "Отчёт USDT: P2P RUB/USDT и USDT/THB.",
         "",
         "RUB за 1 USDT (P2P, лучшая цена)",
-        f"  Bybit (наличные):    {_fmt_num(rub.get('bybit_cash'))} RUB/USDT",
-        f"  Bybit (перевод):         {_fmt_num(rub.get('bybit_transfer'))} RUB/USDT",
-        f"  HTX (наличные):          {_fmt_num(rub.get('htx_cash'))} RUB/USDT",
-        f"  HTX (перевод):     {_fmt_num(rub.get('htx_no_cash'))} RUB/USDT",
+        *_pipe_lines(_sort_pipe_rows_asc(rub_rows)),
         "",
         "THB за 1 USDT",
-        f"  Bitkub (highestBid):     {_fmt_num(bk)} THB/USDT",
-        f"  Binance TH (bid):        {_fmt_num(bn)} THB/USDT",
+        *_pipe_lines(_sort_pipe_rows_asc(thb_rows)),
         "",
         "Полные пути: RUB за 1 THB (P2P × площадка TH)",
     ]
@@ -216,15 +238,16 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
         ("Bybit P2P (перевод) → Binance TH", rub.get("bybit_transfer"), bn),
         ("HTX P2P (наличные) → Bitkub", rub.get("htx_cash"), bk),
         ("HTX P2P (наличные) → Binance TH", rub.get("htx_cash"), bn),
-        ("HTX P2P (бперевод) → Bitkub", rub.get("htx_no_cash"), bk),
+        ("HTX P2P (перевод) → Bitkub", rub.get("htx_no_cash"), bk),
         ("HTX P2P (перевод) → Binance TH", rub.get("htx_no_cash"), bn),
     ]
+    path_rows: List[Tuple[str, Optional[float]]] = []
     for label, rpu, tpu in paths:
-        cr = _cross_rub_thb(
-            float(rpu) if isinstance(rpu, (int, float)) else None,
-            float(tpu) if isinstance(tpu, (int, float)) else None,
-        )
-        lines.append(f"  {label}: {_fmt_rub_per_thb(cr)} RUB/THB")
+        rpv = float(rpu) if isinstance(rpu, (int, float)) else None
+        tpv = float(tpu) if isinstance(tpu, (int, float)) else None
+        cr = _cross_rub_thb(rpv, tpv)
+        path_rows.append((label, cr))
+    lines.extend(_pipe_lines(_sort_pipe_rows_asc(path_rows)))
 
     if warnings:
         lines.append("")
@@ -256,13 +279,21 @@ def print_usdt_report_json(data: Dict[str, Any], warnings: List[str], file: Text
         ("HTX P2P (перевод) → Bitkub", rub.get("htx_no_cash"), bk),
         ("HTX P2P (перевод) → Binance TH", rub.get("htx_no_cash"), bn),
     ]
+    full_paths: List[Dict[str, Any]] = []
     for label, rpu, tpu in paths:
         rc = rpu if isinstance(rpu, (int, float)) else None
         tc = tpu if isinstance(tpu, (int, float)) else None
         cr = _cross_rub_thb(rc, tc)
-        out["full_paths_rub_per_thb"].append(
+        full_paths.append(
             {"label": label, "rub_per_thb": None if cr is None else round(cr, 2)},
         )
+    full_paths.sort(
+        key=lambda d: (
+            float("inf") if d["rub_per_thb"] is None else d["rub_per_thb"],
+            d["label"],
+        ),
+    )
+    out["full_paths_rub_per_thb"] = full_paths
     print(json.dumps(out, ensure_ascii=False, indent=2), file=file)
 
 

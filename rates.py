@@ -338,8 +338,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         if u_rest:
             print(f"Неизвестные аргументы usdt: {' '.join(u_rest)}", file=sys.stderr)
             return 2
-        data, uw = ur.compute_usdt_report(refresh=u_args.refresh, cache_file=u_args.cache_file)
-        if u_args.json:
+        # --refresh / --json до или после ``usdt`` обрабатываются общим парсером и не попадают в rest.
+        refresh = u_args.refresh or args.refresh
+        as_json = u_args.json or args.json
+        data, uw = ur.compute_usdt_report(refresh=refresh, cache_file=u_args.cache_file)
+        if as_json:
             ur.print_usdt_report_json(data, uw, sys.stdout)
         else:
             print(ur.format_usdt_report_text(data, uw), end="")

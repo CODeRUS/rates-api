@@ -22,10 +22,30 @@ class TestUsdtReport(unittest.TestCase):
         }
         warnings = ["test warning"]
         text = usdt_report.format_usdt_report_text(data, warnings)
-        self.assertIn("100 RUB/USDT", text)
-        self.assertIn("35 THB/USDT", text)
-        self.assertIn("Bybit P2P (cash) → Bitkub", text)
-        self.assertIn("2.86", text.replace(",", "."))  # 100/35 → два знака
+        self.assertIn("100.00 | Bybit (наличные)", text)
+        self.assertIn("34.90 | Binance TH (bid)", text)
+        self.assertIn("2.81 | HTX P2P (перевод) → Bitkub", text)  # мин. RUB/THB при сортировке
+
+        for title, next_title in (
+            ("RUB за 1 USDT (P2P, лучшая цена)", "THB за 1 USDT"),
+            ("THB за 1 USDT", "Полные пути:"),
+        ):
+            block = text.split(title, 1)[1].split(next_title, 1)[0]
+            vals = [
+                float(line.split("|", 1)[0].strip())
+                for line in block.strip().split("\n")
+                if "|" in line and line.split("|", 1)[0].strip() != "—"
+            ]
+            self.assertEqual(vals, sorted(vals), msg=title)
+
+        paths_block = text.split("Полные пути:", 1)[1].split("Предупреждения:", 1)[0]
+        path_vals = [
+            float(line.split("|", 1)[0].strip())
+            for line in paths_block.strip().split("\n")
+            if "|" in line and line.split("|", 1)[0].strip() != "—"
+        ]
+        self.assertEqual(path_vals, sorted(path_vals))
+
         self.assertIn("test warning", text)
 
 
