@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Параллельное выполнение блокирующих вызовов (план A: ThreadPoolExecutor).
+
+Единая точка для сценариев вроде ``exchange``: при переходе на async (план B)
+достаточно заменить тело :func:`map_bounded`, сохранив сигнатуру и порядок
+результатов.
+"""
+from __future__ import annotations
+
+import os
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, List, Optional, Sequence, Tuple, TypeVar
+
+T = TypeVar("T")
+R = TypeVar("R")
+
+MapOutcome = Tuple[T, Optional[R], Optional[Exception]]
+
+
+def default_max_workers() -> int:
+    raw = (os.environ.get("RATES_PARALLEL_MAX_WORKERS") or "").strip()
+    if raw:
+        try:
+            n = int(raw)
+            return max(1, min(n, 256))
+        except ValueError:
+            pass
+    return 12
+
+
+def map_bounded(
+    items: Sequence[T],
+    func: Callable[[T], R],
+    *,
+    max_workers: Optional[int] = None,
+) -> List[MapOutcome]:
+    """
+    Для каждого ``item`` вызывает ``func(item)`` в ограниченном пуле потоков.
+
+    Порядок элементов в списке совпадает с ``items``. Исключения из ``func``
+    не пробрасываются: они приходят третьим полем кортежа (``Exception``).
+    """
+    cap = default_max_workers() if max_workers is None else max(1, max_workers)
+    if not items:
+        return []
+
+    def one(it: T) -> MapOutcome:
+        try:
+            return (it, func(it), None)
+        except Exception as exc:
+            return (it, None, exc)
+
+    workers = min(cap, len(items))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return list(pool.map(one, items))

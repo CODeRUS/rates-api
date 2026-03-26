@@ -17,6 +17,7 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+from rates_parallel import map_bounded
 from ttexchange_fiat_rates import (
     fiat_buy_thb_per_unit,
     normalize_ttexchange_branch_label,
@@ -59,11 +60,22 @@ def _format_table_row(name: str, u: Optional[float], e: Optional[float], c: Opti
     return f"{cell(u):>7}  {cell(e):>7}  {cell(c):>7}  {name}"
 
 
+_TT_FETCH_ERRORS = (
+    OSError,
+    ValueError,
+    urllib.error.HTTPError,
+    urllib.error.URLError,
+    json.JSONDecodeError,
+    TimeoutError,
+)
+
+
 def build_exchange_report_text(
     *,
     top_n: int = 10,
     lang: str = "ru",
     timeout: float = 28.0,
+    parallel_max_workers: Optional[int] = None,
 ) -> Tuple[str, List[str]]:
     warnings: List[str] = []
     ttx = _ttexchange_api_module()
@@ -71,7 +83,7 @@ def build_exchange_report_text(
     if not isinstance(stores, list):
         return "Нет списка филиалов TT Exchange.\n", ["TT /stores не список"]
 
-    scored: List[Tuple[str, float, Optional[float], Optional[float], str]] = []
+    jobs: List[Tuple[str, str]] = []
     for row in stores:
         if not isinstance(row, dict):
             continue
@@ -83,18 +95,24 @@ def build_exchange_report_text(
         if _branch_skipped_as_closed(raw_name):
             continue
         label = normalize_ttexchange_branch_label(raw_name or bid_s)
-        try:
-            cur = ttx.get_currencies(bid_s, is_main=False, timeout=timeout)
-        except (
-            OSError,
-            ValueError,
-            urllib.error.HTTPError,
-            urllib.error.URLError,
-            json.JSONDecodeError,
-            TimeoutError,
-        ) as exc:
-            warnings.append(f"TT курсы {label} ({bid_s}): {exc}")
-            continue
+        jobs.append((label, bid_s))
+
+    def _fetch_currencies(job: Tuple[str, str]) -> Any:
+        _lb, bid_s = job
+        return ttx.get_currencies(bid_s, is_main=False, timeout=timeout)
+
+    scored: List[Tuple[str, float, Optional[float], Optional[float], str]] = []
+    for (label, bid_s), cur, exc in map_bounded(
+        jobs,
+        _fetch_currencies,
+        max_workers=parallel_max_workers,
+    ):
+        if exc is not None:
+            if isinstance(exc, _TT_FETCH_ERRORS):
+                warnings.append(f"TT курсы {label} ({bid_s}): {exc}")
+                continue
+            raise exc
+        assert cur is not None
         usd = fiat_buy_thb_per_unit(cur, "USD")
         if usd is None:
             continue
@@ -142,9 +160,18 @@ def build_exchange_report_text(
 
 
 def format_exchange_report_with_warnings(
-    *, top_n: int = 10, lang: str = "ru", timeout: float = 28.0
+    *,
+    top_n: int = 10,
+    lang: str = "ru",
+    timeout: float = 28.0,
+    parallel_max_workers: Optional[int] = None,
 ) -> str:
-    body, w = build_exchange_report_text(top_n=top_n, lang=lang, timeout=timeout)
+    body, w = build_exchange_report_text(
+        top_n=top_n,
+        lang=lang,
+        timeout=timeout,
+        parallel_max_workers=parallel_max_workers,
+    )
     if not w:
         return body
     extra = "\n".join(f"  • {x}" for x in w)
@@ -155,7 +182,8 @@ def exchange_subcommand_help() -> str:
     return (
         "exchange — топ филиалов TT Exchange по приёму наличных USD/EUR/CNY→THB "
         "(THB за 1 ед.; сортировка по USD), затем строка Ex24 в том же формате.\n"
-        "  exchange [--top N] [--lang ru|en] [--refresh]   N по умолчанию 10; --refresh зарезервирован."
+        "  exchange [--top N] [--lang ru|en] [--refresh]   N по умолчанию 10; --refresh зарезервирован.\n"
+        "  Параллельные запросы курсов TT: переменная RATES_PARALLEL_MAX_WORKERS (по умолчанию 12)."
     )
 
 
