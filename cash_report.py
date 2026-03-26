@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import sys
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
@@ -16,8 +16,13 @@ if str(_ROOT) not in sys.path:
 
 from rates_parallel import map_bounded
 from sources.cash_aggregate import unified_top_sell_offers
+import rates_unified_cache as ucc
 
 _CashCellJob = Tuple[str, int, str, str, Optional[int]]
+
+# После build_*: ответ из L2 с истёкшим TTL (для фонового обновления в боте).
+_unified_served_stale_l2_plain: bool = False
+_unified_served_stale_l2_thb: bool = False
 
 # (подпись в отчёте, ключ Banki из BANKI_REGIONS, city_id РBC или None).
 # РБК только Москва/СПб; остальные — Banki.ru.
@@ -57,6 +62,35 @@ def _cash_cell_jobs(locs: Tuple[Tuple[str, str, Optional[int]], ...]) -> List[_C
         for city_label, banki_key, rbc_id in locs:
             jobs.append((fiat_code, cur_id, city_label, banki_key, rbc_id))
     return jobs
+
+
+def _cash_cell_l1_key(job: _CashCellJob, *, use_banki: bool) -> str:
+    fiat_code, cur_id, _city_label, banki_key, rbc_id = job
+    rid = "x" if rbc_id is None else str(int(rbc_id))
+    return (
+        f"cash:l1:{fiat_code}:{banki_key}:{rid}:{int(cur_id)}:"
+        f"b{1 if use_banki else 0}"
+    )
+
+
+def _cash_l2_key(*, kind: str, top_n: int, use_banki: bool, timeout: float) -> str:
+    ident: Dict[str, Any] = {
+        "kind": kind,
+        "top_n": int(top_n),
+        "use_banki": bool(use_banki),
+        "timeout": round(float(timeout), 3),
+    }
+    return f"l2:cash:{ucc.stable_digest(ident)}"
+
+
+def _deps_for_l1_keys(doc: Dict[str, Any], keys: List[str]) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    l1 = doc.get("l1") or {}
+    for k in keys:
+        ent = l1.get(k)
+        if isinstance(ent, dict) and int(ent.get("version", 0)) > 0:
+            out[k] = int(ent["version"])
+    return out
 
 
 def _fetch_cash_cell(
@@ -143,14 +177,53 @@ def build_cash_report_text(
     timeout: float = 22.0,
     use_banki: bool = True,
     parallel_max_workers: Optional[int] = None,
+    refresh: bool = False,
+    unified_allow_stale: bool = False,
 ) -> Tuple[str, List[str]]:
     """
     Только курсы продажи наличной валюты (РБК + Banki).
     Порядок: валюты USD→EUR→CNY, города как в ``_CASH_LOCATIONS``.
     """
+    global _unified_served_stale_l2_plain
+
+    unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
+    doc = ucc.load_unified(unified_path)
+    l2_key = _cash_l2_key(
+        kind="plain", top_n=top_n, use_banki=use_banki, timeout=timeout
+    )
+    from_stale_l2 = False
+
+    if not refresh:
+        ent = ucc.l2_get(
+            doc,
+            l2_key,
+            ttl_sec=ucc.TTL_L2_CASH_SEC,
+            require_fresh=False,
+            allow_stale=False,
+        )
+        if ent is None and unified_allow_stale:
+            ent = ucc.l2_get(
+                doc,
+                l2_key,
+                ttl_sec=ucc.TTL_L2_CASH_SEC,
+                require_fresh=False,
+                allow_stale=True,
+            )
+            if ent is not None:
+                from_stale_l2 = True
+        if ent is not None:
+            deps = ent.get("deps") or {}
+            if (not deps) or ucc.l2_deps_match(doc, deps):
+                body = str(ent.get("text") or "")
+                if body.strip():
+                    w = list((ent.get("payload") or {}).get("warnings") or [])
+                    _unified_served_stale_l2_plain = from_stale_l2
+                    return body, w
+
+    _unified_served_stale_l2_plain = False
     warnings: List[str] = []
     lines: List[str] = [
-        "Наличные: РБК + Banki.ru (топ по курсу продажи)",
+        "Наличные: РБК + Banki (топ по курсу продажи)",
         "",
     ]
 
@@ -158,9 +231,25 @@ def build_cash_report_text(
     jobs = _cash_cell_jobs(locs)
 
     def _work(job: _CashCellJob) -> Tuple[List[str], List[str]]:
-        return _fetch_cash_cell(
+        k = _cash_cell_l1_key(job, use_banki=use_banki)
+        if not refresh:
+            hit = ucc.l1_get_valid(doc, k)
+            if hit is not None:
+                payload = hit[1]
+                if isinstance(payload, dict):
+                    return list(payload.get("section") or []), list(
+                        payload.get("wcell") or []
+                    )
+        sec, wcell = _fetch_cash_cell(
             job, top_n=top_n, timeout=timeout, use_banki=use_banki
         )
+        ucc.l1_set(
+            doc,
+            k,
+            {"section": sec, "wcell": wcell},
+            ttl_sec=ucc.TTL_L1_CASH_CELL_SEC,
+        )
+        return sec, wcell
 
     for _job, pack, exc in map_bounded(
         jobs, _work, max_workers=parallel_max_workers
@@ -173,6 +262,21 @@ def build_cash_report_text(
         lines.extend(sec)
 
     full = "\n".join(lines).rstrip() + "\n"
+    dep_keys = [_cash_cell_l1_key(j, use_banki=use_banki) for j in jobs]
+    deps_map = _deps_for_l1_keys(doc, dep_keys)
+    ucc.l2_set(
+        doc,
+        l2_key,
+        ttl_sec=ucc.TTL_L2_CASH_SEC,
+        text=full,
+        deps=deps_map,
+        payload={"warnings": warnings},
+    )
+    try:
+        ucc.save_unified(doc, unified_path)
+    except OSError as e:
+        warnings.append(f"Не удалось записать unified-кеш: {unified_path} ({e})")
+
     return full, warnings
 
 
@@ -182,18 +286,77 @@ def build_cash_thb_report_text(
     timeout: float = 22.0,
     use_banki: bool = True,
     parallel_max_workers: Optional[int] = None,
+    refresh: bool = False,
+    unified_allow_stale: bool = False,
 ) -> Tuple[str, List[str]]:
     """
     Цепочка: продажа валюты у банка (RUB/ед.) × TT → RUB за 1 THB.
     В каждой строке: курс продажи в источнике | подразумеваемый RUB/THB | банк | TT.
     """
+    global _unified_served_stale_l2_thb
+
+    unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
+    doc = ucc.load_unified(unified_path)
+    l2_key = _cash_l2_key(
+        kind="thb", top_n=top_n, use_banki=use_banki, timeout=timeout
+    )
+    from_stale_l2 = False
+
+    if not refresh:
+        ent = ucc.l2_get(
+            doc,
+            l2_key,
+            ttl_sec=ucc.TTL_L2_CASH_THB_SEC,
+            require_fresh=False,
+            allow_stale=False,
+        )
+        if ent is None and unified_allow_stale:
+            ent = ucc.l2_get(
+                doc,
+                l2_key,
+                ttl_sec=ucc.TTL_L2_CASH_THB_SEC,
+                require_fresh=False,
+                allow_stale=True,
+            )
+            if ent is not None:
+                from_stale_l2 = True
+        if ent is not None:
+            deps = ent.get("deps") or {}
+            if (not deps) or ucc.l2_deps_match(doc, deps):
+                body = str(ent.get("text") or "")
+                if body.strip():
+                    w = list((ent.get("payload") or {}).get("warnings") or [])
+                    _unified_served_stale_l2_thb = from_stale_l2
+                    return body, w
+
+    _unified_served_stale_l2_thb = False
     warnings: List[str] = []
-    thb_map, tt_branch = _tt_thb_branch()
+    tt_l1_key = "cash_thb:l1:tt"
+    thb_map: Dict[str, Any] = {}
+    tt_branch = ""
+    loaded_tt_from_l1 = False
+    if not refresh:
+        hit_tt = ucc.l1_get_valid(doc, tt_l1_key)
+        if hit_tt is not None:
+            p = hit_tt[1]
+            if isinstance(p, dict):
+                thb_map = dict(p.get("thb_map") or {})
+                tt_branch = str(p.get("branch") or "")
+                loaded_tt_from_l1 = True
+    if refresh or not loaded_tt_from_l1:
+        thb_map_raw, tt_branch = _tt_thb_branch()
+        thb_map = dict(thb_map_raw or {})
+        ucc.l1_set(
+            doc,
+            tt_l1_key,
+            {"thb_map": thb_map, "branch": tt_branch},
+            ttl_sec=ucc.TTL_L1_CASH_TT_SEC,
+        )
+
     if not thb_map:
         warnings.append(
             "Нет курсов USD/EUR/CNY у TT Exchange — цепочки ➔ THB не посчитать."
         )
-        thb_map = {}
 
     tt_label = f"TT {tt_branch}" if (tt_branch or "").strip() else "TT Exchange"
 
@@ -206,7 +369,16 @@ def build_cash_thb_report_text(
     jobs = _cash_cell_jobs(locs)
 
     def _work_thb(job: _CashCellJob) -> Tuple[List[str], List[str]]:
-        return _fetch_cash_thb_cell(
+        k = _cash_cell_l1_key(job, use_banki=use_banki)
+        if not refresh:
+            hit = ucc.l1_get_valid(doc, k)
+            if hit is not None:
+                payload = hit[1]
+                if isinstance(payload, dict):
+                    return list(payload.get("section") or []), list(
+                        payload.get("wcell") or []
+                    )
+        sec, wcell = _fetch_cash_thb_cell(
             job,
             thb_map=thb_map,
             tt_label=tt_label,
@@ -214,6 +386,13 @@ def build_cash_thb_report_text(
             timeout=timeout,
             use_banki=use_banki,
         )
+        ucc.l1_set(
+            doc,
+            k,
+            {"section": sec, "wcell": wcell},
+            ttl_sec=ucc.TTL_L1_CASH_CELL_SEC,
+        )
+        return sec, wcell
 
     for _job, pack, exc in map_bounded(
         jobs, _work_thb, max_workers=parallel_max_workers
@@ -226,6 +405,23 @@ def build_cash_thb_report_text(
         lines.extend(sec)
 
     full = "\n".join(lines).rstrip() + "\n"
+    dep_keys = [tt_l1_key] + [
+        _cash_cell_l1_key(j, use_banki=use_banki) for j in jobs
+    ]
+    deps_map = _deps_for_l1_keys(doc, dep_keys)
+    ucc.l2_set(
+        doc,
+        l2_key,
+        ttl_sec=ucc.TTL_L2_CASH_THB_SEC,
+        text=full,
+        deps=deps_map,
+        payload={"warnings": warnings},
+    )
+    try:
+        ucc.save_unified(doc, unified_path)
+    except OSError as e:
+        warnings.append(f"Не удалось записать unified-кеш: {unified_path} ({e})")
+
     return full, warnings
 
 
@@ -234,9 +430,15 @@ def format_cash_report_with_warnings(
     top_n: int = 3,
     timeout: float = 22.0,
     use_banki: bool = True,
+    refresh: bool = False,
+    unified_allow_stale: bool = False,
 ) -> str:
     body, w = build_cash_report_text(
-        top_n=top_n, timeout=timeout, use_banki=use_banki
+        top_n=top_n,
+        timeout=timeout,
+        use_banki=use_banki,
+        refresh=refresh,
+        unified_allow_stale=unified_allow_stale,
     )
     if not w:
         return body
@@ -249,9 +451,15 @@ def format_cash_thb_report_with_warnings(
     top_n: int = 3,
     timeout: float = 22.0,
     use_banki: bool = True,
+    refresh: bool = False,
+    unified_allow_stale: bool = False,
 ) -> str:
     body, w = build_cash_thb_report_text(
-        top_n=top_n, timeout=timeout, use_banki=use_banki
+        top_n=top_n,
+        timeout=timeout,
+        use_banki=use_banki,
+        refresh=refresh,
+        unified_allow_stale=unified_allow_stale,
     )
     if not w:
         return body

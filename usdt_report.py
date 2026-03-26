@@ -20,8 +20,12 @@ if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
 from rates_parallel import map_bounded
+import rates_unified_cache as ucc
 
 USDT_CACHE_VERSION = 1
+
+# Выставляется в compute_usdt_report: True, если ответ взят из L2 с истёкшим TTL (для фонового обновления в боте).
+_unified_served_stale_l2: bool = False
 USDT_CACHE_TTL_SEC = 60
 
 _USDT_CACHE_OVERRIDE = (os.environ.get("RATES_USDT_CACHE_FILE") or "").strip()
@@ -152,6 +156,21 @@ def _usdt_fetch_binance_branch() -> _UsdtParallelBranch:
     return {}, thb, w
 
 
+def _usdt_l1_pack(pack: _UsdtParallelBranch) -> Dict[str, Any]:
+    rpart, tpart, wpart = pack
+    return {"rub": rpart, "thb": tpart, "warnings": wpart}
+
+
+def _usdt_l1_unpack(payload: Any) -> _UsdtParallelBranch:
+    if not isinstance(payload, dict):
+        return {}, {}, []
+    return (
+        dict(payload.get("rub") or {}),
+        dict(payload.get("thb") or {}),
+        list(payload.get("warnings") or []),
+    )
+
+
 def _usdt_parallel_worker(branch: str) -> _UsdtParallelBranch:
     if branch == "bybit":
         return _usdt_fetch_bybit_branch()
@@ -165,9 +184,12 @@ def _usdt_parallel_worker(branch: str) -> _UsdtParallelBranch:
 
 
 def fetch_usdt_payload(
-    *, parallel_max_workers: Optional[int] = None
-) -> Tuple[Dict[str, Any], List[str]]:
-    """Собрать данные с API (без кеша). Независимые блоки — параллельно через :mod:`rates_parallel`."""
+    *,
+    parallel_max_workers: Optional[int] = None,
+    unified_doc: Optional[Dict[str, Any]] = None,
+    refresh: bool = True,
+) -> Tuple[Dict[str, Any], List[str], Dict[str, int]]:
+    """Собрать данные с API. При ``unified_doc`` и ``refresh=False`` — читать L1-ветки."""
     warnings: List[str] = []
 
     rub: Dict[str, Optional[float]] = {
@@ -181,9 +203,26 @@ def fetch_usdt_payload(
         "binance_bid": None,
     }
 
+    def _work(branch: str) -> _UsdtParallelBranch:
+        l1_key = f"usdt:l1:{branch}"
+        if unified_doc is not None and not refresh:
+            hit = ucc.l1_get_valid(unified_doc, key=l1_key)
+            if hit is not None:
+                _ver, payload = hit
+                return _usdt_l1_unpack(payload)
+        pack = _usdt_parallel_worker(branch)
+        if unified_doc is not None:
+            ucc.l1_set(
+                unified_doc,
+                l1_key,
+                _usdt_l1_pack(pack),
+                ttl_sec=ucc.TTL_L1_USDT_BRANCH_SEC,
+            )
+        return pack
+
     for _key, pack, exc in map_bounded(
         list(_USDT_BRANCH_KEYS),
-        _usdt_parallel_worker,
+        _work,
         max_workers=parallel_max_workers,
     ):
         if exc is not None:
@@ -194,28 +233,85 @@ def fetch_usdt_payload(
         rub.update(rpart)
         thb.update(tpart)
 
+    deps: Dict[str, int] = {}
+    if unified_doc is not None:
+        l1 = unified_doc.get("l1") or {}
+        for branch in _USDT_BRANCH_KEYS:
+            k = f"usdt:l1:{branch}"
+            ent = l1.get(k)
+            if isinstance(ent, dict) and int(ent.get("version", 0)) > 0:
+                deps[k] = int(ent["version"])
+
     data = {"rub_per_usdt": rub, "thb_per_usdt": thb}
-    return data, warnings
+    return data, warnings, deps
 
 
 def compute_usdt_report(
     *,
     refresh: bool,
     cache_file: Optional[Path] = None,
+    unified_allow_stale: bool = False,
 ) -> Tuple[Dict[str, Any], List[str]]:
+    global _unified_served_stale_l2
+
     path = cache_file if cache_file is not None else USDT_CACHE_FILE
     key = _usdt_cache_key()
+    l2_key = "l2:usdt:default"
+    from_stale_l2 = False
+
+    unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
+    doc = ucc.load_unified(unified_path)
+    ucc.migrate_legacy_usdt_cache(
+        doc, legacy_path=path, usdt_key=key, cache_version=USDT_CACHE_VERSION
+    )
 
     if not refresh:
-        hit = _load_stale_usdt_cache(path)
-        if hit is not None:
-            raw, saved = hit
-            if _usdt_cache_valid(raw, saved, key):
-                data = raw.get("data") or {}
-                w = list(raw.get("warnings", []))
-                return data, w
+        ent = ucc.l2_get(
+            doc,
+            l2_key,
+            ttl_sec=ucc.TTL_L2_USDT_SEC,
+            require_fresh=False,
+            allow_stale=False,
+        )
+        if ent is None and unified_allow_stale:
+            ent = ucc.l2_get(
+                doc,
+                l2_key,
+                ttl_sec=ucc.TTL_L2_USDT_SEC,
+                require_fresh=False,
+                allow_stale=True,
+            )
+            if ent is not None:
+                from_stale_l2 = True
+        if ent is not None:
+            deps = ent.get("deps") or {}
+            if (not deps) or ucc.l2_deps_match(doc, deps):
+                payload = ent.get("payload") or {}
+                data = payload.get("data") or {}
+                if data:
+                    _unified_served_stale_l2 = from_stale_l2
+                    return dict(data), list(payload.get("warnings", []))
 
-    data, warnings = fetch_usdt_payload()
+    _unified_served_stale_l2 = False
+
+    data, warnings, deps = fetch_usdt_payload(
+        unified_doc=doc,
+        refresh=refresh,
+    )
+    text = format_usdt_report_text(data, warnings)
+    ucc.l2_set(
+        doc,
+        l2_key,
+        ttl_sec=ucc.TTL_L2_USDT_SEC,
+        text=text,
+        deps=deps,
+        payload={"data": data, "warnings": warnings},
+    )
+    try:
+        ucc.save_unified(doc, unified_path)
+    except OSError as e:
+        warnings.append(f"Не удалось записать unified-кеш: {unified_path} ({e})")
+
     save_obj = {
         "v": USDT_CACHE_VERSION,
         "saved_unix": time.time(),

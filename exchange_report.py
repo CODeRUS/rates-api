@@ -11,13 +11,14 @@ import json
 from pathlib import Path
 import sys
 import urllib.error
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from rates_parallel import map_bounded
+import rates_unified_cache as ucc
 from ttexchange_fiat_rates import (
     fiat_buy_thb_per_unit,
     normalize_ttexchange_branch_label,
@@ -60,6 +61,8 @@ def _format_table_row(name: str, u: Optional[float], e: Optional[float], c: Opti
     return f"{cell(u):>7}  {cell(e):>7}  {cell(c):>7}  {name}"
 
 
+_unified_served_stale_l2: bool = False
+
 _TT_FETCH_ERRORS = (
     OSError,
     ValueError,
@@ -70,21 +73,93 @@ _TT_FETCH_ERRORS = (
 )
 
 
+def _ex_l2_key(*, top_n: int, lang: str, timeout: float) -> str:
+    ident: Dict[str, Any] = {
+        "top_n": int(top_n),
+        "lang": str(lang),
+        "timeout": round(float(timeout), 3),
+    }
+    return f"l2:exchange:{ucc.stable_digest(ident)}"
+
+
+def _ex_deps_for_keys(doc: Dict[str, Any], keys: List[str]) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    l1 = doc.get("l1") or {}
+    for k in keys:
+        ent = l1.get(k)
+        if isinstance(ent, dict) and int(ent.get("version", 0)) > 0:
+            out[k] = int(ent["version"])
+    return out
+
+
 def build_exchange_report_text(
     *,
     top_n: int = 10,
     lang: str = "ru",
     timeout: float = 28.0,
     parallel_max_workers: Optional[int] = None,
+    refresh: bool = False,
+    unified_allow_stale: bool = False,
 ) -> Tuple[str, List[str]]:
+    global _unified_served_stale_l2
+
+    unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
+    doc = ucc.load_unified(unified_path)
+    l2_key = _ex_l2_key(top_n=top_n, lang=lang, timeout=timeout)
+    lang = (lang or "ru").strip() or "ru"
+    from_stale_l2 = False
+
+    if not refresh:
+        ent = ucc.l2_get(
+            doc,
+            l2_key,
+            ttl_sec=ucc.TTL_L2_EXCHANGE_SEC,
+            require_fresh=False,
+            allow_stale=False,
+        )
+        if ent is None and unified_allow_stale:
+            ent = ucc.l2_get(
+                doc,
+                l2_key,
+                ttl_sec=ucc.TTL_L2_EXCHANGE_SEC,
+                require_fresh=False,
+                allow_stale=True,
+            )
+            if ent is not None:
+                from_stale_l2 = True
+        if ent is not None:
+            deps = ent.get("deps") or {}
+            if (not deps) or ucc.l2_deps_match(doc, deps):
+                body = str(ent.get("text") or "")
+                if body.strip():
+                    w = list((ent.get("payload") or {}).get("warnings") or [])
+                    _unified_served_stale_l2 = from_stale_l2
+                    return body, w
+
+    _unified_served_stale_l2 = False
     warnings: List[str] = []
     ttx = _ttexchange_api_module()
-    stores = ttx.get_stores(lang, timeout=timeout)
-    if not isinstance(stores, list):
+    stores_key = f"ex:l1:stores:{lang}"
+    stores_list: Any = None
+    if not refresh:
+        hit_s = ucc.l1_get_valid(doc, stores_key)
+        if hit_s is not None:
+            stores_list = hit_s[1]
+    if refresh or stores_list is None:
+        stores_list = ttx.get_stores(lang, timeout=timeout)
+        if isinstance(stores_list, list):
+            ucc.l1_set(
+                doc,
+                stores_key,
+                stores_list,
+                ttl_sec=ucc.TTL_L1_EXCHANGE_STORES_SEC,
+            )
+
+    if not isinstance(stores_list, list):
         return "Нет списка филиалов TT Exchange.\n", ["TT /stores не список"]
 
     jobs: List[Tuple[str, str]] = []
-    for row in stores:
+    for row in stores_list:
         if not isinstance(row, dict):
             continue
         bid = row.get("branch_id")
@@ -97,9 +172,23 @@ def build_exchange_report_text(
         label = normalize_ttexchange_branch_label(raw_name or bid_s)
         jobs.append((label, bid_s))
 
+    dep_key_list: List[str] = [stores_key]
+
     def _fetch_currencies(job: Tuple[str, str]) -> Any:
         _lb, bid_s = job
-        return ttx.get_currencies(bid_s, is_main=False, timeout=timeout)
+        cur_key = f"ex:l1:cur:{bid_s}:{lang}"
+        if not refresh:
+            hit = ucc.l1_get_valid(doc, cur_key)
+            if hit is not None:
+                return hit[1]
+        cur = ttx.get_currencies(bid_s, is_main=False, timeout=timeout)
+        ucc.l1_set(
+            doc,
+            cur_key,
+            cur,
+            ttl_sec=ucc.TTL_L1_EXCHANGE_CUR_SEC,
+        )
+        return cur
 
     scored: List[Tuple[str, float, Optional[float], Optional[float], str]] = []
     for (label, bid_s), cur, exc in map_bounded(
@@ -107,6 +196,7 @@ def build_exchange_report_text(
         _fetch_currencies,
         max_workers=parallel_max_workers,
     ):
+        dep_key_list.append(f"ex:l1:cur:{bid_s}:{lang}")
         if exc is not None:
             if isinstance(exc, _TT_FETCH_ERRORS):
                 warnings.append(f"TT курсы {label} ({bid_s}): {exc}")
@@ -144,18 +234,52 @@ def build_exchange_report_text(
 
     lines.append("")
 
-    e24 = _ex24_rub_thb_module()
-    html = e24.load_ex24_main_html(timeout=timeout)
+    e24_key = "ex:l1:e24"
     ex_u = ex_e = ex_c = None
-    if html:
-        ex_u = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(html, "USD")
-        ex_e = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(html, "EUR")
-        ex_c = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(html, "CNY")
-    else:
-        warnings.append("Ex24: не удалось загрузить главную страницу")
+    e24_from_l1 = False
+    if not refresh:
+        hit_e = ucc.l1_get_valid(doc, e24_key)
+        if hit_e is not None:
+            pl = hit_e[1]
+            if isinstance(pl, dict):
+                ex_u = pl.get("usd")
+                ex_e = pl.get("eur")
+                ex_c = pl.get("cny")
+                e24_from_l1 = True
+    if refresh or not e24_from_l1:
+        e24 = _ex24_rub_thb_module()
+        html = e24.load_ex24_main_html(timeout=timeout)
+        if html:
+            ex_u = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(html, "USD")
+            ex_e = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(html, "EUR")
+            ex_c = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(html, "CNY")
+        else:
+            ex_u = ex_e = ex_c = None
+            warnings.append("Ex24: не удалось загрузить главную страницу")
+        ucc.l1_set(
+            doc,
+            e24_key,
+            {"usd": ex_u, "eur": ex_e, "cny": ex_c},
+            ttl_sec=ucc.TTL_L1_EX24_SEC,
+        )
+    dep_key_list.append(e24_key)
 
     lines.append(_format_table_row("Ex24", ex_u, ex_e, ex_c))
     full = "\n".join(lines).rstrip() + "\n"
+    deps_map = _ex_deps_for_keys(doc, dep_key_list)
+    ucc.l2_set(
+        doc,
+        l2_key,
+        ttl_sec=ucc.TTL_L2_EXCHANGE_SEC,
+        text=full,
+        deps=deps_map,
+        payload={"warnings": warnings},
+    )
+    try:
+        ucc.save_unified(doc, unified_path)
+    except OSError as e:
+        warnings.append(f"Не удалось записать unified-кеш: {unified_path} ({e})")
+
     return full, warnings
 
 
@@ -165,12 +289,16 @@ def format_exchange_report_with_warnings(
     lang: str = "ru",
     timeout: float = 28.0,
     parallel_max_workers: Optional[int] = None,
+    refresh: bool = False,
+    unified_allow_stale: bool = False,
 ) -> str:
     body, w = build_exchange_report_text(
         top_n=top_n,
         lang=lang,
         timeout=timeout,
         parallel_max_workers=parallel_max_workers,
+        refresh=refresh,
+        unified_allow_stale=unified_allow_stale,
     )
     if not w:
         return body

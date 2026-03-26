@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import sys
@@ -39,12 +40,15 @@ from env_loader import load_repo_dotenv
 
 load_repo_dotenv(_SCRIPT_DIR)
 
+import rates_unified_cache as ucc
+
 from rates_sources import (
     FetchContext,
     RateRow,
     SourceCategory,
     collect_rows,
     is_cash_category,
+    run_sources_unified,
 )
 from sources.korona.koronapay_tariffs import RUB_MIN_SENDING_FOR_BEST_TIER
 from sources import plugin_by_id, registered_source_ids
@@ -151,6 +155,13 @@ def _row_cache_dict(row: RateRow) -> Dict[str, Any]:
     return d
 
 
+def _summary_rows_from_l2_payload(payload: Dict[str, Any]) -> Tuple[List[RateRow], float, List[str]]:
+    rows = [_row_from_cache_dict(r) for r in payload.get("rows", [])]
+    baseline = float(payload.get("baseline", 0))
+    warnings = list(payload.get("warnings", []))
+    return rows, baseline, warnings
+
+
 def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float, List[str]]:
     key_params = {
         "thb_ref": args.thb_ref,
@@ -162,12 +173,56 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
         "moex_override": args.moex_override,
     }
     cache_key = _cache_key(key_params)
+    allow_stale = bool(getattr(args, "unified_allow_stale", False))
+    digest = ucc.stable_digest(cache_key)
+    l2_key = f"l2:summary:{digest}"
+    from_stale_l2 = False
+    rebuilt = False
+
+    unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
+    doc = ucc.load_unified(unified_path)
+    if ucc.migrate_legacy_summary_cache(
+        doc,
+        legacy_path=args.cache_file,
+        cache_key=cache_key,
+        cache_version=CACHE_VERSION,
+        ttl_sec=ucc.TTL_L2_SUMMARY_SEC,
+    ):
+        try:
+            ucc.save_unified(doc, unified_path)
+        except OSError:
+            pass
 
     rows: List[RateRow] = []
     baseline = 0.0
     warnings: List[str] = []
 
     if not args.refresh:
+        ent = ucc.l2_get(
+            doc,
+            l2_key,
+            ttl_sec=ucc.TTL_L2_SUMMARY_SEC,
+            require_fresh=False,
+            allow_stale=False,
+        )
+        if ent is None and allow_stale:
+            ent = ucc.l2_get(
+                doc,
+                l2_key,
+                ttl_sec=ucc.TTL_L2_SUMMARY_SEC,
+                require_fresh=False,
+                allow_stale=True,
+            )
+            if ent is not None:
+                from_stale_l2 = True
+        if ent is not None:
+            deps = ent.get("deps") or {}
+            if (not deps) or ucc.l2_deps_match(doc, deps):
+                payload = ent.get("payload") or {}
+                if payload.get("rows") is not None:
+                    rows, baseline, warnings = _summary_rows_from_l2_payload(payload)
+
+    if not rows and not args.refresh:
         hit = load_stale_cache(args.cache_file)
         if hit is not None:
             raw, saved = hit
@@ -175,8 +230,10 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
                 rows, baseline = rows_from_cached(raw)
                 warnings = list(raw.get("warnings", []))
 
+    deps: Dict[str, int] = {}
     if not rows:
-        rows, baseline, warnings = collect_rows(
+        rebuilt = True
+        ctx = FetchContext(
             thb_ref=args.thb_ref,
             atm_fee=args.atm_fee,
             korona_small_rub=args.korona_small,
@@ -184,9 +241,37 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
             avosend_rub=args.avosend_rub,
             unionpay_date=args.unionpay_date,
             moex_override=args.moex_override,
+            warnings=[],
+        )
+        rows, baseline, warnings, deps = run_sources_unified(
+            ctx,
+            doc,
+            digest,
+            refresh=args.refresh,
+            sources=None,
+            parallel_max_workers=None,
         )
         bl = next((r.rate for r in rows if r.is_baseline), baseline)
-        save_payload = {
+        buf = io.StringIO()
+        print_summary_text(rows, bl, warnings, buf)
+        text = buf.getvalue()
+        ucc.l2_set(
+            doc,
+            l2_key,
+            ttl_sec=ucc.TTL_L2_SUMMARY_SEC,
+            text=text,
+            deps=deps,
+            payload={
+                "rows": [_row_cache_dict(r) for r in rows],
+                "baseline": bl,
+                "warnings": warnings,
+            },
+        )
+        try:
+            ucc.save_unified(doc, unified_path)
+        except OSError as e:
+            warnings.append(f"Не удалось записать unified-кеш: {unified_path} ({e})")
+        legacy_payload = {
             "v": CACHE_VERSION,
             "saved_unix": time.time(),
             "key": cache_key,
@@ -196,7 +281,7 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
         }
         try:
             args.cache_file.write_text(
-                json.dumps(save_payload, ensure_ascii=False, indent=2),
+                json.dumps(legacy_payload, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
         except OSError:
@@ -205,6 +290,12 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
     baseline = next((r.rate for r in rows if r.is_baseline), baseline)
     if baseline <= 0 and rows:
         baseline = min(r.rate for r in rows)
+
+    setattr(
+        args,
+        "_unified_served_stale_l2",
+        bool(from_stale_l2 and rows and not rebuilt),
+    )
 
     return rows, baseline, warnings
 
@@ -314,7 +405,7 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
     print("  usdt [--refresh] [--json] [--cache-file ПУТЬ]  Отчёт P2P RUB/USDT и USDT/THB (отдельный кеш).")
     print(
-        "  cash [--top N] [--no-banki] [--refresh]     Курсы продажи наличной валюты (РБК+Banki.ru)."
+        "  cash [--top N] [--no-banki] [--refresh]     Курсы продажи наличной валюты (РБК+Banki)."
     )
     print(
         "  cash-thb [--top N] [--no-banki] [--refresh]  То же × TT Exchange → RUB/THB (см. help)."

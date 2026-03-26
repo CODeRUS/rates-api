@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-from __future__ import annotations
 
 import io
+import logging
 import sys
 from pathlib import Path
 
@@ -14,28 +14,74 @@ import exchange_report as exchange_mod  # noqa: E402
 import rates as rates_mod  # noqa: E402
 import usdt_report as usdt_mod  # noqa: E402
 
+logger = logging.getLogger(__name__)
 
-def get_summary_text(*, refresh: bool = False) -> str:
+
+def get_summary_text(
+    *, refresh: bool = False, unified_allow_stale: bool = True
+) -> str:
     """Та же текстовая сводка, что у ``rates.py`` без ``--json``."""
     parser = rates_mod.build_arg_parser(add_help=False)
     argv = ["--refresh"] if refresh else []
     args = parser.parse_args(argv)
+    if not refresh:
+        args.unified_allow_stale = bool(unified_allow_stale)
     rows, baseline, warnings = rates_mod.compute_summary_rows(args)
     buf = io.StringIO()
     rates_mod.print_summary_text(rows, baseline, warnings, buf)
+    get_summary_text._needs_background_refresh = bool(
+        getattr(args, "_unified_served_stale_l2", False)
+        and (not refresh)
+        and unified_allow_stale
+    )
     return buf.getvalue()
 
 
-def get_cash_text(*, refresh: bool = False, top_n: int = 3) -> str:
-    """Тот же текст, что ``rates.py cash``. ``refresh`` зарезервирован."""
-    _ = refresh
-    return cash_mod.format_cash_report_with_warnings(top_n=top_n)
+get_summary_text._needs_background_refresh = False  # type: ignore[attr-defined]
 
 
-def get_cash_thb_text(*, refresh: bool = False, top_n: int = 3) -> str:
-    """Тот же текст, что ``rates.py cash-thb``. ``refresh`` зарезервирован."""
-    _ = refresh
-    return cash_mod.format_cash_thb_report_with_warnings(top_n=top_n)
+def get_cash_text(
+    *,
+    refresh: bool = False,
+    top_n: int = 3,
+    unified_allow_stale: bool = True,
+) -> str:
+    """Тот же текст, что ``rates.py cash``."""
+    allow = (not refresh) and unified_allow_stale
+    text = cash_mod.format_cash_report_with_warnings(
+        top_n=top_n,
+        refresh=refresh,
+        unified_allow_stale=allow,
+    )
+    get_cash_text._needs_background_refresh = bool(
+        (not refresh) and allow and cash_mod._unified_served_stale_l2_plain
+    )
+    return text
+
+
+get_cash_text._needs_background_refresh = False  # type: ignore[attr-defined]
+
+
+def get_cash_thb_text(
+    *,
+    refresh: bool = False,
+    top_n: int = 3,
+    unified_allow_stale: bool = True,
+) -> str:
+    """Тот же текст, что ``rates.py cash-thb``."""
+    allow = (not refresh) and unified_allow_stale
+    text = cash_mod.format_cash_thb_report_with_warnings(
+        top_n=top_n,
+        refresh=refresh,
+        unified_allow_stale=allow,
+    )
+    get_cash_thb_text._needs_background_refresh = bool(
+        (not refresh) and allow and cash_mod._unified_served_stale_l2_thb
+    )
+    return text
+
+
+get_cash_thb_text._needs_background_refresh = False  # type: ignore[attr-defined]
 
 
 def get_exchange_text(
@@ -43,16 +89,59 @@ def get_exchange_text(
     refresh: bool = False,
     top_n: int = 10,
     lang: str = "ru",
+    unified_allow_stale: bool = True,
 ) -> str:
-    """Тот же текст, что ``rates.py exchange``. ``refresh`` зарезервирован."""
-    _ = refresh
-    return exchange_mod.format_exchange_report_with_warnings(top_n=top_n, lang=lang)
+    """Тот же текст, что ``rates.py exchange``."""
+    allow = (not refresh) and unified_allow_stale
+    text = exchange_mod.format_exchange_report_with_warnings(
+        top_n=top_n,
+        lang=lang,
+        refresh=refresh,
+        unified_allow_stale=allow,
+    )
+    get_exchange_text._needs_background_refresh = bool(
+        (not refresh) and allow and exchange_mod._unified_served_stale_l2
+    )
+    return text
 
 
-def get_usdt_text(*, refresh: bool = False) -> str:
-    """Текст отчёта USDT (тот же, что ``rates.py usdt``); кеш не зависит от сводки."""
-    data, warnings = usdt_mod.compute_usdt_report(refresh=refresh)
+get_exchange_text._needs_background_refresh = False  # type: ignore[attr-defined]
+
+
+def get_usdt_text(
+    *, refresh: bool = False, unified_allow_stale: bool = True
+) -> str:
+    """Текст отчёта USDT (тот же, что ``rates.py usdt``)."""
+    allow = (not refresh) and unified_allow_stale
+    data, warnings = usdt_mod.compute_usdt_report(
+        refresh=refresh, unified_allow_stale=allow
+    )
+    get_usdt_text._needs_background_refresh = bool(
+        (not refresh) and allow and usdt_mod._unified_served_stale_l2
+    )
     return usdt_mod.format_usdt_report_text(data, warnings)
+
+
+get_usdt_text._needs_background_refresh = False  # type: ignore[attr-defined]
+
+
+def run_background_unified_refresh(kind: str) -> None:
+    """Синхронное обновление кеша после ответа из stale L2 (вызывать из to_thread)."""
+    try:
+        if kind == "summary":
+            get_summary_text(refresh=False, unified_allow_stale=False)
+        elif kind == "usdt":
+            get_usdt_text(refresh=False, unified_allow_stale=False)
+        elif kind == "cash":
+            get_cash_text(refresh=False, unified_allow_stale=False)
+        elif kind == "cash_thb":
+            get_cash_thb_text(refresh=False, unified_allow_stale=False)
+        elif kind == "exchange":
+            get_exchange_text(refresh=False, unified_allow_stale=False)
+        else:
+            logger.warning("unknown background refresh kind: %s", kind)
+    except Exception:
+        logger.exception("background unified refresh failed (%s)", kind)
 
 
 def split_for_telegram(text: str, limit: int = 4000) -> list[str]:

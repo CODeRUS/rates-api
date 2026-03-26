@@ -14,7 +14,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+
+import rates_unified_cache as uc
 
 from rates_categories import SourceCategory
 from rates_parallel import map_bounded
@@ -152,6 +154,51 @@ def _cash_sort_key(row: RateRow) -> Tuple[int, int, float, float]:
 
 def fmt_money_ru(n: float) -> str:
     return f"{n:,.0f}".replace(",", " ")
+
+
+def quote_to_dict(q: SourceQuote) -> Dict[str, Any]:
+    return {
+        "rate": q.rate,
+        "label": q.label,
+        "note": q.note,
+        "category": q.category.name if q.category else None,
+        "emoji": q.emoji,
+        "compare_to_baseline": q.compare_to_baseline,
+        "cash_rub_seq": q.cash_rub_seq,
+        "merge_key": q.merge_key,
+    }
+
+
+def quote_from_dict(d: Dict[str, Any]) -> SourceQuote:
+    cat: Optional[SourceCategory] = None
+    c = d.get("category")
+    if isinstance(c, str):
+        try:
+            cat = SourceCategory[c]
+        except KeyError:
+            cat = None
+    return SourceQuote(
+        rate=float(d["rate"]),
+        label=str(d.get("label", "")),
+        note=str(d.get("note", "")),
+        category=cat,
+        emoji=d.get("emoji"),
+        compare_to_baseline=bool(d.get("compare_to_baseline", True)),
+        cash_rub_seq=int(d.get("cash_rub_seq", 0)),
+        merge_key=d.get("merge_key"),
+    )
+
+
+def _quotes_payload(quotes: Optional[List[SourceQuote]]) -> List[Dict[str, Any]]:
+    if not quotes:
+        return []
+    return [quote_to_dict(q) for q in quotes]
+
+
+def _quotes_from_payload(data: Any) -> Optional[List[SourceQuote]]:
+    if not isinstance(data, list):
+        return None
+    return [quote_from_dict(x) for x in data if isinstance(x, dict)]
 
 
 # Склейка *_bitkub + *_binanceth при совпадении итогового rate (см. :attr:`SourceQuote.merge_key`).
@@ -352,6 +399,119 @@ def run_sources(
     rows = transfer_ordered + cash_ordered
 
     return rows, baseline, w
+
+
+def run_sources_unified(
+    ctx: FetchContext,
+    doc: Dict[str, Any],
+    ctx_digest: str,
+    *,
+    refresh: bool,
+    sources: Optional[Sequence[RateSource]] = None,
+    parallel_max_workers: Optional[int] = None,
+) -> Tuple[List[RateRow], float, List[str], Dict[str, int]]:
+    """
+    Как :func:`run_sources`, но с заполнением ``doc``[\"l1\"] для каждого ``rate_source``.
+    Возвращает также словарь версий L1 для записи в L2.
+    """
+    seq = list(sources) if sources is not None else list(DEFAULT_SOURCES)
+    if not seq or not seq[0].is_baseline:
+        raise ValueError("Первый источник должен быть Forex (is_baseline=True)")
+    w = ctx.warnings
+    rows: List[RateRow] = []
+
+    def worker(src: RateSource) -> _SourceFetchPack:
+        l1_key = f"rs:{src.id}:{ctx_digest}"
+        if not refresh:
+            hit = uc.l1_get_valid(doc, l1_key)
+            if hit is not None:
+                _ver, payload = hit
+                quotes = _quotes_from_payload(payload)
+                return _SourceFetchPack(quotes, None, [])
+        lc = replace(ctx, warnings=[])
+        try:
+            q = src.fetch(lc)
+        except Exception as e:
+            return _SourceFetchPack(None, e, list(lc.warnings))
+        uc.l1_set(doc, l1_key, _quotes_payload(q), ttl_sec=uc.TTL_L1_RATE_SOURCE_SEC)
+        return _SourceFetchPack(q, None, list(lc.warnings))
+
+    for src, pack, thr_exc in map_bounded(
+        seq, worker, max_workers=parallel_max_workers
+    ):
+        if thr_exc is not None:
+            raise thr_exc
+        assert pack is not None
+        w.extend(pack.local_warnings)
+        if pack.err:
+            _warn_source(src, pack.err, w)
+            continue
+        quotes = pack.quotes
+        if not quotes:
+            continue
+        for q in quotes:
+            cat = q.category if q.category is not None else src.category
+            em = q.emoji if q.emoji is not None else src.emoji
+            is_bl = src.is_baseline and cat == SourceCategory.TRANSFER
+            rows.append(
+                RateRow(
+                    rate=q.rate,
+                    label=q.label,
+                    emoji=em,
+                    note=q.note,
+                    is_baseline=is_bl,
+                    category=cat,
+                    compare_to_baseline=q.compare_to_baseline,
+                    cash_rub_seq=q.cash_rub_seq,
+                    merge_key=q.merge_key,
+                )
+            )
+
+    rows = _merge_matching_bitkub_binanceth_rows(rows)
+
+    forex_rate: Optional[float] = None
+    for r in rows:
+        if r.is_baseline:
+            forex_rate = r.rate
+            break
+    baseline = forex_rate if forex_rate is not None and forex_rate > 0 else 2.5
+
+    dedup: Dict[Tuple[str, str, str, SourceCategory, bool, int], RateRow] = {}
+    for row in rows:
+        key = (
+            row.label,
+            row.note,
+            row.emoji,
+            row.category,
+            row.compare_to_baseline,
+            row.cash_rub_seq,
+        )
+        if key not in dedup or row.rate < dedup[key].rate:
+            dedup[key] = row
+    rows = list(dedup.values())
+
+    transfer = [r for r in rows if r.category == SourceCategory.TRANSFER]
+    cash = [r for r in rows if is_cash_category(r.category)]
+
+    baseline_rows = [r for r in transfer if r.is_baseline]
+    transfer_other = sorted(
+        [r for r in transfer if not r.is_baseline],
+        key=lambda x: x.rate,
+    )
+    transfer_ordered = baseline_rows + transfer_other
+
+    cash_ordered = sorted(cash, key=_cash_sort_key)
+
+    rows = transfer_ordered + cash_ordered
+
+    deps: Dict[str, int] = {}
+    for src in seq:
+        l1_key = f"rs:{src.id}:{ctx_digest}"
+        ent = doc.get("l1", {}).get(l1_key)
+        if isinstance(ent, dict) and "version" in ent:
+            deps[l1_key] = int(ent["version"])
+
+    return rows, baseline, w, deps
 
 
 def collect_rows(

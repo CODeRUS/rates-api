@@ -45,6 +45,7 @@ from bot.summary_adapter import (
     get_exchange_text,
     get_summary_text,
     get_usdt_text,
+    run_background_unified_refresh,
     split_for_telegram,
 )
 
@@ -149,6 +150,10 @@ async def _main_async() -> None:
             await status_msg.edit(chunks[0])
             for chunk in chunks[1:]:
                 await event.respond(chunk)
+            if getattr(get_summary_text, "_needs_background_refresh", False):
+                asyncio.create_task(
+                    asyncio.to_thread(run_background_unified_refresh, "summary")
+                )
         finally:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
@@ -191,6 +196,10 @@ async def _main_async() -> None:
             await status_msg.edit(chunks[0])
             for chunk in chunks[1:]:
                 await event.respond(chunk)
+            if getattr(get_cash_text, "_needs_background_refresh", False):
+                asyncio.create_task(
+                    asyncio.to_thread(run_background_unified_refresh, "cash")
+                )
         finally:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
@@ -235,6 +244,10 @@ async def _main_async() -> None:
             await status_msg.edit(chunks[0])
             for chunk in chunks[1:]:
                 await event.respond(chunk)
+            if getattr(get_cash_thb_text, "_needs_background_refresh", False):
+                asyncio.create_task(
+                    asyncio.to_thread(run_background_unified_refresh, "cash_thb")
+                )
         finally:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
@@ -286,6 +299,10 @@ async def _main_async() -> None:
             await status_msg.edit(chunks[0])
             for chunk in chunks[1:]:
                 await event.respond(chunk)
+            if getattr(get_exchange_text, "_needs_background_refresh", False):
+                asyncio.create_task(
+                    asyncio.to_thread(run_background_unified_refresh, "exchange")
+                )
         finally:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
@@ -332,6 +349,13 @@ async def _main_async() -> None:
             await status_msg.edit(chunks[0])
             for chunk in chunks[1:]:
                 await event.respond(chunk)
+            if (
+                not refresh
+                and getattr(get_usdt_text, "_needs_background_refresh", False)
+            ):
+                asyncio.create_task(
+                    asyncio.to_thread(run_background_unified_refresh, "usdt")
+                )
         finally:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
@@ -342,7 +366,7 @@ async def _main_async() -> None:
             "Команды:\n"
             "/rates — сводка RUB/THB\n"
             "/usdt — P2P RUB/USDT и USDT/THB\n"
-            "/cash — курсы продажи наличной валюты (РБК+Banki.ru)\n"
+            "/cash — курсы продажи наличной валюты (РБК+Banki)\n"
             "/cash_thb — те же топы × TT Exchange (RUB/THB)\n"
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB и Ex24 (опц. число: /exchange 5)"
         )
