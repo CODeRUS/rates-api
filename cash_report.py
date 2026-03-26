@@ -64,13 +64,19 @@ def _cash_cell_jobs(locs: Tuple[Tuple[str, str, Optional[int]], ...]) -> List[_C
     return jobs
 
 
-def _cash_cell_l1_key(job: _CashCellJob, *, use_banki: bool) -> str:
+def _cash_cell_l1_key(
+    job: _CashCellJob, *, use_banki: bool, chain_thb: bool = False
+) -> str:
+    """L1 ячейки: plain ``cash`` и цепочка ➔THB — разные ключи (разный формат section)."""
     fiat_code, cur_id, _city_label, banki_key, rbc_id = job
     rid = "x" if rbc_id is None else str(int(rbc_id))
-    return (
-        f"cash:l1:{fiat_code}:{banki_key}:{rid}:{int(cur_id)}:"
+    core = (
+        f"{fiat_code}:{banki_key}:{rid}:{int(cur_id)}:"
         f"b{1 if use_banki else 0}"
     )
+    if chain_thb:
+        return f"cash_thb:l1:cell:v2:{core}"
+    return f"cash:l1:{core}"
 
 
 def _cash_l2_key(*, kind: str, top_n: int, use_banki: bool, timeout: float) -> str:
@@ -80,6 +86,9 @@ def _cash_l2_key(*, kind: str, top_n: int, use_banki: bool, timeout: float) -> s
         "use_banki": bool(use_banki),
         "timeout": round(float(timeout), 3),
     }
+    # Отдельные L1-ключи ячеек для thb (см. chain_thb); метка сбрасывает старый L2 с телом как у plain cash.
+    if kind == "thb":
+        ident["cell_l1_ns"] = "cash_thb_cell_v2"
     return f"l2:cash:{ucc.stable_digest(ident)}"
 
 
@@ -128,7 +137,6 @@ def _fetch_cash_thb_cell(
     job: _CashCellJob,
     *,
     thb_map: dict,
-    tt_label: str,
     top_n: int,
     timeout: float,
     use_banki: bool,
@@ -156,15 +164,15 @@ def _fetch_cash_thb_cell(
         for o in offers:
             implied = o.sell / thb_per
             section.append(
-                f"{o.sell:.2f} | {implied:.2f} | {o.bank_display} "
-                f"({o.sources_label()}) | {tt_label}"
+                f"{o.sell:.2f} | {implied:.2f} | "
+                f"{o.bank_display} ({o.sources_label()})"
             )
         section.append("")
         return section, wcell
     for o in offers:
         section.append(
             f"{o.sell:.2f} | — | {o.bank_display} "
-            f"({o.sources_label()}) | (нет THB/{fiat_code} у TT)"
+            f"({o.sources_label()}) (нет THB/{fiat_code} у TT)"
         )
     section.append("")
     wcell.append(f"Нет TT {fiat_code}: {city_label}")
@@ -291,7 +299,7 @@ def build_cash_thb_report_text(
 ) -> Tuple[str, List[str]]:
     """
     Цепочка: продажа валюты у банка (RUB/ед.) × TT → RUB за 1 THB.
-    В каждой строке: курс продажи в источнике | подразумеваемый RUB/THB | банк | TT.
+    В каждой строке: курс продажи в источнике | подразумеваемый RUB/THB | банк (источник).
     """
     global _unified_served_stale_l2_thb
 
@@ -358,10 +366,8 @@ def build_cash_thb_report_text(
             "Нет курсов USD/EUR/CNY у TT Exchange — цепочки ➔ THB не посчитать."
         )
 
-    tt_label = f"TT {tt_branch}" if (tt_branch or "").strip() else "TT Exchange"
-
     lines: List[str] = [
-        "Наличные ➔ THB: продажа (RUB/ед.) | RUB/THB | банк (источник) | обменник",
+        "Наличные ➔ THB: продажа (RUB/ед.) | RUB/THB | банк (источник)",
         "",
     ]
 
@@ -369,7 +375,7 @@ def build_cash_thb_report_text(
     jobs = _cash_cell_jobs(locs)
 
     def _work_thb(job: _CashCellJob) -> Tuple[List[str], List[str]]:
-        k = _cash_cell_l1_key(job, use_banki=use_banki)
+        k = _cash_cell_l1_key(job, use_banki=use_banki, chain_thb=True)
         if not refresh:
             hit = ucc.l1_get_valid(doc, k)
             if hit is not None:
@@ -381,7 +387,6 @@ def build_cash_thb_report_text(
         sec, wcell = _fetch_cash_thb_cell(
             job,
             thb_map=thb_map,
-            tt_label=tt_label,
             top_n=top_n,
             timeout=timeout,
             use_banki=use_banki,
@@ -406,7 +411,7 @@ def build_cash_thb_report_text(
 
     full = "\n".join(lines).rstrip() + "\n"
     dep_keys = [tt_l1_key] + [
-        _cash_cell_l1_key(j, use_banki=use_banki) for j in jobs
+        _cash_cell_l1_key(j, use_banki=use_banki, chain_thb=True) for j in jobs
     ]
     deps_map = _deps_for_l1_keys(doc, dep_keys)
     ucc.l2_set(
@@ -481,7 +486,7 @@ def cash_subcommand_help() -> str:
 def cash_thb_subcommand_help() -> str:
     return (
         "cash-thb — те же топы по продажи × курс TT Exchange → RUB за 1 THB.\n"
-        "Формат строки: продажа (RUB/ед.) | RUB/THB | банк (источник) | TT.\n"
+        "Формат строки: продажа (RUB/ед.) | RUB/THB | банк (источник).\n"
         "  cash-thb [--top N] [--no-banki] [--refresh]   как у cash.\n"
         "  Параллелизм: RATES_PARALLEL_MAX_WORKERS (после одного запроса курсов TT)."
     )
