@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from rates_http import urlopen_retriable
 
+from sources.rbc_bank_title import rbc_short_bank_name
+
 RBC_CASH_URL = "https://cash.rbc.ru/cash/json/cash_rates_with_volumes/"
 USER_AGENT = "rates-rbc-cash/1.0 (python)"
 
@@ -77,3 +79,57 @@ def min_sell_rub_per_unit(banks: Any) -> Tuple[Optional[float], str]:
             best = v
             best_name = str(b.get("name") or "").strip()
     return best, best_name
+
+
+def bank_sell_rows(banks: Any) -> List[Tuple[float, str]]:
+    """
+    Все отделения с валидным ``rate.sell``, сортировка по **возрастанию** sell
+    (меньше RUB за единицу — выгоднее покупка валюты у банка).
+    """
+    if not isinstance(banks, list):
+        return []
+    rows: List[Tuple[float, str]] = []
+    for b in banks:
+        if not isinstance(b, dict):
+            continue
+        r = b.get("rate")
+        if not isinstance(r, dict):
+            continue
+        s = r.get("sell")
+        if s is None:
+            continue
+        try:
+            v = float(str(s).replace(",", ".").replace(" ", ""))
+        except (TypeError, ValueError):
+            continue
+        if v <= 0:
+            continue
+        rows.append((v, str(b.get("name") or "").strip()))
+    rows.sort(key=lambda t: (t[0], t[1]))
+    return rows
+
+
+def top_sell_offers(
+    banks: Any,
+    n: int = 3,
+) -> List[Tuple[float, str, str]]:
+    """
+    До ``n`` уникальных пар (курс, короткое имя банка) в порядке сортировки по sell:
+    ``(sell, raw_office_name, short_bank)``.
+
+    Несколько отделений одного банка с одним и тем же ``sell`` дают одну строку
+    (берётся первое отделение в порядке сортировки по ``name``).
+    """
+    out: List[Tuple[float, str, str]] = []
+    seen: set[Tuple[float, str]] = set()
+    for sell, raw in bank_sell_rows(banks):
+        short = rbc_short_bank_name(raw)
+        label = (short or raw or "—").strip()
+        key = (round(sell, 6), label.casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((sell, raw, label))
+        if len(out) >= n:
+            break
+    return out

@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
-from .rbc_cash_json import fetch_cash_rates_json, min_sell_rub_per_unit
+from sources.rbc_cash_json import fetch_cash_rates_json, min_sell_rub_per_unit
 
 SOURCE_ID = "rbc_ttexchange"
 EMOJI = "•"

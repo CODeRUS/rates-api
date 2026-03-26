@@ -54,7 +54,7 @@ CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates
 CACHE_TTL_SEC = 30 * 60
 CACHE_VERSION = 32
 
-_RESERVED = frozenset({"sources", "save", "usdt", "env-status"})
+_RESERVED = frozenset({"sources", "save", "usdt", "env-status", "cash"})
 
 
 def _cache_key(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -311,6 +311,7 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print("  env-status           Файл .env и типичные переменные (без значений).")
     print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
     print("  usdt [--refresh] [--json] [--cache-file ПУТЬ]  Отчёт P2P RUB/USDT и USDT/THB (отдельный кеш).")
+    print("  cash [--top N] [--refresh]  Наличные РБК (Москва, СПб) и пары ➔ THB через TT Exchange.")
     print("  <source_id> summary [--refresh]  Только этот источник (те же --korona-*, --avosend-rub, …).")
     print("  <source_id> --refresh          То же, если других аргументов у id нет.")
     print("  <source_id> [args]   Иные подкоманды источника (см. python ... <id> --help).")
@@ -349,6 +350,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
         if len(rest) >= 1 and rest[0] == "save":
             print("save <файл> — записать сводку в файл (опции --json, --refresh и др. как у обычного запуска).")
+            return 0
+        if len(rest) >= 1 and rest[0] == "cash":
+            import cash_report as _cr
+
+            print(_cr.cash_subcommand_help())
             return 0
         if len(rest) >= 1 and rest[0] == "usdt":
             import usdt_report as _ur
@@ -420,6 +426,16 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 1
         return 0
 
+    if head == "cash":
+        import cash_report as cr
+
+        if any(x in ("-h", "--help") for x in rest[1:]):
+            print(cr.cash_subcommand_help())
+            return 0
+        tail = rest[1:]
+        err = cr.main_cash_cli(tail)
+        return err
+
     if head == "usdt":
         import usdt_report as ur
 
@@ -472,7 +488,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2
 
     print(f"Неизвестная команда или источник: {head!r}", file=sys.stderr)
-    print("Подсказка: --help, sources, save <файл>, usdt, или id источника.", file=sys.stderr)
+    print("Подсказка: --help, sources, save <файл>, usdt, cash, или id источника.", file=sys.stderr)
     return 2
 
 

@@ -290,7 +290,7 @@ class TestRatesSources(unittest.TestCase):
         self.assertEqual(labels, ["Low", "High", "M RBC"])
 
     def test_parse_rbc_min_sell(self):
-        from sources.rbc_ttexchange.rbc_cash_json import min_sell_rub_per_unit
+        from sources.rbc_cash_json import min_sell_rub_per_unit
 
         banks = [
             {"name": "A", "rate": {"sell": "82.0"}},

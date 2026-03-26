@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Telegram-бот (Telethon) для команды /rates.
+Telegram-бот (Telethon): /rates, /usdt, /cash.
 
 Переменные можно задать в файле ``.env`` в корне репозитория (подхватывается при старте).
 
@@ -15,7 +15,7 @@ Telegram-бот (Telethon) для команды /rates.
 
 Секреты не коммитьте. Файл сессии: ``bot/rates_bot.session`` (в .gitignore).
 Опционально ``BOT_ADMIN_ID``: ``/refresh`` — сброс кеша сводки; ``/refresh usdt`` — сброс кеша отчёта USDT.
-Опционально ``BOT_FETCH_TIMEOUT_SEC`` (по умолчанию 180): таймаут сборки сводки/USDT в потоке; иначе зависший источник оставлял бы чат «занятым».
+Опционально ``BOT_FETCH_TIMEOUT_SEC`` (по умолчанию 180): таймаут сборки сводки/USDT/cash в потоке.
 """
 from __future__ import annotations
 
@@ -39,7 +39,12 @@ load_repo_dotenv(_ROOT)
 
 from telethon import TelegramClient, events
 
-from bot.summary_adapter import get_summary_text, get_usdt_text, split_for_telegram
+from bot.summary_adapter import (
+    get_cash_text,
+    get_summary_text,
+    get_usdt_text,
+    split_for_telegram,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +115,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates или /usdt). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt или /cash). Дождитесь результата."
             )
             return
         try:
@@ -146,6 +151,48 @@ async def _main_async() -> None:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
 
+    async def _send_cash_report(event: events.NewMessage.Event) -> None:
+        chat_id = event.chat_id
+        async with rates_busy_guard:
+            if chat_id in rates_busy_chats:
+                busy = True
+            else:
+                busy = False
+                rates_busy_chats.add(chat_id)
+        if busy:
+            await event.respond(
+                "Уже выполняется запрос (/rates, /usdt или /cash). Дождитесь результата."
+            )
+            return
+        try:
+            status_msg = await event.respond("Идёт получение cash…")
+            try:
+                text = await asyncio.wait_for(
+                    asyncio.to_thread(get_cash_text, refresh=False, top_n=3),
+                    timeout=fetch_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error("get_cash_text timed out after %.0fs", fetch_timeout)
+                await status_msg.edit(
+                    f"Таймаут {fetch_timeout:.0f} с при сборе cash. "
+                    "Проверьте сеть или задайте BOT_FETCH_TIMEOUT_SEC."
+                )
+                return
+            except Exception:
+                logger.exception("get_cash_text failed")
+                await status_msg.edit("Не удалось собрать cash. Попробуйте позже.")
+                return
+            chunks = split_for_telegram(text)
+            if not chunks or (len(chunks) == 1 and not chunks[0].strip()):
+                await status_msg.edit("(пустой отчёт cash)")
+                return
+            await status_msg.edit(chunks[0])
+            for chunk in chunks[1:]:
+                await event.respond(chunk)
+        finally:
+            async with rates_busy_guard:
+                rates_busy_chats.discard(chat_id)
+
     async def _send_usdt_report(
         event: events.NewMessage.Event, *, refresh: bool
     ) -> None:
@@ -158,7 +205,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates или /usdt). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt или /cash). Дождитесь результата."
             )
             return
         try:
@@ -197,8 +244,13 @@ async def _main_async() -> None:
         await event.respond(
             "Команды:\n"
             "/rates — сводка RUB/THB\n"
-            "/usdt — P2P RUB/USDT и USDT/THB"
+            "/usdt — P2P RUB/USDT и USDT/THB\n"
+            "/cash — наличные РБК (Москва, СПб) и пары ➔ THB через TT Exchange"
         )
+
+    @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?$"))
+    async def on_cash(event: events.NewMessage.Event) -> None:
+        await _send_cash_report(event)
 
     @client.on(events.NewMessage(pattern=r"(?i)^/usdt(?:@\S+)?$"))
     async def on_usdt(event: events.NewMessage.Event) -> None:

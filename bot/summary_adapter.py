@@ -9,6 +9,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+import cash_report as cash_mod  # noqa: E402
 import rates as rates_mod  # noqa: E402
 import usdt_report as usdt_mod  # noqa: E402
 
@@ -22,6 +23,12 @@ def get_summary_text(*, refresh: bool = False) -> str:
     buf = io.StringIO()
     rates_mod.print_summary_text(rows, baseline, warnings, buf)
     return buf.getvalue()
+
+
+def get_cash_text(*, refresh: bool = False, top_n: int = 3) -> str:
+    """Отчёт РБК + TT (тот же текст, что ``rates.py cash``). ``refresh`` зарезервирован."""
+    _ = refresh
+    return cash_mod.format_cash_report_with_warnings(top_n=top_n)
 
 
 def get_usdt_text(*, refresh: bool = False) -> str:
