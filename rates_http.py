@@ -101,6 +101,13 @@ def is_retryable_exception(exc: BaseException) -> bool:
     for t in _requests_retry_types():
         if isinstance(exc, t):
             return True
+    try:
+        from curl_cffi.curl import CurlError
+    except ImportError:
+        pass
+    else:
+        if isinstance(exc, CurlError):
+            return True
     if isinstance(exc, (ConnectionResetError, BrokenPipeError, TimeoutError)):
         return True
     if isinstance(exc, OSError):

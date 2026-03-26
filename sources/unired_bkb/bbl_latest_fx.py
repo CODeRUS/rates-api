@@ -1,21 +1,35 @@
 # -*- coding: utf-8 -*-
-"""Bangkok Bank: GetLatestfxrates — TT для номинала USD50 (THB за 1 USD)."""
+"""Bangkok Bank: GetLatestfxrates — TT для номинала USD50 (THB за 1 USD).
+
+По умолчанию используется **curl_cffi** (если установлен): тот же подход, что у Bybit — иначе urllib из Docker
+часто получает ``The read operation timed out``. Принудительно stdlib: ``BANGKOKBANK_HTTP_CLIENT=urllib``.
+"""
 from __future__ import annotations
 
 import json
+import logging
 import os
 import ssl
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional
 
-from rates_http import backoff_base_sec, max_attempts, urlopen_retriable
+from rates_http import (
+    RETRYABLE_HTTP_CODES,
+    RetryableHttpStatus,
+    backoff_base_sec,
+    call_retriable,
+    max_attempts,
+    urlopen_retriable,
+)
+
+logger = logging.getLogger(__name__)
 
 BBL_LATEST_URL = "https://www.bangkokbank.com/api/exchangerateservice/GetLatestfxrates"
 
 # API с «дальних» сетей и из Docker часто не укладывается в короткий read-timeout (ответ JSON большой).
 _BBL_TIMEOUT_DEFAULT_HOST = 75.0
-_BBL_TIMEOUT_DEFAULT_DOCKER = 150.0
+_BBL_TIMEOUT_DEFAULT_DOCKER = 240.0
 _BBL_ATTEMPTS_MIN = 5
 _BBL_ATTEMPTS_DOCKER_FLOOR = 8
 
@@ -25,7 +39,7 @@ def _in_docker() -> bool:
 
 
 def bbl_http_timeout_sec() -> float:
-    """Таймаут чтения ответа (сек). ``BANGKOKBANK_HTTP_TIMEOUT_SEC``; в Docker — 150, если не задано."""
+    """Таймаут чтения ответа (сек). ``BANGKOKBANK_HTTP_TIMEOUT_SEC``; в Docker — 240, если не задано."""
     raw = (os.environ.get("BANGKOKBANK_HTTP_TIMEOUT_SEC") or "").strip()
     if raw:
         try:
@@ -120,18 +134,24 @@ def parse_usd50_tt_thb(rows: List[Dict[str, Any]]) -> Optional[float]:
     return None
 
 
-def fetch_latest_rates_json(
-    *,
-    subscription_key: Optional[str] = None,
-    timeout: Optional[float] = None,
-) -> Any:
-    key = (subscription_key or subscription_key_from_env()).strip()
-    if not key:
-        raise RuntimeError("Нет ключа Bangkok Bank (BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY)")
-    t = float(timeout) if timeout is not None else bbl_http_timeout_sec()
+def _bbl_prefer_curl_cffi() -> bool:
+    """``curl_cffi`` даёт браузерный TLS (как у Bybit); urllib из Docker часто ловит read timeout к BBL."""
+    if (os.environ.get("BANGKOKBANK_HTTP_CLIENT") or "").strip().lower() in (
+        "urllib",
+        "stdlib",
+    ):
+        return False
+    try:
+        import curl_cffi  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _fetch_latest_rates_json_urllib(subscription_key: str, t: float) -> Any:
     req = urllib.request.Request(
         BBL_LATEST_URL,
-        headers=bbl_api_headers(subscription_key=key),
+        headers=bbl_api_headers(subscription_key=subscription_key),
         method="GET",
     )
     ctx = ssl.create_default_context()
@@ -144,6 +164,69 @@ def fetch_latest_rates_json(
     ) as resp:
         raw = resp.read().decode(resp.headers.get_content_charset() or "utf-8")
     return json.loads(raw)
+
+
+def _fetch_latest_rates_json_curl_cffi(subscription_key: str, t: float) -> Any:
+    from curl_cffi import requests as cr  # type: ignore[import-not-found]
+
+    headers = bbl_api_headers(subscription_key=subscription_key)
+    connect_t = min(60.0, max(15.0, t * 0.35))
+    timeout_pair = (connect_t, t)
+
+    raw_imp = (os.environ.get("BANGKOKBANK_CURL_IMPERSONATE") or "").strip()
+    if raw_imp:
+        imps = [x.strip() for x in raw_imp.split(",") if x.strip()]
+    else:
+        imps = ["chrome124", "chrome131", "chrome120"]
+
+    last: Optional[BaseException] = None
+    for imp in imps:
+
+        def one_shot(impersonate: str = imp) -> Any:
+            r = cr.get(
+                BBL_LATEST_URL,
+                headers=headers,
+                timeout=timeout_pair,
+                impersonate=impersonate,
+            )
+            if r.status_code in RETRYABLE_HTTP_CODES:
+                raise RetryableHttpStatus(r.status_code)
+            if r.status_code != 200:
+                raise RuntimeError(
+                    f"Bangkok Bank HTTP {r.status_code}: {(r.text or '')[:400]!r}"
+                )
+            return json.loads(r.text)
+
+        try:
+            return call_retriable(
+                one_shot,
+                max_attempts_override=bbl_urlopen_max_attempts(),
+                backoff_override=bbl_urlopen_backoff_base(),
+            )
+        except Exception as e:
+            last = e
+            logger.info("Bangkok Bank curl_cffi impersonate=%r не удалось: %s", imp, e)
+            continue
+    if last:
+        raise last
+    raise RuntimeError("Bangkok Bank curl_cffi: пустой BANGKOKBANK_CURL_IMPERSONATE")
+
+
+def fetch_latest_rates_json(
+    *,
+    subscription_key: Optional[str] = None,
+    timeout: Optional[float] = None,
+) -> Any:
+    key = (subscription_key or subscription_key_from_env()).strip()
+    if not key:
+        raise RuntimeError("Нет ключа Bangkok Bank (BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY)")
+    t = float(timeout) if timeout is not None else bbl_http_timeout_sec()
+    if _bbl_prefer_curl_cffi():
+        try:
+            return _fetch_latest_rates_json_curl_cffi(key, t)
+        except Exception as e:
+            logger.warning("Bangkok Bank: curl_cffi ошибка, fallback urllib: %s", e)
+    return _fetch_latest_rates_json_urllib(key, t)
 
 
 def fetch_usd50_tt_thb(

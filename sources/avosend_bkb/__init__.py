@@ -87,7 +87,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     return [
         SourceQuote(
             rate,
-            "Avosend RUB → карта USD → Bank",
+            "Avosend RUB → USD → Bank",
             note=note,
         )
     ]
