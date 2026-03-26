@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, List, Optional
 from rates_categories import SourceCategory
 
 SOURCE_ID = "avosend_bkb"
-EMOJI = "💳"
+EMOJI = "💱"
 IS_BASELINE = False
 CATEGORY = SourceCategory.TRANSFER
 
