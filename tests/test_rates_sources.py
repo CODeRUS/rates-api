@@ -245,7 +245,7 @@ class TestRatesSources(unittest.TestCase):
         self.assertEqual(a.emoji, "🤑")
         self.assertEqual(b.emoji, "•")
 
-    def test_cash_rub_seq_orders_rbc_pairs_after_normal(self):
+    def test_cash_rub_sorted_by_rate_asc_rbc_pairs_mixed_in(self):
         forex = RateSource(
             "forex",
             "📈",
@@ -287,7 +287,7 @@ class TestRatesSources(unittest.TestCase):
         rows, _, _ = run_sources(ctx, [forex, low, high, rbc])
         cash_rub = [r for r in rows if r.category == SourceCategory.CASH_RUB]
         labels = [r.label for r in cash_rub]
-        self.assertEqual(labels, ["Low", "High", "M RBC"])
+        self.assertEqual(labels, ["Low", "M RBC", "High"])
 
     def test_parse_rbc_min_sell(self):
         from sources.rbc_cash_json import min_sell_rub_per_unit

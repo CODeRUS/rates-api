@@ -136,16 +136,14 @@ def _cash_sort_key(row: RateRow) -> Tuple[int, int, float, float]:
     """
     Наличные: блоки по :data:`CASH_CATEGORIES_ORDER` (RUB → USD → EUR → CNY).
 
-    * ``CASH_RUB`` (RUB за 1 THB) — по возрастанию ``rate`` среди ``cash_rub_seq == 0``;
-      строки с ненулевым ``cash_rub_seq`` (пары РБК×TT) — после них, порядок по ``cash_rub_seq``.
+    * ``CASH_RUB`` (RUB за 1 THB) — все строки по возрастанию ``rate``; при равном курсе —
+      по ``cash_rub_seq`` (пары РБК×TT стабильно между собой).
     * ``CASH_USD`` / ``CASH_EUR`` / ``CASH_CNY`` (THB за 1 единицу) — по убыванию ``rate``.
     """
     if row.category in CASH_CATEGORIES_ORDER:
         cat_i = CASH_CATEGORIES_ORDER.index(row.category)
         if row.category == SourceCategory.CASH_RUB:
-            if row.cash_rub_seq == 0:
-                return (0, cat_i, 0.0, row.rate)
-            return (0, cat_i, float(row.cash_rub_seq), 0.0)
+            return (0, cat_i, row.rate, float(row.cash_rub_seq))
         if row.category in _CASH_THB_PER_UNIT_DESC:
             return (0, cat_i, 0.0, -row.rate)
         return (0, cat_i, 0.0, row.rate)
