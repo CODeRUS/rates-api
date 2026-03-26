@@ -263,6 +263,43 @@ def _ex24_cash_buy_patterns(fiat: str) -> Tuple[re.Pattern, re.Pattern]:
     )
 
 
+def _parse_ex24_cash_fiat_max_buy_across_denoms(html: str, fiat: str) -> Optional[float]:
+    """
+    Если в витрине ex24 ключ для fiat приходит не как ровно ``"EUR"``,
+    а в виде деноминаций вроде ``"EUR 100"``, берём максимум ``buy`` по всем
+    ключам, начинающимся с ``fiat``.
+    """
+    if not html or not fiat:
+        return None
+
+    f = re.escape(fiat)
+    esc = re.compile(rf'\\"({f}[^\\]*?)\\":\{{\\"buy\\":\\"([0-9.]+)\\"')
+    plain = re.compile(rf'"({f}[^"]*?)"\s*:\s*\{{\s*"buy"\s*:\s*"([0-9.]+)"')
+
+    best: Optional[float] = None
+    for m in esc.finditer(html):
+        try:
+            v = float(m.group(2))
+        except (TypeError, ValueError):
+            continue
+        if v <= 0:
+            continue
+        if best is None or v > best:
+            best = v
+
+    for m in plain.finditer(html):
+        try:
+            v = float(m.group(2))
+        except (TypeError, ValueError):
+            continue
+        if v <= 0:
+            continue
+        if best is None or v > best:
+            best = v
+
+    return best
+
+
 def parse_ex24_cash_fiat_thb_per_fiat_unit(html: str, fiat: str) -> Optional[float]:
     """
     С главной ex24: поле ``buy`` в блоке наличных для ``fiat`` — сколько THB за 1 единицу этой валюты.
@@ -276,6 +313,9 @@ def parse_ex24_cash_fiat_thb_per_fiat_unit(html: str, fiat: str) -> Optional[flo
     if not m:
         m = plain.search(html)
     if not m:
+        # Иногда ex24 даёт деноминации вида "EUR 100" вместо ровно "EUR".
+        if fiat == "EUR":
+            return _parse_ex24_cash_fiat_max_buy_across_denoms(html, fiat)
         return None
     thb_per_unit = float(m.group(1))
     if thb_per_unit <= 0:

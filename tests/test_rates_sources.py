@@ -46,6 +46,7 @@ class TestRatesSources(unittest.TestCase):
                 "rbc_ttexchange",
                 "tbank",
                 "unired_bkb",
+                "userbot_cash",
             ],
         )
         cats = {s.id: s.category for s in rs.DEFAULT_SOURCES}
@@ -325,6 +326,17 @@ class TestRatesSources(unittest.TestCase):
         from sources.ex24.ex24_rub_thb import parse_ex24_cash_fiat_thb_per_fiat_unit
 
         frag = 'x\\"EUR\\":{\\"buy\\":\\"40.0\\",\\"sell\\":\\"41\\"y'
+        self.assertAlmostEqual(parse_ex24_cash_fiat_thb_per_fiat_unit(frag, "EUR"), 40.0)
+
+    def test_parse_ex24_cash_eur_thb_per_eur_fallback_denoms(self):
+        from sources.ex24.ex24_rub_thb import parse_ex24_cash_fiat_thb_per_fiat_unit
+
+        # Симуляция случая, когда ex24 отдаёт деноминации вместо ровно "EUR".
+        frag = (
+            'tv\\":{\\"EUR 50\\":{\\"buy\\":\\"39.0\\",'
+            '\\"EUR 100\\":{\\"buy\\":\\"40.0\\",'
+            '\\"EUR 200\\":{\\"buy\\":\\"38.0\\"'
+        )
         self.assertAlmostEqual(parse_ex24_cash_fiat_thb_per_fiat_unit(frag, "EUR"), 40.0)
 
     def test_ttexchange_eur_all_tiers_same_rate_omits_denoms(self):

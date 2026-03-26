@@ -49,6 +49,14 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
     if not isinstance(l1, dict):
         return None
     out: List[SourceQuote] = []
+    # В `rates.py summary` скрываем Telegram-cash источники именно из блоков:
+    # "Наличные USD ➔ THB", "Наличные EUR ➔ THB", "Наличные CNY ➔ THB".
+    # Команда `cash` (и /cash у бота) читает unified-cache напрямую и не зависит от этого плагина.
+    hidden_cash_thb_cats = {
+        SourceCategory.CASH_USD,
+        SourceCategory.CASH_EUR,
+        SourceCategory.CASH_CNY,
+    }
     for key in sorted(l1.keys()):
         if not str(key).startswith("chatcash:"):
             continue
@@ -63,6 +71,8 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
                 continue
             c = _cat(str(row.get("category") or ""))
             if c is None:
+                continue
+            if c in hidden_cash_thb_cats:
                 continue
             try:
                 rate = float(row.get("rate") or 0)
