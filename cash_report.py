@@ -74,14 +74,18 @@ def _cash_cell_jobs(locs: Tuple[Tuple[str, str, Optional[int]], ...]) -> List[_C
 
 
 def _cash_cell_l1_key(
-    job: _CashCellJob, *, use_banki: bool, chain_thb: bool = False
+    job: _CashCellJob,
+    *,
+    use_banki: bool,
+    chain_thb: bool = False,
+    with_tt_implied: bool = False,
 ) -> str:
     """L1 ячейки: plain ``cash`` и цепочка ➔THB — разные ключи (разный формат section)."""
     fiat_code, cur_id, _city_label, banki_key, rbc_id = job
     rid = "x" if rbc_id is None else str(int(rbc_id))
     core = (
         f"{fiat_code}:{banki_key}:{rid}:{int(cur_id)}:"
-        f"b{1 if use_banki else 0}"
+        f"b{1 if use_banki else 0}:ti{1 if with_tt_implied else 0}"
     )
     if chain_thb:
         return f"cash_thb:l1:cell:v2:{core}"
@@ -225,6 +229,7 @@ def _fetch_cash_cell(
     timeout: float,
     use_banki: bool,
     userbot_offers: Optional[List[Any]] = None,
+    thb_map: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[str], List[str]]:
     fiat_code, cur_id, city_label, banki_key, rbc_id = job
     section: List[str] = [f"{fiat_code} {city_label}"]
@@ -260,8 +265,18 @@ def _fetch_cash_cell(
         section.append("")
         wcell.append(f"Нет sell: {fiat_code} {city_label}")
         return section, wcell
+    thb_per = (thb_map or {}).get(fiat_code) if thb_map else None
     for o in offers:
-        section.append(f"{o.sell:.2f} | {o.bank_display} ({o.sources_label()})")
+        if thb_per is not None and float(thb_per) > 0:
+            implied = float(o.sell) / float(thb_per)
+            section.append(
+                f"{o.sell:.2f} | {implied:.2f} | "
+                f"{o.bank_display} ({o.sources_label()})"
+            )
+        else:
+            section.append(
+                f"{o.sell:.2f} | — | {o.bank_display} ({o.sources_label()})"
+            )
     section.append("")
     return section, wcell
 
@@ -331,7 +346,7 @@ def build_cash_report_text(
     unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
     doc = ucc.load_unified(unified_path)
     l2_key = _cash_l2_key(
-        kind="plain", top_n=top_n, use_banki=use_banki, timeout=timeout
+        kind="plain_tt", top_n=top_n, use_banki=use_banki, timeout=timeout
     )
     if city_label:
         l2_key = f"{l2_key}:city:{ucc.stable_digest(city_label)}"
@@ -344,6 +359,32 @@ def build_cash_report_text(
         locs = locs_all
     city_list = [x[0] for x in locs] if locs else []
     need_rebuild_due_to_userbot = _userbot_has_offers_for_doc(doc, cities=city_list)
+
+    # TT Exchange курс (THB за 1 USD/EUR/CNY) нужен, чтобы посчитать итоговый RUB/THB.
+    warnings: List[str] = []
+    tt_l1_key = "cash_thb:l1:tt"
+    thb_map: Dict[str, Any] = {}
+    loaded_tt_from_l1 = False
+    if not refresh:
+        hit_tt = ucc.l1_get_valid(doc, tt_l1_key)
+        if hit_tt is not None:
+            p = hit_tt[1]
+            if isinstance(p, dict):
+                thb_map = dict(p.get("thb_map") or {})
+                loaded_tt_from_l1 = True
+    if refresh or not loaded_tt_from_l1:
+        thb_map_raw, _tt_branch = _tt_thb_branch()
+        thb_map = dict(thb_map_raw or {})
+        ucc.l1_set(
+            doc,
+            tt_l1_key,
+            {"thb_map": thb_map, "branch": ""},
+            ttl_sec=ucc.TTL_L1_CASH_TT_SEC,
+        )
+    if not thb_map:
+        warnings.append(
+            "Нет курсов USD/EUR/CNY у TT Exchange — итоговый RUB/THB не посчитать."
+        )
 
     if not refresh:
         ent = ucc.l2_get(
@@ -371,11 +412,9 @@ def build_cash_report_text(
                     w = list((ent.get("payload") or {}).get("warnings") or [])
                     _unified_served_stale_l2_plain = from_stale_l2
                     return body, w
-
     _unified_served_stale_l2_plain = False
-    warnings: List[str] = []
     lines: List[str] = [
-        "Наличные: РБК + Banki (топ по курсу продажи)",
+        "Наличные: РБК + Banki (топ по курсу продажи); RUB/THB после TT Exchange",
         "",
     ]
 
@@ -388,7 +427,7 @@ def build_cash_report_text(
         ub_offers = _userbot_cash_offers_for_cell(
             doc, fiat_code=fiat_code, city_label=city_label
         )
-        k = _cash_cell_l1_key(job, use_banki=use_banki)
+        k = _cash_cell_l1_key(job, use_banki=use_banki, with_tt_implied=True)
         can_use_l1 = (not ub_offers)
         if (not refresh) and can_use_l1:
             hit = ucc.l1_get_valid(doc, k)
@@ -404,6 +443,7 @@ def build_cash_report_text(
             timeout=timeout,
             use_banki=use_banki,
             userbot_offers=ub_offers,
+            thb_map=thb_map,
         )
         ucc.l1_set(
             doc,
@@ -425,7 +465,10 @@ def build_cash_report_text(
 
     full = "\n".join(lines).rstrip() + "\n"
     dep_keys = (
-        [_cash_cell_l1_key(j, use_banki=use_banki) for j in jobs]
+        [
+            _cash_cell_l1_key(j, use_banki=use_banki, with_tt_implied=True)
+            for j in jobs
+        ]
         + _chatcash_l1_keys(doc)
     )
     deps_map = _deps_for_l1_keys(doc, dep_keys)
