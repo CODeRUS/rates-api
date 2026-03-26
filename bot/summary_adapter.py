@@ -10,6 +10,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 import cash_report as cash_mod  # noqa: E402
+import exchange_report as exchange_mod  # noqa: E402
 import rates as rates_mod  # noqa: E402
 import usdt_report as usdt_mod  # noqa: E402
 
@@ -35,6 +36,17 @@ def get_cash_thb_text(*, refresh: bool = False, top_n: int = 3) -> str:
     """Тот же текст, что ``rates.py cash-thb``. ``refresh`` зарезервирован."""
     _ = refresh
     return cash_mod.format_cash_thb_report_with_warnings(top_n=top_n)
+
+
+def get_exchange_text(
+    *,
+    refresh: bool = False,
+    top_n: int = 10,
+    lang: str = "ru",
+) -> str:
+    """Тот же текст, что ``rates.py exchange``. ``refresh`` зарезервирован."""
+    _ = refresh
+    return exchange_mod.format_exchange_report_with_warnings(top_n=top_n, lang=lang)
 
 
 def get_usdt_text(*, refresh: bool = False) -> str:

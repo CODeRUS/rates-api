@@ -29,6 +29,7 @@ class TestRatesSummaryCli(unittest.TestCase):
         self.assertIn("env-status", r.stdout)
         self.assertIn("cash", low)
         self.assertIn("cash-thb", r.stdout)
+        self.assertIn("exchange", low)
         self.assertIn("summary", r.stdout)
 
     def test_source_help_only(self):

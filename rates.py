@@ -54,7 +54,9 @@ CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates
 CACHE_TTL_SEC = 30 * 60
 CACHE_VERSION = 32
 
-_RESERVED = frozenset({"sources", "save", "usdt", "env-status", "cash", "cash-thb"})
+_RESERVED = frozenset(
+    {"sources", "save", "usdt", "env-status", "cash", "cash-thb", "exchange"}
+)
 
 
 def _cache_key(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -317,6 +319,9 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print(
         "  cash-thb [--top N] [--no-banki] [--refresh]  То же × TT Exchange → RUB/THB (см. help)."
     )
+    print(
+        "  exchange [--top N] [--lang ru]   Топ филиалов TT (USD/EUR/CNY→THB) + строка Ex24."
+    )
     print("  <source_id> summary [--refresh]  Только этот источник (те же --korona-*, --avosend-rub, …).")
     print("  <source_id> --refresh          То же, если других аргументов у id нет.")
     print("  <source_id> [args]   Иные подкоманды источника (см. python ... <id> --help).")
@@ -365,6 +370,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             import cash_report as _cr
 
             print(_cr.cash_thb_subcommand_help())
+            return 0
+        if len(rest) >= 1 and rest[0] == "exchange":
+            import exchange_report as _er
+
+            print(_er.exchange_subcommand_help())
             return 0
         if len(rest) >= 1 and rest[0] == "usdt":
             import usdt_report as _ur
@@ -456,6 +466,16 @@ def main(argv: Optional[List[str]] = None) -> int:
         err = cr.main_cash_thb_cli(tail)
         return err
 
+    if head == "exchange":
+        import exchange_report as er
+
+        if any(x in ("-h", "--help") for x in rest[1:]):
+            print(er.exchange_subcommand_help())
+            return 0
+        tail = rest[1:]
+        err = er.main_exchange_cli(tail)
+        return err
+
     if head == "usdt":
         import usdt_report as ur
 
@@ -509,7 +529,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     print(f"Неизвестная команда или источник: {head!r}", file=sys.stderr)
     print(
-        "Подсказка: --help, sources, save <файл>, usdt, cash, cash-thb или id источника.",
+        "Подсказка: --help, sources, save <файл>, usdt, cash, cash-thb, exchange или id источника.",
         file=sys.stderr,
     )
     return 2
