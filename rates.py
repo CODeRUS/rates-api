@@ -59,7 +59,7 @@ CACHE_TTL_SEC = 30 * 60
 CACHE_VERSION = 32
 
 _RESERVED = frozenset(
-    {"sources", "save", "usdt", "env-status", "cash", "cash-thb", "exchange"}
+    {"sources", "save", "usdt", "env-status", "cash", "exchange"}
 )
 
 
@@ -405,10 +405,7 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
     print("  usdt [--refresh] [--json] [--cache-file ПУТЬ]  Отчёт P2P RUB/USDT и USDT/THB (отдельный кеш).")
     print(
-        "  cash [--top N] [--no-banki] [--refresh]     Курсы продажи наличной валюты (РБК+Banki)."
-    )
-    print(
-        "  cash-thb [--top N] [--no-banki] [--refresh]  То же × TT Exchange → RUB/THB (см. help)."
+        "  cash [N] [--top K] [--no-banki] [--refresh]  Без N — список городов; с N — курсы выбранного города."
     )
     print(
         "  exchange [--top N] [--lang ru]   Топ филиалов TT (USD/EUR/CNY→THB)."
@@ -418,7 +415,7 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print("  <source_id> [args]   Иные подкоманды источника (см. python ... <id> --help).")
     print(
         "\nПараллельные запросы: переменная RATES_PARALLEL_MAX_WORKERS (сводка источников, "
-        "cash, cash-thb, usdt, exchange; по умолчанию см. rates_parallel)."
+        "cash, usdt, exchange; по умолчанию см. rates_parallel)."
     )
     print("\nИсточники (кратко; полное: <id> --help):")
     for sid in registered_source_ids():
@@ -462,10 +459,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(_cr.cash_subcommand_help())
             return 0
         if len(rest) >= 1 and rest[0] == "cash-thb":
-            import cash_report as _cr
-
-            print(_cr.cash_thb_subcommand_help())
-            return 0
+            print("Команда cash-thb удалена. Используйте: cash", file=sys.stderr)
+            return 2
         if len(rest) >= 1 and rest[0] == "exchange":
             import exchange_report as _er
 
@@ -551,16 +546,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         err = cr.main_cash_cli(tail)
         return err
 
-    if head == "cash-thb":
-        import cash_report as cr
-
-        if any(x in ("-h", "--help") for x in rest[1:]):
-            print(cr.cash_thb_subcommand_help())
-            return 0
-        tail = rest[1:]
-        err = cr.main_cash_thb_cli(tail)
-        return err
-
     if head == "exchange":
         import exchange_report as er
 
@@ -628,7 +613,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     print(f"Неизвестная команда или источник: {head!r}", file=sys.stderr)
     print(
-        "Подсказка: --help, sources, save <файл>, usdt, cash, cash-thb, exchange или id источника.",
+        "Подсказка: --help, sources, save <файл>, usdt, cash, exchange или id источника.",
         file=sys.stderr,
     )
     return 2

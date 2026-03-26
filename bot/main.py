@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Telegram-бот (Telethon): /rates, /usdt, /cash, /cash_thb, /exchange.
+Telegram-бот (Telethon): /rates, /usdt, /cash, /exchange.
 
 Переменные можно задать в файле ``.env`` в корне репозитория (подхватывается при старте).
 
@@ -40,8 +40,8 @@ load_repo_dotenv(_ROOT)
 from telethon import TelegramClient, events
 
 from bot.summary_adapter import (
+    get_cash_cities_text,
     get_cash_text,
-    get_cash_thb_text,
     get_exchange_text,
     get_summary_text,
     get_usdt_text,
@@ -118,7 +118,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash, /cash_thb или /exchange). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash или /exchange). Дождитесь результата."
             )
             return
         try:
@@ -158,7 +158,9 @@ async def _main_async() -> None:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
 
-    async def _send_cash_report(event: events.NewMessage.Event) -> None:
+    async def _send_cash_report(
+        event: events.NewMessage.Event, *, city_n: int | None
+    ) -> None:
         chat_id = event.chat_id
         async with rates_busy_guard:
             if chat_id in rates_busy_chats:
@@ -168,14 +170,34 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash, /cash_thb или /exchange). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash или /exchange). Дождитесь результата."
             )
             return
         try:
+            if city_n is None:
+                await event.respond(get_cash_cities_text())
+                return
+            cities = [
+                "Москва",
+                "Санкт-Петербург",
+                "Казань",
+                "Ростов-на-Дону",
+                "Новосибирск",
+                "Красноярск",
+            ]
+            if city_n < 1 or city_n > len(cities):
+                await event.respond(f"Номер города должен быть от 1 до {len(cities)}.")
+                return
+            city_label = cities[city_n - 1]
             status_msg = await event.respond("Идёт получение cash…")
             try:
                 text = await asyncio.wait_for(
-                    asyncio.to_thread(get_cash_text, refresh=False, top_n=3),
+                    asyncio.to_thread(
+                        get_cash_text,
+                        refresh=False,
+                        top_n=3,
+                        city_label=city_label,
+                    ),
                     timeout=fetch_timeout,
                 )
             except asyncio.TimeoutError:
@@ -204,54 +226,6 @@ async def _main_async() -> None:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
 
-    async def _send_cash_thb_report(event: events.NewMessage.Event) -> None:
-        chat_id = event.chat_id
-        async with rates_busy_guard:
-            if chat_id in rates_busy_chats:
-                busy = True
-            else:
-                busy = False
-                rates_busy_chats.add(chat_id)
-        if busy:
-            await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash, /cash_thb или /exchange). Дождитесь результата."
-            )
-            return
-        try:
-            status_msg = await event.respond("Идёт получение cash-thb…")
-            try:
-                text = await asyncio.wait_for(
-                    asyncio.to_thread(get_cash_thb_text, refresh=False, top_n=3),
-                    timeout=fetch_timeout,
-                )
-            except asyncio.TimeoutError:
-                logger.error("get_cash_thb_text timed out after %.0fs", fetch_timeout)
-                await status_msg.edit(
-                    f"Таймаут {fetch_timeout:.0f} с при сборе cash-thb. "
-                    "Проверьте сеть или задайте BOT_FETCH_TIMEOUT_SEC."
-                )
-                return
-            except Exception:
-                logger.exception("get_cash_thb_text failed")
-                await status_msg.edit(
-                    "Не удалось собрать cash-thb. Попробуйте позже."
-                )
-                return
-            chunks = split_for_telegram(text)
-            if not chunks or (len(chunks) == 1 and not chunks[0].strip()):
-                await status_msg.edit("(пустой отчёт cash-thb)")
-                return
-            await status_msg.edit(chunks[0])
-            for chunk in chunks[1:]:
-                await event.respond(chunk)
-            if getattr(get_cash_thb_text, "_needs_background_refresh", False):
-                asyncio.create_task(
-                    asyncio.to_thread(run_background_unified_refresh, "cash_thb")
-                )
-        finally:
-            async with rates_busy_guard:
-                rates_busy_chats.discard(chat_id)
-
     async def _send_exchange_report(
         event: events.NewMessage.Event, *, top_n: int
     ) -> None:
@@ -264,7 +238,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash, /cash_thb или /exchange). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash или /exchange). Дождитесь результата."
             )
             return
         try:
@@ -319,7 +293,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash, /cash_thb или /exchange). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash или /exchange). Дождитесь результата."
             )
             return
         try:
@@ -366,18 +340,24 @@ async def _main_async() -> None:
             "Команды:\n"
             "/rates — сводка RUB/THB\n"
             "/usdt — P2P RUB/USDT и USDT/THB\n"
-            "/cash — курсы продажи наличной валюты (РБК+Banki)\n"
-            "/cash_thb — те же топы × TT Exchange (RUB/THB)\n"
+            "/cash — список городов; /cash N — курсы выбранного города\n"
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)"
         )
 
-    @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?$"))
+    @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+)?$"))
     async def on_cash(event: events.NewMessage.Event) -> None:
-        await _send_cash_report(event)
-
-    @client.on(events.NewMessage(pattern=r"(?i)^/cash_thb(?:@\S+)?$"))
-    async def on_cash_thb(event: events.NewMessage.Event) -> None:
-        await _send_cash_thb_report(event)
+        msg = (event.message.message or "").strip()
+        tokens = msg.split()
+        city_n: int | None = None
+        if len(tokens) > 1:
+            try:
+                city_n = int(tokens[1])
+            except ValueError:
+                await event.respond(
+                    "После /cash укажите номер города из списка, например: /cash 1"
+                )
+                return
+        await _send_cash_report(event, city_n=city_n)
 
     @client.on(events.NewMessage(pattern=r"(?i)^/exchange(?:@\S+)?"))
     async def on_exchange(event: events.NewMessage.Event) -> None:

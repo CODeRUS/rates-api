@@ -45,6 +45,7 @@ def get_cash_text(
     refresh: bool = False,
     top_n: int = 3,
     unified_allow_stale: bool = True,
+    city_label: str = "",
 ) -> str:
     """Тот же текст, что ``rates.py cash``."""
     allow = (not refresh) and unified_allow_stale
@@ -52,6 +53,7 @@ def get_cash_text(
         top_n=top_n,
         refresh=refresh,
         unified_allow_stale=allow,
+        city_label=(city_label or "").strip() or None,
     )
     get_cash_text._needs_background_refresh = bool(
         (not refresh) and allow and cash_mod._unified_served_stale_l2_plain
@@ -62,26 +64,12 @@ def get_cash_text(
 get_cash_text._needs_background_refresh = False  # type: ignore[attr-defined]
 
 
-def get_cash_thb_text(
-    *,
-    refresh: bool = False,
-    top_n: int = 3,
-    unified_allow_stale: bool = True,
-) -> str:
-    """Тот же текст, что ``rates.py cash-thb``."""
-    allow = (not refresh) and unified_allow_stale
-    text = cash_mod.format_cash_thb_report_with_warnings(
-        top_n=top_n,
-        refresh=refresh,
-        unified_allow_stale=allow,
-    )
-    get_cash_thb_text._needs_background_refresh = bool(
-        (not refresh) and allow and cash_mod._unified_served_stale_l2_thb
-    )
-    return text
-
-
-get_cash_thb_text._needs_background_refresh = False  # type: ignore[attr-defined]
+def get_cash_cities_text(*, use_banki: bool = True) -> str:
+    locs = cash_mod._locations(use_banki)
+    lines = ["Доступные города:"]
+    for i, x in enumerate(locs, start=1):
+        lines.append(f"{i}. {x[0]}")
+    return "\n".join(lines) + "\n"
 
 
 def get_exchange_text(
@@ -134,8 +122,6 @@ def run_background_unified_refresh(kind: str) -> None:
             get_usdt_text(refresh=False, unified_allow_stale=False)
         elif kind == "cash":
             get_cash_text(refresh=False, unified_allow_stale=False)
-        elif kind == "cash_thb":
-            get_cash_thb_text(refresh=False, unified_allow_stale=False)
         elif kind == "exchange":
             get_exchange_text(refresh=False, unified_allow_stale=False)
         else:

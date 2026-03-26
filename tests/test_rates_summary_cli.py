@@ -28,7 +28,7 @@ class TestRatesSummaryCli(unittest.TestCase):
         self.assertIn("sources", r.stdout)
         self.assertIn("env-status", r.stdout)
         self.assertIn("cash", low)
-        self.assertIn("cash-thb", r.stdout)
+        self.assertNotIn("cash-thb", r.stdout.lower())
         self.assertIn("exchange", low)
         self.assertIn("summary", r.stdout)
 

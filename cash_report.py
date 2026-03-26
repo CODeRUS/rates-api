@@ -118,6 +118,59 @@ def _chatcash_l1_keys(doc: Dict[str, Any]) -> List[str]:
     return [str(k) for k in l1.keys() if str(k).startswith("chatcash:")]
 
 
+def _userbot_has_offers_for_doc(
+    doc: Dict[str, Any],
+    *,
+    cities: List[str],
+) -> bool:
+    """
+    Проверить, есть ли у userbot релевантные офферы (USD/EUR/CNY в указанных городах).
+    Используется, чтобы не отдавать устаревший L2 (построенный до появления userbot-данных).
+    """
+    want_cat_by_currency = {
+        "USD": "cash_usd",
+        "EUR": "cash_eur",
+        "CNY": "cash_cny",
+    }
+    l1 = doc.get("l1") or {}
+    if not isinstance(l1, dict):
+        return False
+    cities_set = set([c for c in cities if c])
+    if not cities_set:
+        return False
+
+    for k in l1.keys():
+        sk = str(k)
+        if not sk.startswith("chatcash:"):
+            continue
+        hit = ucc.l1_get_valid(doc, sk)
+        if hit is None:
+            continue
+        payload = hit[1]
+        if not isinstance(payload, list):
+            continue
+        for row in payload:
+            if not isinstance(row, dict):
+                continue
+            city = str(row.get("city") or "").strip()
+            if city not in cities_set:
+                continue
+            cur = str(row.get("currency") or "").upper()
+            want_cat = want_cat_by_currency.get(cur)
+            if want_cat is None:
+                continue
+            cat = str(row.get("category") or "").strip().lower()
+            if cat != want_cat:
+                continue
+            try:
+                rate = float(row.get("rate") or 0)
+            except (TypeError, ValueError):
+                continue
+            if rate > 0:
+                return True
+    return False
+
+
 def _userbot_cash_offers_for_cell(
     doc: Dict[str, Any],
     *,
@@ -186,8 +239,21 @@ def _fetch_cash_cell(
         use_banki=use_banki,
     )
     if userbot_offers:
-        offers = sorted(list(offers) + list(userbot_offers), key=lambda x: (x.sell, x.bank_display))
-        offers = offers[: max(0, top_n)]
+        # userbot-курсы всегда показываем, даже если они "вытесняют" часть топ-офферов.
+        # Базовый список `offers` уже ограничен `top_n` в unified_top_sell_offers().
+        combined = list(offers)
+        seen: set[tuple[float, str]] = set()
+        for o in combined:
+            seen.add((float(getattr(o, "sell", 0) or 0), str(getattr(o, "bank_display", ""))))
+        for u in userbot_offers:
+            key = (float(getattr(u, "sell", 0) or 0), str(getattr(u, "bank_display", "")))
+            if key in seen:
+                continue
+            seen.add(key)
+            combined.append(u)
+        offers = sorted(
+            combined, key=lambda x: (float(getattr(x, "sell", 0) or 0), str(getattr(x, "bank_display", "")))
+        )
     wcell.extend(w)
     if not offers:
         section.append("(нет котировок sell)")
@@ -254,6 +320,7 @@ def build_cash_report_text(
     parallel_max_workers: Optional[int] = None,
     refresh: bool = False,
     unified_allow_stale: bool = False,
+    city_label: Optional[str] = None,
 ) -> Tuple[str, List[str]]:
     """
     Только курсы продажи наличной валюты (РБК + Banki).
@@ -266,7 +333,17 @@ def build_cash_report_text(
     l2_key = _cash_l2_key(
         kind="plain", top_n=top_n, use_banki=use_banki, timeout=timeout
     )
+    if city_label:
+        l2_key = f"{l2_key}:city:{ucc.stable_digest(city_label)}"
     from_stale_l2 = False
+
+    locs_all = _locations(use_banki)
+    if city_label:
+        locs = tuple(x for x in locs_all if x[0] == city_label)
+    else:
+        locs = locs_all
+    city_list = [x[0] for x in locs] if locs else []
+    need_rebuild_due_to_userbot = _userbot_has_offers_for_doc(doc, cities=city_list)
 
     if not refresh:
         ent = ucc.l2_get(
@@ -288,7 +365,7 @@ def build_cash_report_text(
                 from_stale_l2 = True
         if ent is not None:
             deps = ent.get("deps") or {}
-            if (not deps) or ucc.l2_deps_match(doc, deps):
+            if ((not deps) or ucc.l2_deps_match(doc, deps)) and not need_rebuild_due_to_userbot:
                 body = str(ent.get("text") or "")
                 if body.strip():
                     w = list((ent.get("payload") or {}).get("warnings") or [])
@@ -302,7 +379,8 @@ def build_cash_report_text(
         "",
     ]
 
-    locs = _locations(use_banki)
+    if not locs:
+        return "", [f"Неизвестный город: {city_label}"]
     jobs = _cash_cell_jobs(locs)
 
     def _work(job: _CashCellJob) -> Tuple[List[str], List[str]]:
@@ -516,6 +594,7 @@ def format_cash_report_with_warnings(
     use_banki: bool = True,
     refresh: bool = False,
     unified_allow_stale: bool = False,
+    city_label: Optional[str] = None,
 ) -> str:
     body, w = build_cash_report_text(
         top_n=top_n,
@@ -523,6 +602,7 @@ def format_cash_report_with_warnings(
         use_banki=use_banki,
         refresh=refresh,
         unified_allow_stale=unified_allow_stale,
+        city_label=city_label,
     )
     if not w:
         return body
@@ -553,12 +633,10 @@ def format_cash_thb_report_with_warnings(
 
 def cash_subcommand_help() -> str:
     return (
-        "cash — курсы продажи наличной валюты: РБК (Москва, СПб) + Banki.ru "
-        "(ещё Казань, Ростов-на-Дону, Новосибирск, Красноярск).\n"
-        "  cash [--top N] [--no-banki] [--refresh]   N по умолчанию 3; "
-        "--no-banki только РБК (два города); --refresh зарезервирован.\n"
-        "  Параллельные ячейки валюта×город: RATES_PARALLEL_MAX_WORKERS.\n"
-        "Цепочку с TT Exchange см. команду cash-thb."
+        "cash — курсы продажи наличной валюты по выбранному городу.\n"
+        "  cash                          вывести нумерованный список городов.\n"
+        "  cash N [--top N] [--no-banki] [--refresh]   вывести только город №N.\n"
+        "  Параллельные ячейки валюта×город: RATES_PARALLEL_MAX_WORKERS."
     )
 
 
@@ -573,6 +651,7 @@ def cash_thb_subcommand_help() -> str:
 
 def _parse_cash_argv(argv: List[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(add_help=False)
+    p.add_argument("city_n", nargs="?", type=int, help="Номер города из списка")
     p.add_argument("--top", type=int, default=3, help="Число строк по городу")
     p.add_argument(
         "--no-banki",
@@ -592,9 +671,22 @@ def main_cash_cli(argv: List[str]) -> int:
     if args.top < 1:
         print("--top должен быть >= 1", file=sys.stderr)
         return 2
+    locs = _locations(not args.no_banki)
+    cities = [x[0] for x in locs]
+    if args.city_n is None:
+        print("Доступные города:")
+        for i, c in enumerate(cities, start=1):
+            print(f"{i}. {c}")
+        return 0
+    idx = int(args.city_n)
+    if idx < 1 or idx > len(cities):
+        print(f"Номер города должен быть от 1 до {len(cities)}", file=sys.stderr)
+        return 2
+    city = cities[idx - 1]
     text = format_cash_report_with_warnings(
         top_n=args.top,
         use_banki=not args.no_banki,
+        city_label=city,
     )
     sys.stdout.write(text)
     return 0
