@@ -12,7 +12,7 @@
 - `name` — человекочитаемое имя в сводке
 - `chat` — `@username` канала или числовой chat id (например `-1001234567890`)
 - `currencies` — список валют и regex-шаблонов
-  - `category`: `cash_rub` / `cash_usd` / `cash_eur` / `cash_cny`
+  - `category`: `transfer` / `cash_rub` / `cash_usd` / `cash_eur` / `cash_cny`
   - `pattern` должен содержать именованную группу `(?P<rate>...)`
 
 ## Логин userbot
@@ -29,4 +29,6 @@
    - `docker compose up -d userbot`
 
 Сессия хранится в `USERBOT_SESSION_DIR` (в compose это volume `userbot_session`).
+
+TTL для userbot-кэша не настраивается через env: записи живут долго и обновляются новыми сообщениями.
 

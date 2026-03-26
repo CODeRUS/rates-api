@@ -13,7 +13,6 @@ class UserbotSettings:
     phone: str
     session_dir: Path
     bootstrap_messages_limit: int
-    cache_ttl_sec: int
 
 
 def _env(name: str, default: str = "") -> str:
@@ -40,18 +39,11 @@ def load_settings() -> UserbotSettings:
         n = 5
     n = max(1, n)
 
-    try:
-        ttl = int(_env("USERBOT_CACHE_TTL_SEC", "900"))
-    except ValueError:
-        ttl = 900
-    ttl = max(30, ttl)
-
     return UserbotSettings(
         api_id=api_id,
         api_hash=api_hash,
         phone=phone,
         session_dir=sess_dir,
         bootstrap_messages_limit=n,
-        cache_ttl_sec=ttl,
     )
 

@@ -6,6 +6,8 @@ from typing import Iterable
 import rates_unified_cache as ucc
 from userbot.models import ParsedRate
 
+DEFAULT_USERBOT_TTL_SEC = 365 * 24 * 60 * 60
+
 
 def key_for_source(source_id: str) -> str:
     return "chatcash:" + source_id
@@ -15,7 +17,7 @@ def write_source_snapshot(
     *,
     source_id: str,
     rows: Iterable[ParsedRate],
-    ttl_sec: int,
+    ttl_sec: int = DEFAULT_USERBOT_TTL_SEC,
 ) -> None:
     doc = ucc.load_unified()
     payload_rows = []

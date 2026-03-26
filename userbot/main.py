@@ -51,7 +51,6 @@ async def _bootstrap_source(
     cfg: SourceConfig,
     *,
     limit: int,
-    ttl_sec: int,
 ) -> None:
     rules = compile_rules(cfg)
     found: List[ParsedRate] = []
@@ -76,7 +75,7 @@ async def _bootstrap_source(
         logger.warning("bootstrap: no matching message for %s", cfg.source_id)
         return
     latest = _pick_latest_per_currency(found)
-    write_source_snapshot(source_id=cfg.source_id, rows=latest, ttl_sec=ttl_sec)
+    write_source_snapshot(source_id=cfg.source_id, rows=latest)
     logger.info("bootstrap: %s rates=%d", cfg.source_id, len(latest))
 
 
@@ -96,7 +95,6 @@ async def _run(*, login_only: bool) -> None:
             client,
             cfg,
             limit=s.bootstrap_messages_limit,
-            ttl_sec=s.cache_ttl_sec,
         )
 
     cfg_by_chat = {_normalize_chat_ref(c.chat): c for c in USERBOT_SOURCES}
@@ -122,7 +120,7 @@ async def _run(*, login_only: bool) -> None:
         if not rows:
             return
         latest = _pick_latest_per_currency(rows)
-        write_source_snapshot(source_id=cfg.source_id, rows=latest, ttl_sec=s.cache_ttl_sec)
+        write_source_snapshot(source_id=cfg.source_id, rows=latest)
         logger.info("update: %s rates=%d msg=%s", cfg.source_id, len(latest), event.message.id)
 
     await client.run_until_disconnected()
