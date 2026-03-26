@@ -325,6 +325,10 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print("  <source_id> summary [--refresh]  Только этот источник (те же --korona-*, --avosend-rub, …).")
     print("  <source_id> --refresh          То же, если других аргументов у id нет.")
     print("  <source_id> [args]   Иные подкоманды источника (см. python ... <id> --help).")
+    print(
+        "\nПараллельные запросы: переменная RATES_PARALLEL_MAX_WORKERS (сводка источников, "
+        "cash, cash-thb, usdt, exchange; по умолчанию см. rates_parallel)."
+    )
     print("\nИсточники (кратко; полное: <id> --help):")
     for sid in registered_source_ids():
         mod = plugin_by_id(sid)

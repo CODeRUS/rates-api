@@ -3,9 +3,9 @@
 """
 Параллельное выполнение блокирующих вызовов (план A: ThreadPoolExecutor).
 
-Единая точка для сценариев вроде ``exchange``: при переходе на async (план B)
-достаточно заменить тело :func:`map_bounded`, сохранив сигнатуру и порядок
-результатов.
+Используется в ``exchange_report``, ``cash_report``, ``usdt_report``,
+:func:`rates_sources.run_sources`. При переходе на async (план B) замените
+тело :func:`map_bounded`, сохранив сигнатуру и порядок результатов.
 """
 from __future__ import annotations
 

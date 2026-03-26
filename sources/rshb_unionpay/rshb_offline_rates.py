@@ -67,10 +67,11 @@ def parse_offline_html(
 
     Берёт только первую таблицу сразу после каждой метки даты (как на сайте).
 
-    ``duplicate_date_policy``: на ``rates_offline`` у каждой даты один блок; на
-    ``rates_online`` бывает несколько блоков с одной календарной датой — тогда
-    ``"first"`` сохраняет верхний (актуальный по времени) снимок, ``"last"`` —
-    нижний (поведение по умолчанию, совместимо со старым кодом).
+    ``duplicate_date_policy``: на ``rates_offline`` у каждой даты обычно один блок;
+    на ``rates_online`` подряд идёт несколько снимков с **одной** датой, причём
+    первый блок часто содержит только часть кросс-курсов (без CNY/RUR). Такие
+    блоки **объединяются**: для ``"first"`` по каждой паре берётся первое появление
+    на странице, для ``"last"`` — последнее.
     """
     # Режем по <strong>DD.MM.YYYY</strong>
     parts = re.split(
@@ -96,12 +97,47 @@ def parse_offline_html(
             sell = Decimal(mrow.group(3))
             quotes.append(PairQuote(pair, buy, sell))
         if quotes:
-            if duplicate_date_policy == "first" and dt in out:
-                pass
+            if dt in out:
+                _merge_duplicate_date_quotes(
+                    out, dt, quotes, duplicate_date_policy=duplicate_date_policy
+                )
             else:
                 out[dt] = quotes
         i += 4
     return out
+
+
+def _norm_pair_key(pair: str) -> str:
+    return pair.replace(" ", "").upper()
+
+
+def _merge_duplicate_date_quotes(
+    out: Dict[date, List[PairQuote]],
+    dt: date,
+    quotes: List[PairQuote],
+    *,
+    duplicate_date_policy: str,
+) -> None:
+    """
+    На ``rates_online`` подряд идут несколько блоков с одной календарной датой;
+    первый блок часто содержит только часть кросс-курсов (без CNY/RUR).
+    Объединяем строки так, чтобы для каждой пары курс брался с ожидаемого снимка.
+    """
+    prev = out[dt]
+    if duplicate_date_policy == "first":
+        by_pair = {_norm_pair_key(q.pair): q for q in prev}
+        order = [_norm_pair_key(q.pair) for q in prev]
+        for q in quotes:
+            k = _norm_pair_key(q.pair)
+            if k not in by_pair:
+                by_pair[k] = q
+                order.append(k)
+        out[dt] = [by_pair[k] for k in order]
+        return
+    by_pair = {_norm_pair_key(q.pair): q for q in prev}
+    for q in quotes:
+        by_pair[_norm_pair_key(q.pair)] = q
+    out[dt] = list(by_pair.values())
 
 
 def get_table_for_date(

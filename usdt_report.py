@@ -19,6 +19,8 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
+from rates_parallel import map_bounded
+
 USDT_CACHE_VERSION = 1
 USDT_CACHE_TTL_SEC = 60
 
@@ -51,22 +53,19 @@ def _usdt_cache_valid(raw: Dict[str, Any], saved: float, key: Dict[str, Any]) ->
     return raw.get("key") == key
 
 
-def fetch_usdt_payload() -> Tuple[Dict[str, Any], List[str]]:
-    """Собрать данные с API (без кеша)."""
-    from sources.bybit_bitkub import bitkub_usdt_thb as bk
-    from sources.bybit_bitkub import bybit_p2p_usdt_rub as bp
-    from sources.binance_th.usdt_thb_book import fetch_bid_thb_per_usdt
-    from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+_UsdtParallelBranch = Tuple[Dict[str, Optional[float]], Dict[str, Optional[float]], List[str]]
 
-    warnings: List[str] = []
+_USDT_BRANCH_KEYS: Tuple[str, ...] = ("bybit", "htx", "bitkub", "binance")
+
+
+def _usdt_fetch_bybit_branch() -> _UsdtParallelBranch:
+    from sources.bybit_bitkub import bybit_p2p_usdt_rub as bp
 
     rub: Dict[str, Optional[float]] = {
         "bybit_cash": None,
         "bybit_transfer": None,
-        "htx_cash": None,
-        "htx_no_cash": None,
     }
-
+    w: List[str] = []
     items = bp.fetch_all_online_items(size=20, verification_filter=0)
     items = bp.filter_by_target_usdt(items, target_usdt=bp.DEFAULT_TARGET_USDT)
     a = bp.filter_cash_deposit_to_bank(items, 99.0)
@@ -76,60 +75,124 @@ def fetch_usdt_payload() -> Tuple[Dict[str, Any], List[str]]:
     if ia:
         rub["bybit_cash"] = float(ia["price"])
     else:
-        warnings.append(
+        w.append(
             "Bybit: нет объявлений Cash Deposit (18) с completion≥99 "
             "(100 USDT, minAmount≥100·price)"
         )
     if ib:
         rub["bybit_transfer"] = float(ib["price"])
     else:
-        warnings.append(
+        w.append(
             "Bybit: нет объявлений только перевод (14, без 18) с completion≥99 "
             "(100 USDT, minAmount≥100·price)"
         )
+    return rub, {}, w
 
+
+def _usdt_fetch_htx_branch() -> _UsdtParallelBranch:
+    from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+
+    rub: Dict[str, Optional[float]] = {
+        "htx_cash": None,
+        "htx_no_cash": None,
+    }
+    w: List[str] = []
     try:
         rows = hx.fetch_all_offers(max_pages=30)
     except RuntimeError as e:
-        warnings.append(f"HTX OTC: {e}")
+        w.append(f"HTX OTC: {e}")
+        return rub, {}, w
+    with_cash, without_cash = hx.partition_cash_non_cash(rows)
+    ha = hx.min_by_price(with_cash)
+    hb = hx.min_by_price(without_cash)
+    if ha:
+        rub["htx_cash"] = float(ha["price"])
     else:
-        with_cash, without_cash = hx.partition_cash_non_cash(rows)
-        ha = hx.min_by_price(with_cash)
-        hb = hx.min_by_price(without_cash)
-        if ha:
-            rub["htx_cash"] = float(ha["price"])
-        else:
-            warnings.append(
-                "HTX: нет объявлений с наличными под фильтры "
-                "(100 USDT, minTradeLimit≥100·price)"
-            )
-        if hb:
-            rub["htx_no_cash"] = float(hb["price"])
-        else:
-            warnings.append(
-                "HTX: нет объявлений без наличных под фильтры "
-                "(100 USDT, minTradeLimit≥100·price)"
-            )
+        w.append(
+            "HTX: нет объявлений с наличными под фильтры "
+            "(100 USDT, minTradeLimit≥100·price)"
+        )
+    if hb:
+        rub["htx_no_cash"] = float(hb["price"])
+    else:
+        w.append(
+            "HTX: нет объявлений без наличных под фильтры "
+            "(100 USDT, minTradeLimit≥100·price)"
+        )
+    return rub, {}, w
 
+
+def _usdt_fetch_bitkub_branch() -> _UsdtParallelBranch:
+    from sources.bybit_bitkub import bitkub_usdt_thb as bk
+
+    thb: Dict[str, Optional[float]] = {"bitkub_highest_bid": None}
+    w: List[str] = []
+    try:
+        tk = bk.fetch_ticker()
+    except RuntimeError as e:
+        w.append(f"Bitkub: {e}")
+        return {}, thb, w
+    b = float(tk.get("highestBid") or 0)
+    if b > 0:
+        thb["bitkub_highest_bid"] = b
+    else:
+        w.append("Bitkub: нет highestBid для USDT")
+    return {}, thb, w
+
+
+def _usdt_fetch_binance_branch() -> _UsdtParallelBranch:
+    from sources.binance_th.usdt_thb_book import fetch_bid_thb_per_usdt
+
+    thb: Dict[str, Optional[float]] = {"binance_bid": None}
+    w: List[str] = []
+    try:
+        thb["binance_bid"] = fetch_bid_thb_per_usdt()
+    except RuntimeError as e:
+        w.append(f"Binance TH: {e}")
+    return {}, thb, w
+
+
+def _usdt_parallel_worker(branch: str) -> _UsdtParallelBranch:
+    if branch == "bybit":
+        return _usdt_fetch_bybit_branch()
+    if branch == "htx":
+        return _usdt_fetch_htx_branch()
+    if branch == "bitkub":
+        return _usdt_fetch_bitkub_branch()
+    if branch == "binance":
+        return _usdt_fetch_binance_branch()
+    raise ValueError(branch)
+
+
+def fetch_usdt_payload(
+    *, parallel_max_workers: Optional[int] = None
+) -> Tuple[Dict[str, Any], List[str]]:
+    """Собрать данные с API (без кеша). Независимые блоки — параллельно через :mod:`rates_parallel`."""
+    warnings: List[str] = []
+
+    rub: Dict[str, Optional[float]] = {
+        "bybit_cash": None,
+        "bybit_transfer": None,
+        "htx_cash": None,
+        "htx_no_cash": None,
+    }
     thb: Dict[str, Optional[float]] = {
         "bitkub_highest_bid": None,
         "binance_bid": None,
     }
-    try:
-        tk = bk.fetch_ticker()
-    except RuntimeError as e:
-        warnings.append(f"Bitkub: {e}")
-    else:
-        b = float(tk.get("highestBid") or 0)
-        if b > 0:
-            thb["bitkub_highest_bid"] = b
-        else:
-            warnings.append("Bitkub: нет highestBid для USDT")
 
-    try:
-        thb["binance_bid"] = fetch_bid_thb_per_usdt()
-    except RuntimeError as e:
-        warnings.append(f"Binance TH: {e}")
+    for _key, pack, exc in map_bounded(
+        list(_USDT_BRANCH_KEYS),
+        _usdt_parallel_worker,
+        max_workers=parallel_max_workers,
+    ):
+        if exc is not None:
+            raise exc
+        assert pack is not None
+        rpart, tpart, wpart = pack
+        warnings.extend(wpart)
+        rub.update(rpart)
+        thb.update(tpart)
 
     data = {"rub_per_usdt": rub, "thb_per_usdt": thb}
     return data, warnings
@@ -301,5 +364,6 @@ def usdt_subcommand_help() -> str:
     return (
         "usdt — отчёт P2P RUB/USDT и USDT/THB (Bitkub, Binance TH); "
         "кеш в RATES_USDT_CACHE_FILE или .rates_usdt_cache.json (TTL 1 мин); "
-        "опции: --refresh, --json, --cache-file <путь>."
+        "опции: --refresh, --json, --cache-file <путь>.\n"
+        "  Параллельные блоки API: RATES_PARALLEL_MAX_WORKERS."
     )

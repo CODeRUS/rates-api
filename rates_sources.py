@@ -13,10 +13,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from rates_categories import SourceCategory
+from rates_parallel import map_bounded
 
 
 # --- Публичные типы --- (SourceCategory — в :mod:`rates_categories`, без цикла с плагинами)
@@ -223,6 +224,15 @@ def _merge_matching_bitkub_binanceth_rows(rows: List[RateRow]) -> List[RateRow]:
     return out
 
 
+@dataclass
+class _SourceFetchPack:
+    """Результат одного ``fetch`` в параллельном :func:`run_sources` (отдельный ``warnings``)."""
+
+    quotes: Optional[List[SourceQuote]]
+    err: Optional[Exception]
+    local_warnings: List[str] = field(default_factory=list)
+
+
 def _warn_source(src: RateSource, err: Exception, bucket: List[str]) -> None:
     if src.id == "forex":
         bucket.append(f"Forex (Xe): {err}")
@@ -249,11 +259,15 @@ def _warn_source(src: RateSource, err: Exception, bucket: List[str]) -> None:
 def run_sources(
     ctx: FetchContext,
     sources: Optional[Sequence[RateSource]] = None,
+    parallel_max_workers: Optional[int] = None,
 ) -> Tuple[List[RateRow], float, List[str]]:
     """
-    Последовательно вызывает источники. Первый в списке — Forex (``is_baseline=True``).
+    Вызывает источники параллельно (пул потоков), склеивает строки в порядке ``sources``.
 
-    Предупреждения: исключения источников и строки, добавленные в ``ctx.warnings`` внутри fetch.
+    У каждого вызова ``fetch`` свой список предупреждений (копия ``ctx``); итоговый
+    порядок блоков совпадает с последовательным вариантом.
+
+    Предупреждения: исключения источников и строки, добавленные внутри ``fetch`` в копию контекста.
     """
     seq = list(sources) if sources is not None else list(DEFAULT_SOURCES)
     if not seq or not seq[0].is_baseline:
@@ -261,13 +275,25 @@ def run_sources(
     w = ctx.warnings
     rows: List[RateRow] = []
 
-    for src in seq:
+    def worker(src: RateSource) -> _SourceFetchPack:
+        lc = replace(ctx, warnings=[])
         try:
-            quotes = src.fetch(ctx)
+            q = src.fetch(lc)
+            return _SourceFetchPack(q, None, list(lc.warnings))
         except Exception as e:
-            _warn_source(src, e, w)
-            quotes = None
+            return _SourceFetchPack(None, e, list(lc.warnings))
 
+    for src, pack, thr_exc in map_bounded(
+        seq, worker, max_workers=parallel_max_workers
+    ):
+        if thr_exc is not None:
+            raise thr_exc
+        assert pack is not None
+        w.extend(pack.local_warnings)
+        if pack.err:
+            _warn_source(src, pack.err, w)
+            continue
+        quotes = pack.quotes
         if not quotes:
             continue
         for q in quotes:
@@ -338,6 +364,7 @@ def collect_rows(
     unionpay_date: Optional[str],
     moex_override: Optional[float],
     sources: Optional[Sequence[RateSource]] = None,
+    parallel_max_workers: Optional[int] = None,
 ) -> Tuple[List[RateRow], float, List[str]]:
     """Совместимость с прежним вызовом из rates.py."""
     ctx = FetchContext(
@@ -350,7 +377,7 @@ def collect_rows(
         moex_override=moex_override,
         warnings=[],
     )
-    return run_sources(ctx, sources)
+    return run_sources(ctx, sources, parallel_max_workers=parallel_max_workers)
 
 
 def build_registry(*extra: RateSource) -> List[RateSource]:
