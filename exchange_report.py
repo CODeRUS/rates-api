@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Топ филиалов TT Exchange по наличному приёму USD/EUR/CNY → THB + строка Ex24 (тот же формат).
+Топ филиалов TT Exchange по наличному приёму USD/EUR/CNY → THB.
 """
 from __future__ import annotations
 
@@ -46,12 +46,6 @@ def _ttexchange_api_module() -> Any:
 
 def _branch_skipped_as_closed(raw_name: str) -> bool:
     return "closed" in raw_name.lower()
-
-
-def _ex24_rub_thb_module() -> Any:
-    from sources.ex24 import ex24_rub_thb as mod
-
-    return mod
 
 
 def _format_table_row(name: str, u: Optional[float], e: Optional[float], c: Optional[float]) -> str:
@@ -180,7 +174,9 @@ def build_exchange_report_text(
         if not refresh:
             hit = ucc.l1_get_valid(doc, cur_key)
             if hit is not None:
-                return hit[1]
+                cur_cached = hit[1]
+                if fiat_buy_thb_per_unit(cur_cached, "USD") is not None:
+                    return cur_cached
         cur = ttx.get_currencies(bid_s, is_main=False, timeout=timeout)
         ucc.l1_set(
             doc,
@@ -220,7 +216,7 @@ def build_exchange_report_text(
     top = scored[: max(0, top_n)]
 
     lines: List[str] = [
-        "Обмен наличные → THB (TT Exchange и Ex24), THB за 1 ед. валюты",
+        "Обмен наличные → THB (TT Exchange), THB за 1 ед. валюты",
         "",
         f"{'USD':>7}  {'EUR':>7}  {'CNY':>7}  Филиал",
     ]
@@ -232,39 +228,6 @@ def build_exchange_report_text(
         for label, u, eur, cny, _bid in top:
             lines.append(_format_table_row(label, u, eur, cny))
 
-    lines.append("")
-
-    e24_key = "ex:l1:e24"
-    ex_u = ex_e = ex_c = None
-    e24_from_l1 = False
-    if not refresh:
-        hit_e = ucc.l1_get_valid(doc, e24_key)
-        if hit_e is not None:
-            pl = hit_e[1]
-            if isinstance(pl, dict):
-                ex_u = pl.get("usd")
-                ex_e = pl.get("eur")
-                ex_c = pl.get("cny")
-                e24_from_l1 = True
-    if refresh or not e24_from_l1:
-        e24 = _ex24_rub_thb_module()
-        html = e24.load_ex24_main_html(timeout=timeout)
-        if html:
-            ex_u = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(html, "USD")
-            ex_e = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(html, "EUR")
-            ex_c = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(html, "CNY")
-        else:
-            ex_u = ex_e = ex_c = None
-            warnings.append("Ex24: не удалось загрузить главную страницу")
-        ucc.l1_set(
-            doc,
-            e24_key,
-            {"usd": ex_u, "eur": ex_e, "cny": ex_c},
-            ttl_sec=ucc.TTL_L1_EX24_SEC,
-        )
-    dep_key_list.append(e24_key)
-
-    lines.append(_format_table_row("Ex24", ex_u, ex_e, ex_c))
     full = "\n".join(lines).rstrip() + "\n"
     deps_map = _ex_deps_for_keys(doc, dep_key_list)
     ucc.l2_set(
@@ -309,8 +272,9 @@ def format_exchange_report_with_warnings(
 def exchange_subcommand_help() -> str:
     return (
         "exchange — топ филиалов TT Exchange по приёму наличных USD/EUR/CNY→THB "
-        "(THB за 1 ед.; сортировка по USD), затем строка Ex24 в том же формате.\n"
-        "  exchange [--top N] [--lang ru|en] [--refresh]   N по умолчанию 10; --refresh зарезервирован.\n"
+        "(THB за 1 ед.; сортировка по USD).\n"
+        "  exchange [--top N] [--lang ru|en] [--timeout СЕК] [--refresh]   "
+        "N по умолчанию 10; --refresh — заново запросить API и обновить unified-кеш.\n"
         "  Параллельные запросы курсов TT: переменная RATES_PARALLEL_MAX_WORKERS (по умолчанию 12)."
     )
 
@@ -320,7 +284,11 @@ def _parse_exchange_argv(argv: List[str]) -> argparse.Namespace:
     p.add_argument("--top", type=int, default=10, help="Число филиалов")
     p.add_argument("--lang", type=str, default="ru", help="Язык подписей TT store API")
     p.add_argument("--timeout", type=float, default=28.0, help="Таймаут HTTP на запрос")
-    p.add_argument("--refresh", action="store_true", help="Зарезервировано")
+    p.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Пропустить чтение L1/L2 unified, заново запросить TT API",
+    )
     p.add_argument("-h", "--help", action="store_true")
     return p.parse_args(argv)
 
@@ -337,6 +305,7 @@ def main_exchange_cli(argv: List[str]) -> int:
         top_n=args.top,
         lang=(args.lang or "ru").strip() or "ru",
         timeout=max(5.0, float(args.timeout)),
+        refresh=bool(args.refresh),
     )
     sys.stdout.write(text)
     return 0

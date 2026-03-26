@@ -411,7 +411,7 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
         "  cash-thb [--top N] [--no-banki] [--refresh]  То же × TT Exchange → RUB/THB (см. help)."
     )
     print(
-        "  exchange [--top N] [--lang ru]   Топ филиалов TT (USD/EUR/CNY→THB) + строка Ex24."
+        "  exchange [--top N] [--lang ru]   Топ филиалов TT (USD/EUR/CNY→THB)."
     )
     print("  <source_id> summary [--refresh]  Только этот источник (те же --korona-*, --avosend-rub, …).")
     print("  <source_id> --refresh          То же, если других аргументов у id нет.")
@@ -567,7 +567,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         if any(x in ("-h", "--help") for x in rest[1:]):
             print(er.exchange_subcommand_help())
             return 0
-        tail = rest[1:]
+        # --refresh задан глобально (python rates.py exchange --refresh) парсером
+        # выше и не попадаёт в rest — пробрасываем в подкоманду.
+        tail = list(rest[1:])
+        if args.refresh:
+            tail.append("--refresh")
         err = er.main_exchange_cli(tail)
         return err
 

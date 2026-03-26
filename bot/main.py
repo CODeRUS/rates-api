@@ -368,7 +368,7 @@ async def _main_async() -> None:
             "/usdt — P2P RUB/USDT и USDT/THB\n"
             "/cash — курсы продажи наличной валюты (РБК+Banki)\n"
             "/cash_thb — те же топы × TT Exchange (RUB/THB)\n"
-            "/exchange — топ филиалов TT по USD/EUR/CNY→THB и Ex24 (опц. число: /exchange 5)"
+            "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)"
         )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?$"))
