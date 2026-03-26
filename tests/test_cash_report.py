@@ -30,6 +30,18 @@ class TestRbcBankTitle(unittest.TestCase):
             "Камкомбанк",
         )
 
+    def test_trim_address_without_quotes_at_comma_or_dot(self):
+        self.assertEqual(
+            rbc_short_bank_name(
+                "Банк Казани. ул. Большая Московская, д. 18 / Разъезжая, д. 12"
+            ),
+            "Банк Казани",
+        )
+        self.assertEqual(
+            rbc_short_bank_name("ПАО ПримерБанк, филиал Центральный, г. Тула"),
+            "ПримерБанк",
+        )
+
 
 class TestTopSellOffers(unittest.TestCase):
     def test_sorted_by_sell_ascending(self):

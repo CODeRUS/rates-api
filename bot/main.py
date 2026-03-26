@@ -245,7 +245,7 @@ async def _main_async() -> None:
             "Команды:\n"
             "/rates — сводка RUB/THB\n"
             "/usdt — P2P RUB/USDT и USDT/THB\n"
-            "/cash — наличные РБК (Москва, СПб) и пары ➔ THB через TT Exchange"
+            "/cash — наличные РБК+Banki.ru (Москва, СПб и др.) и пары ➔ THB через TT Exchange"
         )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?$"))

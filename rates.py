@@ -311,7 +311,9 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print("  env-status           Файл .env и типичные переменные (без значений).")
     print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
     print("  usdt [--refresh] [--json] [--cache-file ПУТЬ]  Отчёт P2P RUB/USDT и USDT/THB (отдельный кеш).")
-    print("  cash [--top N] [--refresh]  Наличные РБК (Москва, СПб) и пары ➔ THB через TT Exchange.")
+    print(
+        "  cash [--top N] [--no-banki] [--refresh]  Наличные РБК+Banki.ru (несколько городов) и пары ➔ THB."
+    )
     print("  <source_id> summary [--refresh]  Только этот источник (те же --korona-*, --avosend-rub, …).")
     print("  <source_id> --refresh          То же, если других аргументов у id нет.")
     print("  <source_id> [args]   Иные подкоманды источника (см. python ... <id> --help).")
