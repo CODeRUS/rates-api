@@ -19,7 +19,7 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         source_id="unired_bkb",
         name="Unired",
-        chat="-1001380405475",
+        chat="@uniredmobile",
         emoji="•",
         currencies=(
             CurrencyRule(
@@ -28,11 +28,12 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
                 pattern=r"Россиядан\s*-\s*VISAга[\s\S]*?1\s*\$\s*=\s*(?P<rate>\d+(?:[.,]\d+)?)\s*RUB",
             ),
         ),
+        city="",
     ),
     SourceConfig(
         source_id="fintrust_exchange",
         name="Fintrust Exchange",
-        chat="-1001571066333",
+        chat="@fintrust",
         emoji="•",
         currencies=(
             CurrencyRule(
@@ -46,6 +47,7 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
                 pattern=r"💶\s*Покупка[\s\S]*?-\s*(?P<rate>\d+(?:[.,]\d+)?)\s*(?:\(|$)",
             ),
         ),
+        city="Москва",
     ),
 )
 

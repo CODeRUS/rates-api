@@ -19,6 +19,7 @@ class SourceConfig:
     chat: str
     emoji: str
     currencies: tuple[CurrencyRule, ...]
+    city: str = ""
 
 
 @dataclass(frozen=True)
@@ -38,4 +39,5 @@ class ParsedRate:
     message_id: int
     message_unix: float
     chat: str
+    city: str
 

@@ -29,6 +29,7 @@ def parse_message(
     source_id: str,
     source_name: str,
     chat: str,
+    city: str,
     rules: Iterable[CompiledRule],
     text: str,
     message_id: int,
@@ -58,6 +59,7 @@ def parse_message(
                 message_id=message_id,
                 message_unix=message_unix,
                 chat=chat,
+                city=city,
             )
         )
     return rows

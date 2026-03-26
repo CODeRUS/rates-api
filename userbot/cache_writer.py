@@ -32,6 +32,7 @@ def write_source_snapshot(
                 "message_id": r.message_id,
                 "message_unix": r.message_unix,
                 "chat": r.chat,
+                "city": r.city,
             }
         )
     if not payload_rows:

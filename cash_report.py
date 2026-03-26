@@ -20,6 +20,15 @@ import rates_unified_cache as ucc
 
 _CashCellJob = Tuple[str, int, str, str, Optional[int]]
 
+
+class _UserbotOffer:
+    def __init__(self, sell: float, bank_display: str) -> None:
+        self.sell = sell
+        self.bank_display = bank_display
+
+    def sources_label(self) -> str:
+        return "Telegram"
+
 # После build_*: ответ из L2 с истёкшим TTL (для фонового обновления в боте).
 _unified_served_stale_l2_plain: bool = False
 _unified_served_stale_l2_thb: bool = False
@@ -102,12 +111,67 @@ def _deps_for_l1_keys(doc: Dict[str, Any], keys: List[str]) -> Dict[str, int]:
     return out
 
 
+def _chatcash_l1_keys(doc: Dict[str, Any]) -> List[str]:
+    l1 = doc.get("l1") or {}
+    if not isinstance(l1, dict):
+        return []
+    return [str(k) for k in l1.keys() if str(k).startswith("chatcash:")]
+
+
+def _userbot_cash_offers_for_cell(
+    doc: Dict[str, Any],
+    *,
+    fiat_code: str,
+    city_label: str,
+) -> List[Any]:
+    """Офферы из userbot (L1 chatcash:*) для секции cash по городу/валюте."""
+    want_cat = {
+        "USD": "cash_usd",
+        "EUR": "cash_eur",
+        "CNY": "cash_cny",
+    }.get(fiat_code.upper())
+    if want_cat is None:
+        return []
+    out: List[Any] = []
+    l1 = doc.get("l1") or {}
+    if not isinstance(l1, dict):
+        return out
+    for k in l1.keys():
+        sk = str(k)
+        if not sk.startswith("chatcash:"):
+            continue
+        hit = ucc.l1_get_valid(doc, sk)
+        if hit is None:
+            continue
+        payload = hit[1]
+        if not isinstance(payload, list):
+            continue
+        for row in payload:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get("category") or "").strip().lower() != want_cat:
+                continue
+            if str(row.get("city") or "").strip() != city_label:
+                continue
+            try:
+                rate = float(row.get("rate") or 0)
+            except (TypeError, ValueError):
+                continue
+            if rate <= 0:
+                continue
+            src = str(row.get("source_name") or row.get("source_id") or "Userbot").strip()
+            bank_display = src if src else "Userbot"
+            out.append(_UserbotOffer(rate, bank_display))
+    return out
+
+
 def _fetch_cash_cell(
     job: _CashCellJob,
     *,
     top_n: int,
     timeout: float,
     use_banki: bool,
+    userbot_offers: Optional[List[Any]] = None,
 ) -> Tuple[List[str], List[str]]:
     fiat_code, cur_id, city_label, banki_key, rbc_id = job
     section: List[str] = [f"{fiat_code} {city_label}"]
@@ -121,6 +185,9 @@ def _fetch_cash_cell(
         timeout=timeout,
         use_banki=use_banki,
     )
+    if userbot_offers:
+        offers = sorted(list(offers) + list(userbot_offers), key=lambda x: (x.sell, x.bank_display))
+        offers = offers[: max(0, top_n)]
     wcell.extend(w)
     if not offers:
         section.append("(нет котировок sell)")
@@ -239,8 +306,13 @@ def build_cash_report_text(
     jobs = _cash_cell_jobs(locs)
 
     def _work(job: _CashCellJob) -> Tuple[List[str], List[str]]:
+        fiat_code, _cur_id, city_label, _bk, _rid = job
+        ub_offers = _userbot_cash_offers_for_cell(
+            doc, fiat_code=fiat_code, city_label=city_label
+        )
         k = _cash_cell_l1_key(job, use_banki=use_banki)
-        if not refresh:
+        can_use_l1 = (not ub_offers)
+        if (not refresh) and can_use_l1:
             hit = ucc.l1_get_valid(doc, k)
             if hit is not None:
                 payload = hit[1]
@@ -249,7 +321,11 @@ def build_cash_report_text(
                         payload.get("wcell") or []
                     )
         sec, wcell = _fetch_cash_cell(
-            job, top_n=top_n, timeout=timeout, use_banki=use_banki
+            job,
+            top_n=top_n,
+            timeout=timeout,
+            use_banki=use_banki,
+            userbot_offers=ub_offers,
         )
         ucc.l1_set(
             doc,
@@ -270,7 +346,10 @@ def build_cash_report_text(
         lines.extend(sec)
 
     full = "\n".join(lines).rstrip() + "\n"
-    dep_keys = [_cash_cell_l1_key(j, use_banki=use_banki) for j in jobs]
+    dep_keys = (
+        [_cash_cell_l1_key(j, use_banki=use_banki) for j in jobs]
+        + _chatcash_l1_keys(doc)
+    )
     deps_map = _deps_for_l1_keys(doc, dep_keys)
     ucc.l2_set(
         doc,

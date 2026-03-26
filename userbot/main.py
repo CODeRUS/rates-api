@@ -46,6 +46,13 @@ def _pick_latest_per_currency(rows: Iterable[ParsedRate]) -> List[ParsedRate]:
     return list(best.values())
 
 
+def _rates_brief(rows: Iterable[ParsedRate]) -> str:
+    parts: List[str] = []
+    for r in rows:
+        parts.append(f"{r.currency}:{r.rate:.4f} [{r.category}]")
+    return ", ".join(parts)
+
+
 async def _bootstrap_source(
     client: TelegramClient,
     cfg: SourceConfig,
@@ -62,6 +69,7 @@ async def _bootstrap_source(
             source_id=cfg.source_id,
             source_name=cfg.name,
             chat=cfg.chat,
+            city=cfg.city,
             rules=rules,
             text=text,
             message_id=int(msg.id),
@@ -76,10 +84,16 @@ async def _bootstrap_source(
         return
     latest = _pick_latest_per_currency(found)
     write_source_snapshot(source_id=cfg.source_id, rows=latest)
-    logger.info("bootstrap: %s rates=%d", cfg.source_id, len(latest))
+    logger.info(
+        "bootstrap: %s matched msg=%s rates=%d (%s)",
+        cfg.source_id,
+        latest[0].message_id if latest else "-",
+        len(latest),
+        _rates_brief(latest),
+    )
 
 
-async def _run(*, login_only: bool) -> None:
+async def _run(*, login_only: bool, login_phone: str) -> None:
     load_repo_dotenv(_ROOT)
     s = load_settings()
     session_path = s.session_dir / "userbot"
@@ -92,7 +106,12 @@ async def _run(*, login_only: bool) -> None:
         app_version=s.app_version,
         lang_code=s.lang_code,
     )
-    await client.start(phone=s.phone or None)
+    if login_only:
+        if not login_phone:
+            raise RuntimeError("Для --login укажите --phone +7999...")
+        await client.start(phone=login_phone)
+    else:
+        await client.start()
     logger.info("userbot logged in")
     if login_only:
         await client.disconnect()
@@ -120,6 +139,7 @@ async def _run(*, login_only: bool) -> None:
             source_id=cfg.source_id,
             source_name=cfg.name,
             chat=cfg.chat,
+            city=cfg.city,
             rules=compiled[cfg.source_id],
             text=text,
             message_id=int(event.message.id),
@@ -129,7 +149,13 @@ async def _run(*, login_only: bool) -> None:
             return
         latest = _pick_latest_per_currency(rows)
         write_source_snapshot(source_id=cfg.source_id, rows=latest)
-        logger.info("update: %s rates=%d msg=%s", cfg.source_id, len(latest), event.message.id)
+        logger.info(
+            "update: %s matched msg=%s rates=%d (%s)",
+            cfg.source_id,
+            event.message.id,
+            len(latest),
+            _rates_brief(latest),
+        )
 
     await client.run_until_disconnected()
 
@@ -137,9 +163,10 @@ async def _run(*, login_only: bool) -> None:
 def main() -> None:
     p = argparse.ArgumentParser(add_help=True)
     p.add_argument("--login", action="store_true", help="Только авторизация и запись session")
+    p.add_argument("--phone", default="", help="Номер телефона для --login, например +79990001122")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    asyncio.run(_run(login_only=bool(args.login)))
+    asyncio.run(_run(login_only=bool(args.login), login_phone=(args.phone or "").strip()))
 
 
 if __name__ == "__main__":

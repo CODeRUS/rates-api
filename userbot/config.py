@@ -10,7 +10,6 @@ from pathlib import Path
 class UserbotSettings:
     api_id: int
     api_hash: str
-    phone: str
     session_dir: Path
     bootstrap_messages_limit: int
     device_model: str
@@ -26,7 +25,6 @@ def _env(name: str, default: str = "") -> str:
 def load_settings() -> UserbotSettings:
     api_id_raw = _env("USERBOT_API_ID")
     api_hash = _env("USERBOT_API_HASH")
-    phone = _env("USERBOT_PHONE")
     if not api_id_raw or not api_hash:
         raise RuntimeError("USERBOT_API_ID/USERBOT_API_HASH не заданы")
     try:
@@ -50,7 +48,6 @@ def load_settings() -> UserbotSettings:
     return UserbotSettings(
         api_id=api_id,
         api_hash=api_hash,
-        phone=phone,
         session_dir=sess_dir,
         bootstrap_messages_limit=n,
         device_model=device_model,
