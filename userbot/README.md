@@ -21,6 +21,12 @@
    - `USERBOT_API_ID`
    - `USERBOT_API_HASH`
    - `USERBOT_PHONE` (например `+79990001122`)
+   - опционально параметры Telegram-клиента:
+     - `USERBOT_DEVICE_MODEL`
+     - `USERBOT_SYSTEM_VERSION`
+     - `USERBOT_APP_VERSION`
+     - `USERBOT_LANG_CODE`
+     - дефолты под Android: `Samsung SM-S918B`, `Android 14`, `10.13.4`, `ru`
 2. Разово выполните логин:
    - локально: `python -m userbot.main --login`
    - в docker: `docker compose run --rm userbot python -m userbot.main --login`

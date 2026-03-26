@@ -83,7 +83,15 @@ async def _run(*, login_only: bool) -> None:
     load_repo_dotenv(_ROOT)
     s = load_settings()
     session_path = s.session_dir / "userbot"
-    client = TelegramClient(str(session_path), s.api_id, s.api_hash)
+    client = TelegramClient(
+        str(session_path),
+        s.api_id,
+        s.api_hash,
+        device_model=s.device_model,
+        system_version=s.system_version,
+        app_version=s.app_version,
+        lang_code=s.lang_code,
+    )
     await client.start(phone=s.phone or None)
     logger.info("userbot logged in")
     if login_only:

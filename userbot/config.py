@@ -13,6 +13,10 @@ class UserbotSettings:
     phone: str
     session_dir: Path
     bootstrap_messages_limit: int
+    device_model: str
+    system_version: str
+    app_version: str
+    lang_code: str
 
 
 def _env(name: str, default: str = "") -> str:
@@ -38,6 +42,10 @@ def load_settings() -> UserbotSettings:
     except ValueError:
         n = 5
     n = max(1, n)
+    device_model = _env("USERBOT_DEVICE_MODEL", "Samsung SM-S918B")
+    system_version = _env("USERBOT_SYSTEM_VERSION", "Android 14")
+    app_version = _env("USERBOT_APP_VERSION", "10.13.4")
+    lang_code = _env("USERBOT_LANG_CODE", "ru")
 
     return UserbotSettings(
         api_id=api_id,
@@ -45,5 +53,9 @@ def load_settings() -> UserbotSettings:
         phone=phone,
         session_dir=sess_dir,
         bootstrap_messages_limit=n,
+        device_model=device_model,
+        system_version=system_version,
+        app_version=app_version,
+        lang_code=lang_code,
     )
 
