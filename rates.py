@@ -52,7 +52,7 @@ from sources import plugin_by_id, registered_source_ids
 _CACHE_OVERRIDE = (os.environ.get("RATES_CACHE_FILE") or "").strip()
 CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
-CACHE_VERSION = 31
+CACHE_VERSION = 32
 
 _RESERVED = frozenset({"sources", "save", "usdt", "env-status"})
 
@@ -94,6 +94,8 @@ def _row_from_cache_dict(r: Dict[str, Any]) -> RateRow:
         d["category"] = SourceCategory.TRANSFER
     if "compare_to_baseline" not in d:
         d["compare_to_baseline"] = True
+    if "cash_rub_seq" not in d:
+        d["cash_rub_seq"] = 0
     return RateRow(**d)
 
 
@@ -276,6 +278,7 @@ def print_single_source_summary(mod: Any, args: argparse.Namespace) -> int:
                 is_baseline=False,
                 category=q.category or mod.CATEGORY,
                 compare_to_baseline=False,
+                cash_rub_seq=q.cash_rub_seq,
                 merge_key=q.merge_key,
             )
             lines.append(row.format_line(0.0))

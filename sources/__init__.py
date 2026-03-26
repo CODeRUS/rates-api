@@ -15,6 +15,7 @@ PLUGIN_ORDER = (
     "kwikpay",
     "askmoney",
     "ttexchange",
+    "rbc_ttexchange",
     "tbank",
     "unired_bkb",
 )
@@ -35,6 +36,7 @@ def _mods() -> Dict[str, object]:
         from . import htx_bitkub
         from . import korona
         from . import kwikpay
+        from . import rbc_ttexchange
         from . import rshb_unionpay
         from . import tbank
         from . import ttexchange
@@ -55,6 +57,7 @@ def _mods() -> Dict[str, object]:
                 "kwikpay": kwikpay,
                 "askmoney": askmoney,
                 "ttexchange": ttexchange,
+                "rbc_ttexchange": rbc_ttexchange,
                 "tbank": tbank,
                 "unired_bkb": unired_bkb,
             }

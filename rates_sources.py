@@ -57,6 +57,8 @@ class SourceQuote:
     emoji: Optional[str] = None
     #: Если False — в сводке без %% к Forex (др. шкала, напр. THB за 1 USD в наличных).
     compare_to_baseline: bool = True
+    #: Порядок внутри ``CASH_RUB``: 0 — обычные строки (сорт. по rate); иначе фикс. блок (РБК×TT).
+    cash_rub_seq: int = 0
     #: Одинаковый ключ у пары bitkub + binanceth для строки одного P2P-сценария (слияние при равном rate).
     merge_key: Optional[str] = None
 
@@ -105,6 +107,7 @@ class RateRow:
     is_baseline: bool = False
     category: SourceCategory = SourceCategory.TRANSFER
     compare_to_baseline: bool = True
+    cash_rub_seq: int = 0
     merge_key: Optional[str] = None
 
     def format_line(self, baseline: float) -> str:
@@ -126,19 +129,24 @@ class RateRow:
         return r + tail
 
 
-def _cash_sort_key(row: RateRow) -> Tuple[int, int, float]:
+def _cash_sort_key(row: RateRow) -> Tuple[int, int, float, float]:
     """
     Наличные: блоки по :data:`CASH_CATEGORIES_ORDER` (RUB → USD → EUR → CNY).
 
-    * ``CASH_RUB`` (RUB за 1 THB) — по возрастанию ``rate``.
+    * ``CASH_RUB`` (RUB за 1 THB) — по возрастанию ``rate`` среди ``cash_rub_seq == 0``;
+      строки с ненулевым ``cash_rub_seq`` (пары РБК×TT) — после них, порядок по ``cash_rub_seq``.
     * ``CASH_USD`` / ``CASH_EUR`` / ``CASH_CNY`` (THB за 1 единицу) — по убыванию ``rate``.
     """
     if row.category in CASH_CATEGORIES_ORDER:
         cat_i = CASH_CATEGORIES_ORDER.index(row.category)
+        if row.category == SourceCategory.CASH_RUB:
+            if row.cash_rub_seq == 0:
+                return (0, cat_i, 0.0, row.rate)
+            return (0, cat_i, float(row.cash_rub_seq), 0.0)
         if row.category in _CASH_THB_PER_UNIT_DESC:
-            return (0, cat_i, -row.rate)
-        return (0, cat_i, row.rate)
-    return (1, 0, row.rate)
+            return (0, cat_i, 0.0, -row.rate)
+        return (0, cat_i, 0.0, row.rate)
+    return (1, 0, 0.0, row.rate)
 
 
 def fmt_money_ru(n: float) -> str:
@@ -165,6 +173,7 @@ def _row_without_merge_key(r: RateRow) -> RateRow:
         is_baseline=r.is_baseline,
         category=r.category,
         compare_to_baseline=r.compare_to_baseline,
+        cash_rub_seq=r.cash_rub_seq,
         merge_key=None,
     )
 
@@ -205,6 +214,7 @@ def _merge_matching_bitkub_binanceth_rows(rows: List[RateRow]) -> List[RateRow]:
                     is_baseline=r.is_baseline,
                     category=r.category,
                     compare_to_baseline=r.compare_to_baseline,
+                    cash_rub_seq=r.cash_rub_seq,
                     merge_key=None,
                 )
             )
@@ -230,6 +240,8 @@ def _warn_source(src: RateSource, err: Exception, bucket: List[str]) -> None:
         bucket.append(f"ttexchange: {err}")
     elif src.id == "tbank":
         bucket.append(f"tbank: {err}")
+    elif src.id == "rbc_ttexchange":
+        bucket.append(f"rbc_ttexchange: {err}")
     else:
         bucket.append(f"{src.id}: {err}")
 
@@ -271,6 +283,7 @@ def run_sources(
                     is_baseline=is_bl,
                     category=cat,
                     compare_to_baseline=q.compare_to_baseline,
+                    cash_rub_seq=q.cash_rub_seq,
                     merge_key=q.merge_key,
                 )
             )
@@ -284,9 +297,16 @@ def run_sources(
             break
     baseline = forex_rate if forex_rate is not None and forex_rate > 0 else 2.5
 
-    dedup: Dict[Tuple[str, str, str, SourceCategory, bool], RateRow] = {}
+    dedup: Dict[Tuple[str, str, str, SourceCategory, bool, int], RateRow] = {}
     for row in rows:
-        key = (row.label, row.note, row.emoji, row.category, row.compare_to_baseline)
+        key = (
+            row.label,
+            row.note,
+            row.emoji,
+            row.category,
+            row.compare_to_baseline,
+            row.cash_rub_seq,
+        )
         if key not in dedup or row.rate < dedup[key].rate:
             dedup[key] = row
     rows = list(dedup.values())

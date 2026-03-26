@@ -44,7 +44,7 @@ class TestRatesSummaryCli(unittest.TestCase):
     def test_sources_subcommand_lists_ids(self):
         r = _run("sources")
         self.assertEqual(r.returncode, 0, r.stderr)
-        for name in ("forex", "askmoney", "ex24", "ttexchange", "tbank"):
+        for name in ("forex", "askmoney", "ex24", "ttexchange", "rbc_ttexchange", "tbank"):
             self.assertIn(name, r.stdout)
         # Плагины вне сводки остаются в списке для CLI
         self.assertIn("htx_bitkub", r.stdout)

@@ -43,6 +43,7 @@ class TestRatesSources(unittest.TestCase):
                 "kwikpay",
                 "askmoney",
                 "ttexchange",
+                "rbc_ttexchange",
                 "tbank",
                 "unired_bkb",
             ],
@@ -243,6 +244,62 @@ class TestRatesSources(unittest.TestCase):
         b = next(r for r in rows if r.label == "B")
         self.assertEqual(a.emoji, "🤑")
         self.assertEqual(b.emoji, "•")
+
+    def test_cash_rub_seq_orders_rbc_pairs_after_normal(self):
+        forex = RateSource(
+            "forex",
+            "📈",
+            True,
+            SourceCategory.TRANSFER,
+            _fake_summary([SourceQuote(2.5, "Forex")]),
+        )
+        low = RateSource(
+            "a",
+            "•",
+            False,
+            SourceCategory.CASH_RUB,
+            _fake_summary([SourceQuote(2.4, "Low", category=SourceCategory.CASH_RUB)]),
+        )
+        high = RateSource(
+            "b",
+            "•",
+            False,
+            SourceCategory.CASH_RUB,
+            _fake_summary([SourceQuote(2.9, "High", category=SourceCategory.CASH_RUB)]),
+        )
+        rbc = RateSource(
+            "rbc",
+            "•",
+            False,
+            SourceCategory.TRANSFER,
+            _fake_summary(
+                [
+                    SourceQuote(
+                        2.6,
+                        "M RBC",
+                        category=SourceCategory.CASH_RUB,
+                        cash_rub_seq=100,
+                    ),
+                ]
+            ),
+        )
+        ctx = FetchContext(30_000, 250, 0, 40_000, 10_000, None, None)
+        rows, _, _ = run_sources(ctx, [forex, low, high, rbc])
+        cash_rub = [r for r in rows if r.category == SourceCategory.CASH_RUB]
+        labels = [r.label for r in cash_rub]
+        self.assertEqual(labels, ["Low", "High", "M RBC"])
+
+    def test_parse_rbc_min_sell(self):
+        from sources.rbc_ttexchange.rbc_cash_json import min_sell_rub_per_unit
+
+        banks = [
+            {"name": "A", "rate": {"sell": "82.0"}},
+            {"name": "B", "rate": {"sell": "80.5"}},
+            {"name": "C", "rate": {"buy": "79"}},
+        ]
+        v, nm = min_sell_rub_per_unit(banks)
+        self.assertAlmostEqual(v, 80.5)
+        self.assertEqual(nm, "B")
 
     def test_parse_ex24_cash_rub_buy_rub_per_thb(self):
         from sources.ex24.ex24_rub_thb import parse_ex24_cash_rub_buy_rub_per_thb
