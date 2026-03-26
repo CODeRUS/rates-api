@@ -26,9 +26,15 @@ def get_summary_text(*, refresh: bool = False) -> str:
 
 
 def get_cash_text(*, refresh: bool = False, top_n: int = 3) -> str:
-    """Отчёт РБК + TT (тот же текст, что ``rates.py cash``). ``refresh`` зарезервирован."""
+    """Тот же текст, что ``rates.py cash``. ``refresh`` зарезервирован."""
     _ = refresh
     return cash_mod.format_cash_report_with_warnings(top_n=top_n)
+
+
+def get_cash_thb_text(*, refresh: bool = False, top_n: int = 3) -> str:
+    """Тот же текст, что ``rates.py cash-thb``. ``refresh`` зарезервирован."""
+    _ = refresh
+    return cash_mod.format_cash_thb_report_with_warnings(top_n=top_n)
 
 
 def get_usdt_text(*, refresh: bool = False) -> str:

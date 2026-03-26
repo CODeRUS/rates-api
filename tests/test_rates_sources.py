@@ -355,6 +355,21 @@ class TestRatesSources(unittest.TestCase):
         self.assertIn("20-5", tier_note)
         self.assertEqual(float(row["current_buy_rate"]), 32.5)
 
+    def test_ttexchange_branch_label_normalizes(self):
+        from sources.ttexchange import _branch_display_name, normalize_ttexchange_branch_label
+
+        self.assertEqual(
+            normalize_ttexchange_branch_label("NK2 : Naklua 2 Branch"),
+            "Naklua 2",
+        )
+        self.assertEqual(normalize_ttexchange_branch_label("Naklua 2"), "Naklua 2")
+        self.assertEqual(
+            normalize_ttexchange_branch_label("HQ: Pattaya branch"),
+            "Pattaya",
+        )
+        stores = [{"branch_id": "7", "name": "NK2 : Naklua 2 Branch"}]
+        self.assertEqual(_branch_display_name(stores, "7"), "Naklua 2")
+
     def test_parse_tbank_atm_cashout_rub_per_thb(self):
         from sources.tbank import parse_atm_cashout_rub_per_thb
 

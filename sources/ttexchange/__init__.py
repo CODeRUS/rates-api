@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Iterable, List, Optional, Tuple
 
 from rates_sources import FetchContext, SourceCategory, SourceQuote
@@ -37,15 +38,29 @@ def command(argv: list[str]) -> int:
     return cli_main(argv)
 
 
+def normalize_ttexchange_branch_label(raw: str) -> str:
+    """
+    Короткое имя филиала для отчётов: без кода слева от ``:``, без хвоста ``Branch``.
+    ``NK2 : Naklua 2 Branch`` → ``Naklua 2``.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    if ":" in s:
+        s = s.split(":", 1)[1].strip()
+    s = re.sub(r"\s+Branch\s*$", "", s, flags=re.IGNORECASE).strip()
+    return s
+
+
 def _branch_display_name(stores: Any, branch_id: str) -> str:
     if not isinstance(stores, list):
-        return branch_id
+        return normalize_ttexchange_branch_label(str(branch_id))
     for row in stores:
         if isinstance(row, dict) and str(row.get("branch_id")) == str(branch_id):
             name = row.get("name")
             if name:
-                return str(name)
-    return branch_id
+                return normalize_ttexchange_branch_label(str(name))
+    return normalize_ttexchange_branch_label(str(branch_id))
 
 
 def _row_buy_rate_for_pick(row: Any) -> float:
