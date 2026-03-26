@@ -1,29 +1,27 @@
 # -*- coding: utf-8 -*-
-"""Unired (Telegram превью USD/RUB VISA) × Bangkok Bank TT USD50 (USD/THB) → RUB/THB."""
+"""Unired (userbot cache USD/RUB VISA) × Bangkok Bank TT USD50 (USD/THB) → RUB/THB."""
 from __future__ import annotations
 
 import sys
 import urllib.error
 from typing import List, Optional
 
+import rates_unified_cache as ucc
 from rates_categories import SourceCategory
 
 # Атрибуты плагина до импорта rates_sources (избегаем цикла с load_default_sources).
 SOURCE_ID = "unired_bkb"
-EMOJI = "🏧"
+EMOJI = "💱"
 IS_BASELINE = False
 CATEGORY = SourceCategory.TRANSFER
 
 from rates_sources import FetchContext, SourceQuote
 
 from . import bbl_latest_fx as bbl
-from . import unired_tg_preview as utg
-
-
 def help_text() -> str:
     return (
-        "Unired @uniredmobile (t.me/s) VISA USD/RUB + Bangkok Bank GetLatestfxrates USD50 TT → RUB/THB.\n"
-        "  Нужен env BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY; опционально UNIRED_TG_PREVIEW_URL.\n"
+        "Unired (из userbot cache) VISA USD/RUB + Bangkok Bank GetLatestfxrates USD50 TT → RUB/THB.\n"
+        "  Нужен env BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY.\n"
         "  Иначе: только справка (без подкоманд)."
     )
 
@@ -41,12 +39,26 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     rub_per_usd: Optional[float] = None
     thb_per_usd: Optional[float] = None
 
-    try:
-        rub_per_usd = utg.fetch_latest_unired_usd_rub(timeout=25.0)
-    except (RuntimeError, OSError, urllib.error.URLError) as e:
-        ctx.warnings.append(f"Unired TG: {e}")
-    except Exception as e:
-        ctx.warnings.append(f"Unired TG: {e}")
+    hit = ucc.l1_get_valid(ucc.load_unified(), "chatcash:unired_bkb")
+    if hit is not None:
+        payload = hit[1]
+        if isinstance(payload, list):
+            for row in payload:
+                if not isinstance(row, dict):
+                    continue
+                if str(row.get("category") or "").strip().lower() != "transfer":
+                    continue
+                if str(row.get("currency") or "").strip().upper() != "USD":
+                    continue
+                try:
+                    rub_per_usd = float(row.get("rate") or 0.0)
+                except (TypeError, ValueError):
+                    rub_per_usd = None
+                if rub_per_usd and rub_per_usd > 0:
+                    break
+    if rub_per_usd is None or rub_per_usd <= 0:
+        ctx.warnings.append("Unired TG cache: нет свежего USD/RUB в userbot cache")
+        return None
 
     if not bbl.subscription_key_from_env():
         ctx.warnings.append(
