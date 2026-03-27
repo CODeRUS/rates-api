@@ -59,7 +59,7 @@ def _usdt_cache_valid(raw: Dict[str, Any], saved: float, key: Dict[str, Any]) ->
 
 _UsdtParallelBranch = Tuple[Dict[str, Optional[float]], Dict[str, Optional[float]], List[str]]
 
-_USDT_BRANCH_KEYS: Tuple[str, ...] = ("bybit", "htx", "bitkub", "binance")
+_USDT_BRANCH_KEYS: Tuple[str, ...] = ("bybit", "htx", "bitkub", "binance", "fly", "it_obmen")
 
 
 def _usdt_fetch_bybit_branch() -> _UsdtParallelBranch:
@@ -428,6 +428,18 @@ def _sort_pipe_rows_asc(rows: List[Tuple[str, Optional[float]]]) -> List[Tuple[s
     return sorted(rows, key=sort_key)
 
 
+def _sort_pipe_rows_desc(rows: List[Tuple[str, Optional[float]]]) -> List[Tuple[str, Optional[float]]]:
+    """По убыванию курса; без числа («—») — в конце; при равенстве — по подписи."""
+
+    def sort_key(item: Tuple[str, Optional[float]]) -> Tuple[int, float, str]:
+        lab, v = item
+        if v is None or v <= 0:
+            return (1, 0.0, lab)
+        return (0, -v, lab)
+
+    return sorted(rows, key=sort_key)
+
+
 def _pipe_lines(rows: List[Tuple[str, Optional[float]]]) -> List[str]:
     """Строки вида ``  79.50 | Bybit (наличные)`` — курс слева (два знака), подпись справа."""
     if not rows:
@@ -465,7 +477,7 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
         *_pipe_lines(_sort_pipe_rows_asc(rub_rows)),
         "",
         "THB за 1 USDT",
-        *_pipe_lines(_sort_pipe_rows_asc(thb_rows)),
+        *_pipe_lines(_sort_pipe_rows_desc(thb_rows)),
         "",
         "Полные пути: RUB за 1 THB (P2P × площадка TH)",
     ]
@@ -473,12 +485,8 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     paths = [
         ("Bybit P2P (наличные) → Bitkub", rub.get("bybit_cash"), bk),
         ("Bybit P2P (наличные) → Binance TH", rub.get("bybit_cash"), bn),
-        ("Bybit P2P (наличные) → Fly", rub.get("bybit_cash"), fly),
-        ("Bybit P2P (наличные) → IT Обмен", rub.get("bybit_cash"), it_obmen),
         ("Bybit P2P (перевод) → Bitkub", rub.get("bybit_transfer"), bk),
         ("Bybit P2P (перевод) → Binance TH", rub.get("bybit_transfer"), bn),
-        ("Bybit P2P (перевод) → Fly", rub.get("bybit_transfer"), fly),
-        ("Bybit P2P (перевод) → IT Обмен", rub.get("bybit_transfer"), it_obmen),
         ("HTX P2P (наличные) → Bitkub", rub.get("htx_cash"), bk),
         ("HTX P2P (наличные) → Binance TH", rub.get("htx_cash"), bn),
         ("HTX P2P (перевод) → Bitkub", rub.get("htx_no_cash"), bk),
@@ -517,12 +525,8 @@ def print_usdt_report_json(data: Dict[str, Any], warnings: List[str], file: Text
     paths = [
         ("Bybit P2P (наличные) → Bitkub", rub.get("bybit_cash"), bk),
         ("Bybit P2P (наличные) → Binance TH", rub.get("bybit_cash"), bn),
-        ("Bybit P2P (наличные) → Fly", rub.get("bybit_cash"), fly),
-        ("Bybit P2P (наличные) → IT Обмен", rub.get("bybit_cash"), it_obmen),
         ("Bybit P2P (перевод) → Bitkub", rub.get("bybit_transfer"), bk),
         ("Bybit P2P (перевод) → Binance TH", rub.get("bybit_transfer"), bn),
-        ("Bybit P2P (перевод) → Fly", rub.get("bybit_transfer"), fly),
-        ("Bybit P2P (перевод) → IT Обмен", rub.get("bybit_transfer"), it_obmen),
         ("HTX P2P (наличные) → Bitkub", rub.get("htx_cash"), bk),
         ("HTX P2P (наличные) → Binance TH", rub.get("htx_cash"), bn),
         ("HTX P2P (перевод) → Bitkub", rub.get("htx_no_cash"), bk),

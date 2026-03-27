@@ -8,10 +8,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, Iterable, List
 
+import rates_unified_cache as ucc
 from telethon import TelegramClient, events
 
 from env_loader import load_repo_dotenv
-from userbot.cache_writer import write_source_snapshot
+from userbot.cache_writer import key_for_source, write_source_snapshot
 from userbot.config import load_settings
 from userbot.models import ParsedRate, SourceConfig
 from userbot.parser import compile_rules, parse_message
@@ -53,6 +54,44 @@ def _rates_brief(rows: Iterable[ParsedRate]) -> str:
     return ", ".join(parts)
 
 
+def _read_existing_source_snapshot(cfg: SourceConfig) -> List[ParsedRate]:
+    doc = ucc.load_unified()
+    hit = ucc.l1_get_valid(doc, key_for_source(cfg.source_id))
+    if hit is None:
+        return []
+    payload = hit[1]
+    if not isinstance(payload, list):
+        return []
+    out: List[ParsedRate] = []
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        try:
+            out.append(
+                ParsedRate(
+                    source_id=str(row.get("source_id") or cfg.source_id),
+                    source_name=str(row.get("source_name") or cfg.name),
+                    currency=str(row.get("currency") or "").strip().upper(),
+                    category=str(row.get("category") or "").strip().lower(),
+                    rate=float(row.get("rate") or 0),
+                    message_id=int(row.get("message_id") or 0),
+                    message_unix=float(row.get("message_unix") or 0),
+                    chat=str(row.get("chat") or cfg.chat),
+                    city=str(row.get("city") or cfg.city),
+                )
+            )
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _merge_with_existing_snapshot(cfg: SourceConfig, rows: Iterable[ParsedRate]) -> List[ParsedRate]:
+    combined: List[ParsedRate] = []
+    combined.extend(_read_existing_source_snapshot(cfg))
+    combined.extend(list(rows))
+    return _pick_latest_per_currency(combined)
+
+
 async def _bootstrap_source(
     client: TelegramClient,
     cfg: SourceConfig,
@@ -77,12 +116,10 @@ async def _bootstrap_source(
         )
         if parsed:
             found.extend(parsed)
-            # самое свежее подходящее сообщение найдено (iter_messages идет от новых к старым)
-            break
     if not found:
         logger.warning("bootstrap: no matching message for %s", cfg.source_id)
         return
-    latest = _pick_latest_per_currency(found)
+    latest = _merge_with_existing_snapshot(cfg, found)
     write_source_snapshot(source_id=cfg.source_id, rows=latest)
     logger.info(
         "bootstrap: %s matched msg=%s rates=%d (%s)",
@@ -149,7 +186,7 @@ async def _run(*, login_only: bool, login_phone: str) -> None:
         )
         if not rows:
             return
-        latest = _pick_latest_per_currency(rows)
+        latest = _merge_with_existing_snapshot(cfg, rows)
         write_source_snapshot(source_id=cfg.source_id, rows=latest)
         logger.info(
             "%s: %s matched msg=%s rates=%d (%s)",
