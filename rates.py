@@ -53,6 +53,8 @@ from rates_sources import (
 from sources.korona.koronapay_tariffs import RUB_MIN_SENDING_FOR_BEST_TIER
 from sources import plugin_by_id, registered_source_ids
 
+from rates_output_filters import apply_summary_row_filter
+
 _CACHE_OVERRIDE = (os.environ.get("RATES_CACHE_FILE") or "").strip()
 CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
@@ -145,6 +147,13 @@ def build_arg_parser(*, add_help: bool = True) -> argparse.ArgumentParser:
         type=Path,
         default=CACHE_FILE,
         help="Файл кеша",
+    )
+    p.add_argument(
+        "--filter",
+        dest="output_filter",
+        default="",
+        metavar="NAME",
+        help="Пресет постфильтрации вывода (например travelask). Неизвестное имя — без эффекта.",
     )
     return p
 
@@ -300,6 +309,15 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
     return rows, baseline, warnings
 
 
+def _maybe_apply_output_filter(
+    args: argparse.Namespace, rows: List[RateRow]
+) -> List[RateRow]:
+    fn = (getattr(args, "output_filter", None) or "").strip()
+    if not fn:
+        return rows
+    return apply_summary_row_filter(rows, fn)
+
+
 def _cash_section_title(cat: SourceCategory) -> str:
     return {
         SourceCategory.CASH_RUB: "Наличные RUB ➔ THB",
@@ -400,6 +418,10 @@ def _print_single_source_summary_usage(stream: TextIO, source_id: str) -> None:
 def print_global_help(parser: argparse.ArgumentParser) -> None:
     parser.print_help()
     print("\nКоманды:")
+    print(
+        "  (сводка) Опции: --refresh, --json, --filter NAME — пресет постфильтрации строк "
+        "(неизвестное имя игнорируется)."
+    )
     print("  sources              Список id доступных источников.")
     print("  env-status           Файл .env и типичные переменные (без значений).")
     print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
@@ -504,6 +526,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if not rest:
         rows, baseline, warnings = compute_summary_rows(args)
+        rows = _maybe_apply_output_filter(args, rows)
         if args.json:
             print_json_summary(rows, baseline, warnings, sys.stdout)
         else:
@@ -553,6 +576,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             for k, v in vars(args2).items():
                 setattr(args, k, v)
         rows, baseline, warnings = compute_summary_rows(args)
+        rows = _maybe_apply_output_filter(args, rows)
         try:
             with out_path.open("w", encoding="utf-8") as f:
                 if args.json:

@@ -68,6 +68,27 @@ def _env(name: str) -> str:
     return (os.environ.get(name) or "").strip()
 
 
+def _parse_rates_command_tokens(tokens: list[str]) -> tuple[bool, str]:
+    """
+    /rates [refresh] [filter NAME] — порядок аргументов любой.
+    Возвращает (refresh, output_filter). Неизвестный пресет обрабатывается тихо при сборке сводки.
+    """
+    if not tokens:
+        return False, ""
+    tlow = [x.lower() for x in tokens]
+    refresh = any(x in ("refresh", "r", "--refresh") for x in tlow[1:])
+    output_filter = ""
+    try:
+        fi = tlow.index("filter")
+        if fi + 1 < len(tokens):
+            cand = tokens[fi + 1].strip()
+            if cand.lower() not in ("refresh", "r", "--refresh"):
+                output_filter = cand
+    except ValueError:
+        pass
+    return refresh, output_filter
+
+
 def _fetch_timeout_sec() -> float:
     raw = (os.environ.get("BOT_FETCH_TIMEOUT_SEC") or "").strip()
     if not raw:
@@ -108,7 +129,12 @@ async def _main_async() -> None:
     rates_busy_chats: Set[int] = set()
     fetch_timeout = _fetch_timeout_sec()
 
-    async def _send_rates_summary(event: events.NewMessage.Event, *, refresh: bool) -> None:
+    async def _send_rates_summary(
+        event: events.NewMessage.Event,
+        *,
+        refresh: bool,
+        output_filter: str = "",
+    ) -> None:
         chat_id = event.chat_id
         # Не держим Lock во время await: иначе завершившийся запрос в finally может ждать lock
         # у второго сообщения «уже выполняется» и долго не снимает chat_id из множества.
@@ -127,7 +153,11 @@ async def _main_async() -> None:
             status_msg = await event.respond("Идёт получение…")
             try:
                 text = await asyncio.wait_for(
-                    asyncio.to_thread(get_summary_text, refresh=refresh),
+                    asyncio.to_thread(
+                        get_summary_text,
+                        refresh=refresh,
+                        output_filter=output_filter,
+                    ),
                     timeout=fetch_timeout,
                 )
             except asyncio.TimeoutError:
@@ -429,7 +459,7 @@ async def _main_async() -> None:
     async def on_start(event: events.NewMessage.Event) -> None:
         await event.respond(
             "Команды:\n"
-            "/rates — сводка RUB/THB\n"
+            "/rates — сводка RUB/THB; /rates filter travelask — с пресетом; неизвестный фильтр без ошибки\n"
             "/usdt — P2P RUB/USDT и USDT/THB\n"
             "/cash — список городов; /cash N [K] — курсы выбранного города (топ K)\n"
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)\n"
@@ -501,11 +531,10 @@ async def _main_async() -> None:
     async def on_rates(event: events.NewMessage.Event) -> None:
         msg = event.message.message or ""
         tokens = msg.split()
-        refresh = (
-            len(tokens) > 1
-            and tokens[1].lower() in ("refresh", "r", "--refresh")
+        refresh, output_filter = _parse_rates_command_tokens(tokens)
+        await _send_rates_summary(
+            event, refresh=refresh, output_filter=output_filter
         )
-        await _send_rates_summary(event, refresh=refresh)
 
     @client.on(events.NewMessage(pattern=r"(?i)^/refresh(?:@\S+)?"))
     async def on_refresh(event: events.NewMessage.Event) -> None:

@@ -19,11 +19,19 @@ logger = logging.getLogger(__name__)
 
 
 def get_summary_text(
-    *, refresh: bool = False, unified_allow_stale: bool = True
+    *,
+    refresh: bool = False,
+    unified_allow_stale: bool = True,
+    output_filter: str = "",
 ) -> str:
     """Та же текстовая сводка, что у ``rates.py`` без ``--json``."""
     parser = rates_mod.build_arg_parser(add_help=False)
-    argv = ["--refresh"] if refresh else []
+    argv: list[str] = []
+    if refresh:
+        argv.append("--refresh")
+    of = (output_filter or "").strip()
+    if of:
+        argv.extend(["--filter", of])
     args = parser.parse_args(argv)
     if not refresh:
         args.unified_allow_stale = bool(unified_allow_stale)

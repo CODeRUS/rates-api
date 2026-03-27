@@ -57,6 +57,11 @@ class TestRatesSummaryCli(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("USDT", r.stdout)
 
+    def test_summary_unknown_filter_exits_zero(self):
+        r = _run("--filter", "nonexistent_preset_xyz")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Перевод RUB", r.stdout)
+
     def test_save_writes_file(self):
         import tempfile
 
