@@ -39,10 +39,12 @@ load_repo_dotenv(_ROOT)
 
 from telethon import TelegramClient, events
 
+from bot.rshb_args import parse_rshb_command_args
 from bot.summary_adapter import (
     get_cash_cities_text,
     get_cash_text,
     get_exchange_text,
+    get_rshb_text,
     get_summary_text,
     get_usdt_text,
     run_background_unified_refresh,
@@ -118,7 +120,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash или /exchange). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange или /rshb). Дождитесь результата."
             )
             return
         try:
@@ -173,7 +175,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash или /exchange). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange или /rshb). Дождитесь результата."
             )
             return
         try:
@@ -242,7 +244,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash или /exchange). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange или /rshb). Дождитесь результата."
             )
             return
         try:
@@ -338,6 +340,50 @@ async def _main_async() -> None:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
 
+    async def _send_rshb_report(
+        event: events.NewMessage.Event, *, thb_net: float, atm_fee: float
+    ) -> None:
+        chat_id = event.chat_id
+        async with rates_busy_guard:
+            if chat_id in rates_busy_chats:
+                busy = True
+            else:
+                busy = False
+                rates_busy_chats.add(chat_id)
+        if busy:
+            await event.respond(
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange или /rshb). Дождитесь результата."
+            )
+            return
+        try:
+            status_msg = await event.respond("Идёт получение RSHB…")
+            try:
+                text = await asyncio.wait_for(
+                    asyncio.to_thread(get_rshb_text, thb_net=thb_net, atm_fee=atm_fee),
+                    timeout=fetch_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error("get_rshb_text timed out after %.0fs", fetch_timeout)
+                await status_msg.edit(
+                    f"Таймаут {fetch_timeout:.0f} с при сборе RSHB. "
+                    "Проверьте сеть или задайте BOT_FETCH_TIMEOUT_SEC."
+                )
+                return
+            except Exception:
+                logger.exception("get_rshb_text failed")
+                await status_msg.edit("Не удалось собрать отчёт RSHB. Попробуйте позже.")
+                return
+            chunks = split_for_telegram(text)
+            if not chunks or (len(chunks) == 1 and not chunks[0].strip()):
+                await status_msg.edit("(пустой отчёт RSHB)")
+                return
+            await status_msg.edit(chunks[0])
+            for chunk in chunks[1:]:
+                await event.respond(chunk)
+        finally:
+            async with rates_busy_guard:
+                rates_busy_chats.discard(chat_id)
+
     async def _refresh_cash_cache(event: events.NewMessage.Event) -> None:
         """Админский прогрев кеша cash для всех городов."""
         chat_id = event.chat_id
@@ -349,7 +395,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash или /exchange). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange или /rshb). Дождитесь результата."
             )
             return
         try:
@@ -386,7 +432,8 @@ async def _main_async() -> None:
             "/rates — сводка RUB/THB\n"
             "/usdt — P2P RUB/USDT и USDT/THB\n"
             "/cash — список городов; /cash N [K] — курсы выбранного города (топ K)\n"
-            "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)"
+            "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)\n"
+            "/rshb — THB/RUB по картам РСХБ; /rshb THB ATM_FEE"
         )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+){0,2}$"))
@@ -439,6 +486,16 @@ async def _main_async() -> None:
     @client.on(events.NewMessage(pattern=r"(?i)^/usdt(?:@\S+)?$"))
     async def on_usdt(event: events.NewMessage.Event) -> None:
         await _send_usdt_report(event, refresh=False)
+
+    @client.on(events.NewMessage(pattern=r"(?i)^/rshb(?:@\S+)?(?:\s+\S+){0,2}$"))
+    async def on_rshb(event: events.NewMessage.Event) -> None:
+        msg = (event.message.message or "").strip()
+        try:
+            thb_net, atm_fee = parse_rshb_command_args(msg)
+        except ValueError:
+            await event.respond("Формат: /rshb [THB] [ATM_FEE], например: /rshb 30000 250")
+            return
+        await _send_rshb_report(event, thb_net=thb_net, atm_fee=atm_fee)
 
     @client.on(events.NewMessage(pattern=r"(?i)^/rates(?:@\S+)?"))
     async def on_rates(event: events.NewMessage.Event) -> None:

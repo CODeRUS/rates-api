@@ -59,7 +59,7 @@ CACHE_TTL_SEC = 30 * 60
 CACHE_VERSION = 32
 
 _RESERVED = frozenset(
-    {"sources", "save", "usdt", "env-status", "cash", "exchange"}
+    {"sources", "save", "usdt", "env-status", "cash", "exchange", "rshb"}
 )
 
 
@@ -405,6 +405,9 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
     print("  usdt [--refresh] [--json] [--cache-file ПУТЬ]  Отчёт P2P RUB/USDT и USDT/THB (отдельный кеш).")
     print(
+        "  rshb [THB] [ATM_FEE]  Отчёт THB/RUB по картам РСХБ UnionPay (по умолчанию: 30000 и 250)."
+    )
+    print(
         "  cash [N] [--top K] [--no-banki] [--refresh]  Без N — список городов; с N — курсы выбранного города."
     )
     print(
@@ -425,6 +428,23 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
         ht = mod.help_text().strip().replace("\n", " ")
         print(f"  {sid}")
         print(f"      {ht}")
+
+
+def parse_rshb_cli_args(argv: List[str]) -> Tuple[float, float]:
+    """
+    Парсинг хвоста команды `rshb`: [THB] [ATM_FEE].
+    """
+    r_parser = argparse.ArgumentParser(add_help=False)
+    r_parser.add_argument("thb", nargs="?", type=float, default=30_000.0)
+    r_parser.add_argument("atm_fee", nargs="?", type=float, default=250.0)
+    r_args, r_rest = r_parser.parse_known_args(argv)
+    if r_rest:
+        raise ValueError(f"Неизвестные аргументы rshb: {' '.join(r_rest)}")
+    if r_args.thb <= 0:
+        raise ValueError("THB должен быть больше 0.")
+    if r_args.atm_fee <= 0:
+        raise ValueError("ATM_FEE должен быть больше 0.")
+    return float(r_args.thb), float(r_args.atm_fee)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -470,6 +490,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             import usdt_report as _ur
 
             print(_ur.usdt_subcommand_help())
+            return 0
+        if len(rest) >= 1 and rest[0] == "rshb":
+            print(
+                "rshb [THB] [ATM_FEE] — отчёт THB/RUB для РСХБ UnionPay.\n"
+                "Примеры:\n"
+                "  rates.py rshb\n"
+                "  rates.py rshb 30000 250"
+            )
             return 0
         print_global_help(build_arg_parser(add_help=True))
         return 0
@@ -584,6 +612,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             ur.print_usdt_report_json(data, uw, sys.stdout)
         else:
             print(ur.format_usdt_report_text(data, uw), end="")
+        return 0
+
+    if head == "rshb":
+        from sources.rshb_unionpay.card_fx_calculator import build_rshb_text
+
+        try:
+            thb, atm_fee = parse_rshb_cli_args(rest[1:])
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 2
+        print(build_rshb_text(thb_net=thb, atm_fee_thb=atm_fee), end="")
         return 0
 
     if head in source_ids:

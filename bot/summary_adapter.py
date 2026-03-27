@@ -13,6 +13,7 @@ import cash_report as cash_mod  # noqa: E402
 import exchange_report as exchange_mod  # noqa: E402
 import rates as rates_mod  # noqa: E402
 import usdt_report as usdt_mod  # noqa: E402
+from sources.rshb_unionpay.card_fx_calculator import build_rshb_text  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +112,11 @@ def get_usdt_text(
 
 
 get_usdt_text._needs_background_refresh = False  # type: ignore[attr-defined]
+
+
+def get_rshb_text(*, thb_net: float = 30_000.0, atm_fee: float = 250.0) -> str:
+    """Текст отчёта THB/RUB для РСХБ UnionPay."""
+    return build_rshb_text(thb_net=thb_net, atm_fee_thb=atm_fee)
 
 
 def run_background_unified_refresh(kind: str) -> None:
