@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 import rates_unified_cache as ucc
 from rates_categories import SourceCategory
+from userbot.sources_config import USERBOT_SOURCES
 
 if TYPE_CHECKING:
     from rates_sources import FetchContext
@@ -16,6 +17,12 @@ SOURCE_ID = "userbot_cash"
 EMOJI = "💬"
 IS_BASELINE = False
 CATEGORY = SourceCategory.TRANSFER
+_SUMMARY_NOTE_BY_SOURCE: Dict[str, str] = {
+    str(cfg.source_id): str(cfg.summary_note or "").strip() for cfg in USERBOT_SOURCES
+}
+_EMOJI_BY_SOURCE: Dict[str, str] = {
+    str(cfg.source_id): str(cfg.emoji or "").strip() for cfg in USERBOT_SOURCES
+}
 
 
 def help_text() -> str:
@@ -70,9 +77,10 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
         for row in payload:
             if not isinstance(row, dict):
                 continue
+            sid = str(row.get("source_id") or "").strip()
             # Для Unired есть отдельный source-плагин `unired_bkb` в summary —
             # не дублируем его из userbot_cash.
-            if str(row.get("source_id") or "").strip() == "unired_bkb":
+            if sid == "unired_bkb":
                 continue
             c = _cat(str(row.get("category") or ""))
             if c is None:
@@ -89,14 +97,17 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
             cur = str(row.get("currency") or "").upper()
             # Для transfer-источников показываем только имя источника (без суффикса валюты).
             label = src_name if (c == SourceCategory.TRANSFER or not cur) else f"{src_name} {cur}"
-            note = f"Наличные от 20000 THB"
+            note_cfg = _SUMMARY_NOTE_BY_SOURCE.get(sid, "")
+            note = note_cfg if note_cfg else (f"msg #{row.get('message_id')}" if row.get("message_id") is not None else "")
+            emoji_cfg = _EMOJI_BY_SOURCE.get(sid, "")
+            emoji = emoji_cfg if emoji_cfg else "•"
             out.append(
                 SourceQuote(
                     rate=rate,
                     label=label,
                     note=note,
                     category=c,
-                    emoji="🤑",
+                    emoji=emoji,
                     compare_to_baseline=(c in {SourceCategory.TRANSFER, SourceCategory.CASH_RUB}),
                 )
             )

@@ -20,6 +20,7 @@ class SourceConfig:
     emoji: str
     currencies: tuple[CurrencyRule, ...]
     city: str = ""
+    summary_note: str = ""
 
 
 @dataclass(frozen=True)

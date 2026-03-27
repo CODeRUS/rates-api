@@ -147,6 +147,29 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
             ),
         ),
         city="",
+        summary_note="от 20000 THB нал",
+    ),
+    SourceConfig(
+        source_id="fly_currency",
+        name="Fly Currency",
+        chat="@ThaiExchangee",
+        emoji="🤑",
+        currencies=(
+            CurrencyRule(
+                currency="RUBTHB",
+                category="transfer",
+                # RUB -> THB: 2.62 – 2.68  => берем верхнюю границу 2.68
+                pattern=r"RUB\s*(?:->|→)\s*THB\s*:\s*\d+(?:[.,]\d+)?\s*[–-]\s*(?P<rate>\d+(?:[.,]\d+)?)",
+            ),
+            CurrencyRule(
+                currency="USDTTHB",
+                category="usdt_thb",
+                # USDT -> THB: 31.34–31.99 => берем нижнюю границу 31.34
+                pattern=r"USDT\s*(?:->|→)\s*THB\s*:\s*(?P<rate>\d+(?:[.,]\d+)?)\s*[–-]\s*\d+(?:[.,]\d+)?",
+            ),
+        ),
+        city="",
+        summary_note="минимальная сумма",
     ),
 )
 

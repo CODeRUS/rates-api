@@ -156,6 +156,41 @@ def _usdt_fetch_binance_branch() -> _UsdtParallelBranch:
     return {}, thb, w
 
 
+def _usdt_fetch_fly_branch() -> _UsdtParallelBranch:
+    """
+    USDT/THB от userbot-источника Fly Currency (chatcash:fly_currency).
+    Берем запись currency=USDTTHB, category=usdt_thb.
+    """
+    thb: Dict[str, Optional[float]] = {"fly_bid": None}
+    w: List[str] = []
+    doc = ucc.load_unified()
+    hit = ucc.l1_get_valid(doc, "chatcash:fly_currency")
+    if hit is None:
+        w.append("Fly Currency: нет свежего userbot-кеша (chatcash:fly_currency)")
+        return {}, thb, w
+    payload = hit[1]
+    if not isinstance(payload, list):
+        w.append("Fly Currency: некорректный payload в userbot-кеше")
+        return {}, thb, w
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("currency") or "").strip().upper() != "USDTTHB":
+            continue
+        if str(row.get("category") or "").strip().lower() != "usdt_thb":
+            continue
+        try:
+            v = float(row.get("rate") or 0)
+        except (TypeError, ValueError):
+            continue
+        if v > 0:
+            thb["fly_bid"] = v
+            break
+    if not thb["fly_bid"]:
+        w.append("Fly Currency: нет USDT→THB в userbot-кеше")
+    return {}, thb, w
+
+
 def _usdt_l1_pack(pack: _UsdtParallelBranch) -> Dict[str, Any]:
     rpart, tpart, wpart = pack
     return {"rub": rpart, "thb": tpart, "warnings": wpart}
@@ -180,6 +215,8 @@ def _usdt_parallel_worker(branch: str) -> _UsdtParallelBranch:
         return _usdt_fetch_bitkub_branch()
     if branch == "binance":
         return _usdt_fetch_binance_branch()
+    if branch == "fly":
+        return _usdt_fetch_fly_branch()
     raise ValueError(branch)
 
 
@@ -201,6 +238,7 @@ def fetch_usdt_payload(
     thb: Dict[str, Optional[float]] = {
         "bitkub_highest_bid": None,
         "binance_bid": None,
+        "fly_bid": None,
     }
 
     def _work(branch: str) -> _UsdtParallelBranch:
@@ -366,6 +404,7 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     thb = data.get("thb_per_usdt") or {}
     bk = thb.get("bitkub_highest_bid")
     bn = thb.get("binance_bid")
+    fly = thb.get("fly_bid")
 
     rub_rows: List[Tuple[str, Optional[float]]] = [
         ("Bybit (наличные)", float(rub["bybit_cash"]) if isinstance(rub.get("bybit_cash"), (int, float)) else None),
@@ -376,6 +415,7 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     thb_rows: List[Tuple[str, Optional[float]]] = [
         ("Bitkub (highestBid)", float(bk) if isinstance(bk, (int, float)) and bk and bk > 0 else None),
         ("Binance TH (bid)", float(bn) if isinstance(bn, (int, float)) and bn and bn > 0 else None),
+        ("Fly Currency (min)", float(fly) if isinstance(fly, (int, float)) and fly and fly > 0 else None),
     ]
 
     lines: List[str] = [
@@ -393,8 +433,10 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     paths = [
         ("Bybit P2P (наличные) → Bitkub", rub.get("bybit_cash"), bk),
         ("Bybit P2P (наличные) → Binance TH", rub.get("bybit_cash"), bn),
+        ("Bybit P2P (наличные) → Fly", rub.get("bybit_cash"), fly),
         ("Bybit P2P (перевод) → Bitkub", rub.get("bybit_transfer"), bk),
         ("Bybit P2P (перевод) → Binance TH", rub.get("bybit_transfer"), bn),
+        ("Bybit P2P (перевод) → Fly", rub.get("bybit_transfer"), fly),
         ("HTX P2P (наличные) → Bitkub", rub.get("htx_cash"), bk),
         ("HTX P2P (наличные) → Binance TH", rub.get("htx_cash"), bn),
         ("HTX P2P (перевод) → Bitkub", rub.get("htx_no_cash"), bk),
@@ -428,11 +470,14 @@ def print_usdt_report_json(data: Dict[str, Any], warnings: List[str], file: Text
     thb = data.get("thb_per_usdt") or {}
     bk = thb.get("bitkub_highest_bid")
     bn = thb.get("binance_bid")
+    fly = thb.get("fly_bid")
     paths = [
         ("Bybit P2P (наличные) → Bitkub", rub.get("bybit_cash"), bk),
         ("Bybit P2P (наличные) → Binance TH", rub.get("bybit_cash"), bn),
+        ("Bybit P2P (наличные) → Fly", rub.get("bybit_cash"), fly),
         ("Bybit P2P (перевод) → Bitkub", rub.get("bybit_transfer"), bk),
         ("Bybit P2P (перевод) → Binance TH", rub.get("bybit_transfer"), bn),
+        ("Bybit P2P (перевод) → Fly", rub.get("bybit_transfer"), fly),
         ("HTX P2P (наличные) → Bitkub", rub.get("htx_cash"), bk),
         ("HTX P2P (наличные) → Binance TH", rub.get("htx_cash"), bn),
         ("HTX P2P (перевод) → Bitkub", rub.get("htx_no_cash"), bk),
