@@ -466,7 +466,7 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     thb_rows: List[Tuple[str, Optional[float]]] = [
         ("Bitkub (highestBid)", float(bk) if isinstance(bk, (int, float)) and bk and bk > 0 else None),
         ("Binance TH (bid)", float(bn) if isinstance(bn, (int, float)) and bn and bn > 0 else None),
-        ("Fly Currency (min)", float(fly) if isinstance(fly, (int, float)) and fly and fly > 0 else None),
+        ("Fly Currency (минимальная сумма)", float(fly) if isinstance(fly, (int, float)) and fly and fly > 0 else None),
         ("IT Обмен (до 1000 USDT)", float(it_obmen) if isinstance(it_obmen, (int, float)) and it_obmen and it_obmen > 0 else None),
     ]
 
