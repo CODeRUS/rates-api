@@ -25,7 +25,7 @@ def _compile_regexes(patterns: Sequence[str]) -> Tuple[Pattern[str], ...]:
 
 
 _PRESETS_RAW: Dict[str, _OutputFilterPreset] = {
-    "161665026": _OutputFilterPreset(
+    "-1001835014897": _OutputFilterPreset(
         substrings=(
             "IT Обмен",
             "Fly Currency",
