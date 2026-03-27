@@ -33,6 +33,7 @@ def command(argv: list[str]) -> int:
 def _cat(raw: str) -> Optional[SourceCategory]:
     s = (raw or "").strip().lower()
     mp = {
+        "transfer": SourceCategory.TRANSFER,
         "cash_rub": SourceCategory.CASH_RUB,
         "cash_usd": SourceCategory.CASH_USD,
         "cash_eur": SourceCategory.CASH_EUR,
@@ -69,6 +70,10 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
         for row in payload:
             if not isinstance(row, dict):
                 continue
+            # Для Unired есть отдельный source-плагин `unired_bkb` в summary —
+            # не дублируем его из userbot_cash.
+            if str(row.get("source_id") or "").strip() == "unired_bkb":
+                continue
             c = _cat(str(row.get("category") or ""))
             if c is None:
                 continue
@@ -82,8 +87,9 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
                 continue
             src_name = str(row.get("source_name") or row.get("source_id") or "Userbot")
             cur = str(row.get("currency") or "").upper()
-            label = src_name if not cur else f"{src_name} {cur}"
-            note = f"msg #{row.get('message_id')}" if row.get("message_id") is not None else ""
+            # Для transfer-источников показываем только имя источника (без суффикса валюты).
+            label = src_name if (c == SourceCategory.TRANSFER or not cur) else f"{src_name} {cur}"
+            note = f"Наличные от 20000 THB"
             out.append(
                 SourceQuote(
                     rate=rate,
@@ -91,7 +97,7 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
                     note=note,
                     category=c,
                     emoji="•",
-                    compare_to_baseline=(c == SourceCategory.CASH_RUB),
+                    compare_to_baseline=(c in {SourceCategory.TRANSFER, SourceCategory.CASH_RUB}),
                 )
             )
     return out or None

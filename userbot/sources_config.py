@@ -129,5 +129,24 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
         ),
         city="Москва",
     ),
+    SourceConfig(
+        source_id="it_obmen_pattaya",
+        name="IT Обмен",
+        chat="@it_obmen_pattaya",
+        emoji="🤑",
+        currencies=(
+            CurrencyRule(
+                currency="RUBTHB",
+                category="transfer",
+                # Пример:
+                # Онлайн Рубль -> Наличный Бат
+                # от 5к Бат  –  2.68
+                # от 20к Бат – 2.67   <- берем этот курс
+                # от 50к Бат – 2.66
+                pattern=r"Онлайн\s*Рубль\s*[-–>]+\s*Наличный\s*Бат[\s\S]*?от\s*20к\s*Бат\s*[–-]\s*(?P<rate>\d+(?:[.,]\d+)?)",
+            ),
+        ),
+        city="",
+    ),
 )
 
