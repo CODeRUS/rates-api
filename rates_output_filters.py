@@ -38,6 +38,7 @@ _PRESETS_RAW: Dict[str, _OutputFilterPreset] = {
     ),
 }
 
+# Алиасы для удобства (CLI/bot): исторические id + короткое имя "ta".
 _PRESETS_RAW["travelask"] = _PRESETS_RAW["161665026"]
 _PRESETS_RAW["ta"] = _PRESETS_RAW["161665026"]
 

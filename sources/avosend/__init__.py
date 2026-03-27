@@ -26,7 +26,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
 
     amt = ctx.avosend_rub
     note = f"от {fmt_money_ru(amt)} RUB"
-    avo_label = f"Avosend (от {fmt_money_ru(amt)} RUB)"
+    avo_label = f"Avosend получение в Big C (от {fmt_money_ru(amt)} RUB)"
 
     def rate_mode(mode: av.TransferMode) -> Optional[float]:
         try:

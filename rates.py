@@ -334,10 +334,25 @@ def _cash_section_title(cat: SourceCategory) -> str:
 
 def print_summary_text(rows: List[RateRow], baseline: float, warnings: List[str], file: TextIO) -> None:
     visible = [r for r in rows if r.category not in _SUMMARY_OMIT_CASH_FX]
-    print("Перевод RUB ➔ THB", file=file)
+
+    def _is_rshb_up(r: RateRow) -> bool:
+        return (r.label or "").startswith("РСХБ UP")
+
+    unionpay_forex_rows = [r for r in visible if r.is_baseline]
+    unionpay_up_rows = [r for r in visible if _is_rshb_up(r)]
+    unionpay_all_ids = {id(r) for r in (*unionpay_forex_rows, *unionpay_up_rows)}
+    remaining = [r for r in visible if id(r) not in unionpay_all_ids]
+
+    print("Карты UnionPay РСХБ", file=file)
+    for r in unionpay_forex_rows:
+        print(r.format_line(baseline), file=file)
+    for r in sorted(unionpay_up_rows, key=lambda x: x.rate):
+        print(r.format_line(baseline), file=file)
+
     print(file=file)
+    print("Перевод RUB ➔ THB", file=file)
     prev_cat: Optional[SourceCategory] = None
-    for r in visible:
+    for r in remaining:
         if is_cash_category(r.category):
             new_block = (
                 prev_cat is None
@@ -350,6 +365,7 @@ def print_summary_text(rows: List[RateRow], baseline: float, warnings: List[str]
                 print(_cash_section_title(r.category), file=file)
         print(r.format_line(baseline), file=file)
         prev_cat = r.category
+
     if warnings:
         print(file=file)
         print("Предупреждения:", file=file)
