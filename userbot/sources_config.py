@@ -145,6 +145,15 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
                 # от 50к Бат – 2.66
                 pattern=r"Онлайн\s*Рубль\s*[-–>]+\s*Наличный\s*Бат[\s\S]*?от\s*20к\s*Бат\s*[–-]\s*(?P<rate>\d+(?:[.,]\d+)?)",
             ),
+            CurrencyRule(
+                currency="USDTTHB",
+                category="usdt_thb",
+                # Пример:
+                # до 1000 USDT – 31.3
+                # свыше 1000 USDT – 31.4
+                # Берем "до 1000 USDT".
+                pattern=r"до\s*1000\s*USDT\s*[–-]\s*(?P<rate>\d+(?:[.,]\d+)?)",
+            ),
         ),
         city="",
         summary_note="от 20000 THB нал",
