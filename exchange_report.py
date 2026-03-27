@@ -86,6 +86,110 @@ def _ex_deps_for_keys(doc: Dict[str, Any], keys: List[str]) -> Dict[str, int]:
     return out
 
 
+def best_fiat_buy_thb_across_branches(
+    *,
+    fiat_code: str,
+    lang: str = "ru",
+    timeout: float = 28.0,
+    parallel_max_workers: Optional[int] = None,
+    refresh: bool = False,
+) -> Tuple[Optional[float], List[str]]:
+    """
+    Максимальный курс TT (THB за 1 ед. ``fiat_code``) среди открытых филиалов.
+
+    В отличие от ``build_exchange_report_text``, не отбрасывает филиалы без USD —
+    подходит для EUR/CNY. Обновляет L1 unified-кеш курсов так же, как отчёт exchange.
+    """
+    code = (fiat_code or "").strip().upper()
+    warnings: List[str] = []
+    if code not in ("USD", "EUR", "CNY"):
+        warnings.append(f"Неподдерживаемая валюта TT: {fiat_code!r}")
+        return None, warnings
+
+    unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
+    doc = ucc.load_unified(unified_path)
+    lang = (lang or "ru").strip() or "ru"
+    ttx = _ttexchange_api_module()
+    stores_key = f"ex:l1:stores:{lang}"
+    stores_list: Any = None
+    if not refresh:
+        hit_s = ucc.l1_get_valid(doc, stores_key)
+        if hit_s is not None:
+            stores_list = hit_s[1]
+    if refresh or stores_list is None:
+        stores_list = ttx.get_stores(lang, timeout=timeout)
+        if isinstance(stores_list, list):
+            ucc.l1_set(
+                doc,
+                stores_key,
+                stores_list,
+                ttl_sec=ucc.TTL_L1_EXCHANGE_STORES_SEC,
+            )
+
+    if not isinstance(stores_list, list):
+        warnings.append("TT /stores не список")
+        return None, warnings
+
+    jobs: List[Tuple[str, str]] = []
+    for row in stores_list:
+        if not isinstance(row, dict):
+            continue
+        bid = row.get("branch_id")
+        if bid is None:
+            continue
+        bid_s = str(bid)
+        raw_name = str(row.get("name") or "").strip()
+        if _branch_skipped_as_closed(raw_name):
+            continue
+        label = normalize_ttexchange_branch_label(raw_name or bid_s)
+        jobs.append((label, bid_s))
+
+    def _fetch_currencies(job: Tuple[str, str]) -> Any:
+        _lb, bid_s = job
+        cur_key = f"ex:l1:cur:{bid_s}:{lang}"
+        if not refresh:
+            hit = ucc.l1_get_valid(doc, cur_key)
+            if hit is not None:
+                cur_cached = hit[1]
+                if fiat_buy_thb_per_unit(cur_cached, code) is not None:
+                    return cur_cached
+        cur = ttx.get_currencies(bid_s, is_main=False, timeout=timeout)
+        ucc.l1_set(
+            doc,
+            cur_key,
+            cur,
+            ttl_sec=ucc.TTL_L1_EXCHANGE_CUR_SEC,
+        )
+        return cur
+
+    best: Optional[float] = None
+    for (_label, _bid_s), cur, exc in map_bounded(
+        jobs,
+        _fetch_currencies,
+        max_workers=parallel_max_workers,
+    ):
+        if exc is not None:
+            if isinstance(exc, _TT_FETCH_ERRORS):
+                continue
+            raise exc
+        assert cur is not None
+        v = fiat_buy_thb_per_unit(cur, code)
+        if v is None:
+            continue
+        if best is None or v > best:
+            best = v
+
+    if best is None:
+        warnings.append(f"Ни у одного филиала не найден курс TT для {code}")
+
+    try:
+        ucc.save_unified(doc, unified_path)
+    except OSError as e:
+        warnings.append(f"Не удалось записать unified-кеш: {unified_path} ({e})")
+
+    return best, warnings
+
+
 def build_exchange_report_text(
     *,
     top_n: int = 10,

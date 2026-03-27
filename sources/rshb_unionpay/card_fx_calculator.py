@@ -259,7 +259,107 @@ def atm_rub_from_cny_path(
     )
     base_rub = cny_tot * cny_rub
     rub = base_rub * (1.0 + extra_rub_pct_of_base) + extra_rub_fee
+    if thb_net <= 0:
+        return rub, float("inf")
     return rub, rub / thb_net
+
+
+def atm_rub_total_for_net(
+    thb_net: float,
+    *,
+    atm_fee_thb: float,
+    cny_per_thb: float,
+    cny_rub: float,
+    rub_card: bool,
+    issuer_cny_atm_pct: float = 0.03,
+    rub_card_atm_pct: float = 0.01,
+) -> float:
+    """Сколько RUB спишут при снятии ``thb_net`` THB (нетто) с комиссией ATM."""
+    rub, _ = (
+        atm_rub_from_cny_path(
+            thb_net,
+            atm_fee_thb,
+            cny_per_thb,
+            cny_rub,
+            issuer_fee_on_cny_base=0.0,
+            extra_rub_pct_of_base=rub_card_atm_pct,
+        )
+        if rub_card
+        else atm_rub_from_cny_path(
+            thb_net,
+            atm_fee_thb,
+            cny_per_thb,
+            cny_rub,
+            issuer_fee_on_cny_base=issuer_cny_atm_pct,
+            extra_rub_fee=0.0,
+        )
+    )
+    return rub
+
+
+def max_thb_net_for_atm_rub_budget(
+    budget_rub: float,
+    *,
+    cny_per_thb: float,
+    atm_fee_thb: float,
+    cny_rub: float,
+    rub_card: bool,
+    issuer_cny_atm_pct: float = 0.03,
+    rub_card_atm_pct: float = 0.01,
+) -> float:
+    """
+    Максимальное нетто THB, если списание RUB при одном снятии не превышает ``budget_rub``.
+
+    Монотонность ``atm_rub_total_for_net`` по ``thb_net``; ищем верхнюю границу бисекцией.
+    """
+    if budget_rub <= 0 or cny_per_thb <= 0 or cny_rub <= 0:
+        return 0.0
+    cost0 = atm_rub_total_for_net(
+        0.0,
+        atm_fee_thb=atm_fee_thb,
+        cny_per_thb=cny_per_thb,
+        cny_rub=cny_rub,
+        rub_card=rub_card,
+        issuer_cny_atm_pct=issuer_cny_atm_pct,
+        rub_card_atm_pct=rub_card_atm_pct,
+    )
+    if cost0 > budget_rub:
+        return 0.0
+    lo = 0.0
+    hi = 1.0
+    while (
+        atm_rub_total_for_net(
+            hi,
+            atm_fee_thb=atm_fee_thb,
+            cny_per_thb=cny_per_thb,
+            cny_rub=cny_rub,
+            rub_card=rub_card,
+            issuer_cny_atm_pct=issuer_cny_atm_pct,
+            rub_card_atm_pct=rub_card_atm_pct,
+        )
+        <= budget_rub
+    ):
+        hi *= 2.0
+        if hi > 1e12:
+            break
+    for _ in range(96):
+        mid = (lo + hi) / 2.0
+        if (
+            atm_rub_total_for_net(
+                mid,
+                atm_fee_thb=atm_fee_thb,
+                cny_per_thb=cny_per_thb,
+                cny_rub=cny_rub,
+                rub_card=rub_card,
+                issuer_cny_atm_pct=issuer_cny_atm_pct,
+                rub_card_atm_pct=rub_card_atm_pct,
+            )
+            <= budget_rub
+        ):
+            lo = mid
+        else:
+            hi = mid
+    return lo
 
 
 def min_thb_for_cny_percent_fee(

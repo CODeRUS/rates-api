@@ -25,7 +25,7 @@ def _compile_regexes(patterns: Sequence[str]) -> Tuple[Pattern[str], ...]:
 
 
 _PRESETS_RAW: Dict[str, _OutputFilterPreset] = {
-    "-1001835014897": _OutputFilterPreset(
+    "travelask": _OutputFilterPreset(
         substrings=(
             "IT Обмен",
             "Fly Currency",
@@ -39,8 +39,8 @@ _PRESETS_RAW: Dict[str, _OutputFilterPreset] = {
 }
 
 # Алиасы для удобства (CLI/bot): исторические id + короткое имя "ta".
-_PRESETS_RAW["travelask"] = _PRESETS_RAW["161665026"]
-_PRESETS_RAW["ta"] = _PRESETS_RAW["161665026"]
+_PRESETS_RAW["-1001835014897"] = _PRESETS_RAW["travelask"]
+_PRESETS_RAW["ta"] = _PRESETS_RAW["travelask"]
 
 
 _PRESET_REGEX_COMPILED: Dict[str, Tuple[Pattern[str], ...]] = {

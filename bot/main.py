@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Telegram-бот (Telethon): /rates, /usdt, /cash, /exchange.
+Telegram-бот (Telethon): /rates, /usdt, /cash, /exchange, /calc.
 
 Переменные можно задать в файле ``.env`` в корне репозитория (подхватывается при старте).
 
@@ -40,8 +40,10 @@ load_repo_dotenv(_ROOT)
 from telethon import TelegramClient, events
 
 from bot.rates_tokens import parse_rates_command_tokens
+from bot.calc_args import parse_calc_command_args
 from bot.rshb_args import parse_rshb_command_args
 from bot.summary_adapter import (
+    get_calc_text,
     get_cash_cities_text,
     get_cash_text,
     get_exchange_text,
@@ -126,7 +128,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange или /rshb). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange, /rshb или /calc). Дождитесь результата."
             )
             return
         try:
@@ -185,7 +187,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange или /rshb). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange, /rshb или /calc). Дождитесь результата."
             )
             return
         try:
@@ -254,7 +256,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange или /rshb). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange, /rshb или /calc). Дождитесь результата."
             )
             return
         try:
@@ -362,7 +364,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange или /rshb). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange, /rshb или /calc). Дождитесь результата."
             )
             return
         try:
@@ -396,6 +398,59 @@ async def _main_async() -> None:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
 
+    async def _send_calc_report(
+        event: events.NewMessage.Event,
+        *,
+        budget_rub: float,
+        fiat_code: str,
+        rub_per_fiat: float,
+    ) -> None:
+        chat_id = event.chat_id
+        async with rates_busy_guard:
+            if chat_id in rates_busy_chats:
+                busy = True
+            else:
+                busy = False
+                rates_busy_chats.add(chat_id)
+        if busy:
+            await event.respond(
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange, /rshb или /calc). Дождитесь результата."
+            )
+            return
+        try:
+            status_msg = await event.respond("Идёт расчёт calc…")
+            try:
+                text = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        get_calc_text,
+                        budget_rub=budget_rub,
+                        fiat_code=fiat_code,
+                        rub_per_fiat=rub_per_fiat,
+                    ),
+                    timeout=fetch_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error("get_calc_text timed out after %.0fs", fetch_timeout)
+                await status_msg.edit(
+                    f"Таймаут {fetch_timeout:.0f} с при расчёте calc. "
+                    "Проверьте сеть или задайте BOT_FETCH_TIMEOUT_SEC."
+                )
+                return
+            except Exception:
+                logger.exception("get_calc_text failed")
+                await status_msg.edit("Не удалось выполнить calc. Попробуйте позже.")
+                return
+            chunks = split_for_telegram(text)
+            if not chunks or (len(chunks) == 1 and not chunks[0].strip()):
+                await status_msg.edit("(пустой отчёт calc)")
+                return
+            await status_msg.edit(chunks[0])
+            for chunk in chunks[1:]:
+                await event.respond(chunk)
+        finally:
+            async with rates_busy_guard:
+                rates_busy_chats.discard(chat_id)
+
     async def _refresh_cash_cache(event: events.NewMessage.Event) -> None:
         """Админский прогрев кеша cash для всех городов."""
         chat_id = event.chat_id
@@ -407,7 +462,7 @@ async def _main_async() -> None:
                 rates_busy_chats.add(chat_id)
         if busy:
             await event.respond(
-                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange или /rshb). Дождитесь результата."
+                "Уже выполняется запрос (/rates, /usdt, /cash, /exchange, /rshb или /calc). Дождитесь результата."
             )
             return
         try:
@@ -445,7 +500,8 @@ async def _main_async() -> None:
             "/usdt — P2P RUB/USDT и USDT/THB\n"
             "/cash — список городов; /cash N [K] — курсы выбранного города (топ K)\n"
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)\n"
-            "/rshb — THB/RUB РСХБ; /rshb THB [ATM_FEE] или несколько сумм, последнее — комиссия ATM"
+            "/rshb — THB/RUB РСХБ; /rshb THB [ATM_FEE] или несколько сумм, последнее — комиссия ATM\n"
+            "/calc — сравнение каналов RUB→THB; /calc RUB usd|eur|cny КУРС (₽ за 1 ед. валюты для TT)"
         )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+){0,2}$"))
@@ -498,6 +554,22 @@ async def _main_async() -> None:
     @client.on(events.NewMessage(pattern=r"(?i)^/usdt(?:@\S+)?$"))
     async def on_usdt(event: events.NewMessage.Event) -> None:
         await _send_usdt_report(event, refresh=False)
+
+    @client.on(events.NewMessage(pattern=r"(?i)^/calc(?:@\S+)?(?:\s|$)"))
+    async def on_calc(event: events.NewMessage.Event) -> None:
+        msg = (event.message.message or "").strip()
+        try:
+            budget_rub, fiat_code, rub_per_fiat = parse_calc_command_args(msg)
+        except ValueError as e:
+            hint = str(e).strip() or "Формат: /calc RUB usd|eur|cny КУРС"
+            await event.respond(hint)
+            return
+        await _send_calc_report(
+            event,
+            budget_rub=budget_rub,
+            fiat_code=fiat_code,
+            rub_per_fiat=rub_per_fiat,
+        )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/rshb(?:@\S+)?(?:\s+\S+)*$"))
     async def on_rshb(event: events.NewMessage.Event) -> None:

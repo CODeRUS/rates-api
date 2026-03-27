@@ -66,7 +66,7 @@ CACHE_TTL_SEC = 30 * 60
 CACHE_VERSION = 32
 
 _RESERVED = frozenset(
-    {"sources", "save", "usdt", "env-status", "cash", "exchange", "rshb"}
+    {"sources", "save", "usdt", "env-status", "cash", "exchange", "rshb", "calc"}
 )
 
 
@@ -457,6 +457,9 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print(
         "  exchange [--top N] [--lang ru]   Топ филиалов TT (USD/EUR/CNY→THB)."
     )
+    print(
+        "  calc RUB usd|eur|cny КУРС [--atm-fee THB]  Сравнение RUB→THB; КУРС — ₽ за 1 ед. валюты (TT)."
+    )
     print("  <source_id> summary [--refresh]  Только этот источник (те же --korona-*, --avosend-rub, …).")
     print("  <source_id> --refresh          То же, если других аргументов у id нет.")
     print("  <source_id> [args]   Иные подкоманды источника (см. python ... <id> --help).")
@@ -562,6 +565,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "  rates.py rshb 30000 250\n"
                 "  rates.py rshb 30000 20000 10000 250"
             )
+            return 0
+        if len(rest) >= 1 and rest[0] == "calc":
+            import calc_report as _cr
+
+            print(_cr.calc_subcommand_help())
             return 0
         print_global_help(build_arg_parser(add_help=True))
         return 0
@@ -690,6 +698,17 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
         print(build_rshb_text(thb_nets=thb_nets, atm_fee_thb=atm_fee), end="")
         return 0
+
+    if head == "calc":
+        import calc_report as cr
+
+        if any(x in ("-h", "--help") for x in rest[1:]):
+            print(cr.calc_subcommand_help())
+            return 0
+        tail = list(rest[1:])
+        if args.refresh:
+            tail.append("--refresh")
+        return cr.main_calc_cli(tail)
 
     if head in source_ids:
         mod = plugin_by_id(head)

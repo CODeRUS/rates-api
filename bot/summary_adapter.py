@@ -10,6 +10,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+import calc_report as calc_mod  # noqa: E402
 import cash_report as cash_mod  # noqa: E402
 import exchange_report as exchange_mod  # noqa: E402
 import rates as rates_mod  # noqa: E402
@@ -130,6 +131,27 @@ def get_rshb_text(
     """Текст отчёта THB/RUB для РСХБ UnionPay; несколько сумм — несколько блоков снятия."""
     nets = thb_nets if thb_nets is not None else [30_000.0]
     return build_rshb_text(thb_nets=nets, atm_fee_thb=atm_fee)
+
+
+def get_calc_text(
+    *,
+    budget_rub: float,
+    fiat_code: str,
+    rub_per_fiat: float,
+    atm_fee_thb: float = 250.0,
+    refresh: bool = False,
+) -> str:
+    text, w = calc_mod.build_calc_report_text(
+        budget_rub=budget_rub,
+        fiat_code=fiat_code,
+        rub_per_fiat_unit=rub_per_fiat,
+        atm_fee_thb=atm_fee_thb,
+        refresh=refresh,
+    )
+    if not w:
+        return text
+    extra = "\n".join(f"  • {x}" for x in w)
+    return text.rstrip() + "\n\nПредупреждения:\n" + extra + "\n"
 
 
 def run_background_unified_refresh(kind: str) -> None:

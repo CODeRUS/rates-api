@@ -63,6 +63,35 @@ class TestRshbCommandArgs(unittest.TestCase):
             parse_rshb_command_args("/rshb 30000 x")
 
 
+class TestMaxThbForBudget(unittest.TestCase):
+    def test_monotonic_and_fits_budget(self) -> None:
+        budget = 80_000.0
+        tmax = cfx.max_thb_net_for_atm_rub_budget(
+            budget,
+            cny_per_thb=0.19,
+            atm_fee_thb=250.0,
+            cny_rub=12.2,
+            rub_card=False,
+        )
+        self.assertGreater(tmax, 0)
+        cost = cfx.atm_rub_total_for_net(
+            tmax,
+            atm_fee_thb=250.0,
+            cny_per_thb=0.19,
+            cny_rub=12.2,
+            rub_card=False,
+        )
+        self.assertLessEqual(cost, budget + 0.01)
+        cost_over = cfx.atm_rub_total_for_net(
+            tmax + 1.0,
+            atm_fee_thb=250.0,
+            cny_per_thb=0.19,
+            cny_rub=12.2,
+            rub_card=False,
+        )
+        self.assertGreater(cost_over, budget - 0.01)
+
+
 class TestRshbTextFormat(unittest.TestCase):
     @patch("sources.rshb_unionpay.card_fx_calculator._msk_now_str", return_value="27.03.2026, 15:15 (MSK)")
     @patch("sources.rshb_unionpay.card_fx_calculator.fetch_live_inputs")
