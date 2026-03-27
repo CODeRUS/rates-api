@@ -99,6 +99,17 @@ class RateSource:
     fetch: SourceFetch
 
 
+def _rate_source_l1_ttl_sec(source_id: str) -> int:
+    """
+    Персональный TTL L1 для отдельных источников summary.
+    Bybit-потоки обновляем чаще, остальные — общий TTL.
+    """
+    sid = (source_id or "").strip().lower()
+    if sid.startswith("bybit"):
+        return uc.TTL_L1_RATE_SOURCE_BYBIT_SEC
+    return uc.TTL_L1_RATE_SOURCE_SEC
+
+
 @dataclass
 class RateRow:
     """Строка итоговой таблицы (как раньше в rates_summary)."""
@@ -431,7 +442,12 @@ def run_sources_unified(
             q = src.fetch(lc)
         except Exception as e:
             return _SourceFetchPack(None, e, list(lc.warnings))
-        uc.l1_set(doc, l1_key, _quotes_payload(q), ttl_sec=uc.TTL_L1_RATE_SOURCE_SEC)
+        uc.l1_set(
+            doc,
+            l1_key,
+            _quotes_payload(q),
+            ttl_sec=_rate_source_l1_ttl_sec(src.id),
+        )
         return _SourceFetchPack(q, None, list(lc.warnings))
 
     for src, pack, thr_exc in map_bounded(
