@@ -26,9 +26,21 @@ def _compile_regexes(patterns: Sequence[str]) -> Tuple[Pattern[str], ...]:
 
 _PRESETS_RAW: Dict[str, _OutputFilterPreset] = {
     "161665026": _OutputFilterPreset(
-        substrings=("IT Обмен", "Fly Currency", "Korona", "Avosend RUB"),
+        substrings=(
+            "IT Обмен",
+            "Fly Currency",
+            "Korona",
+            "Avosend RUB",
+            "Bybit",
+            "Unired",
+            "Ex24",
+        ),
     ),
 }
+
+_PRESETS_RAW["travelask"] = _PRESETS_RAW["161665026"]
+_PRESETS_RAW["ta"] = _PRESETS_RAW["161665026"]
+
 
 _PRESET_REGEX_COMPILED: Dict[str, Tuple[Pattern[str], ...]] = {
     k: _compile_regexes(v.regexes) for k, v in _PRESETS_RAW.items()
@@ -64,9 +76,10 @@ def apply_summary_row_filter(
             out.append(row)
             continue
         text = _row_haystack(row)
+        hay = text.casefold()
         drop = False
         for s in subs:
-            if s and s in text:
+            if s and s.casefold() in hay:
                 drop = True
                 break
         if not drop:

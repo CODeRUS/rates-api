@@ -55,6 +55,11 @@ from sources import plugin_by_id, registered_source_ids
 
 from rates_output_filters import apply_summary_row_filter
 
+# Не показывать в текстовой сводке (CLI, save, бот) блоки наличных USD/E/CNY→THB.
+_SUMMARY_OMIT_CASH_FX = frozenset(
+    (SourceCategory.CASH_USD, SourceCategory.CASH_EUR, SourceCategory.CASH_CNY)
+)
+
 _CACHE_OVERRIDE = (os.environ.get("RATES_CACHE_FILE") or "").strip()
 CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates_summary_cache.json"
 CACHE_TTL_SEC = 30 * 60
@@ -328,10 +333,11 @@ def _cash_section_title(cat: SourceCategory) -> str:
 
 
 def print_summary_text(rows: List[RateRow], baseline: float, warnings: List[str], file: TextIO) -> None:
+    visible = [r for r in rows if r.category not in _SUMMARY_OMIT_CASH_FX]
     print("Перевод RUB ➔ THB", file=file)
     print(file=file)
     prev_cat: Optional[SourceCategory] = None
-    for r in rows:
+    for r in visible:
         if is_cash_category(r.category):
             new_block = (
                 prev_cat is None
@@ -427,7 +433,7 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
     print("  usdt [--refresh] [--json] [--cache-file ПУТЬ]  Отчёт P2P RUB/USDT и USDT/THB (отдельный кеш).")
     print(
-        "  rshb [THB] [ATM_FEE]  Отчёт THB/RUB по картам РСХБ UnionPay (по умолчанию: 30000 и 250)."
+        "  rshb [THB …] [ATM_FEE]  Отчёт THB/RUB РСХБ UnionPay; 3+ числа — несколько снятий, последнее — комиссия ATM."
     )
     print(
         "  cash [N] [--top K] [--no-banki] [--refresh]  Без N — список городов; с N — курсы выбранного города."
@@ -452,21 +458,39 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
         print(f"      {ht}")
 
 
-def parse_rshb_cli_args(argv: List[str]) -> Tuple[float, float]:
+def parse_rshb_cli_args(argv: List[str]) -> Tuple[List[float], float]:
     """
-    Парсинг хвоста команды `rshb`: [THB] [ATM_FEE].
+    Парсинг хвоста команды `rshb`.
+
+    0 аргументов — (30000,), 250; 1 — (THB,), 250; 2 — (THB,), ATM_FEE;
+    3 и более — снимаемые суммы подряд, последнее число — ATM_FEE.
     """
-    r_parser = argparse.ArgumentParser(add_help=False)
-    r_parser.add_argument("thb", nargs="?", type=float, default=30_000.0)
-    r_parser.add_argument("atm_fee", nargs="?", type=float, default=250.0)
-    r_args, r_rest = r_parser.parse_known_args(argv)
-    if r_rest:
-        raise ValueError(f"Неизвестные аргументы rshb: {' '.join(r_rest)}")
-    if r_args.thb <= 0:
-        raise ValueError("THB должен быть больше 0.")
-    if r_args.atm_fee <= 0:
+    if not argv:
+        return [30_000.0], 250.0
+    nums: List[float] = []
+    for a in argv:
+        try:
+            nums.append(float(a))
+        except ValueError:
+            raise ValueError(f"Неизвестные аргументы rshb: {' '.join(argv)}")
+    n = len(nums)
+    if n == 1:
+        if nums[0] <= 0:
+            raise ValueError("THB должен быть больше 0.")
+        return [nums[0]], 250.0
+    if n == 2:
+        if nums[0] <= 0:
+            raise ValueError("THB должен быть больше 0.")
+        if nums[1] <= 0:
+            raise ValueError("ATM_FEE должен быть больше 0.")
+        return [nums[0]], nums[1]
+    amounts, fee = nums[:-1], nums[-1]
+    for x in amounts:
+        if x <= 0:
+            raise ValueError("THB должен быть больше 0.")
+    if fee <= 0:
         raise ValueError("ATM_FEE должен быть больше 0.")
-    return float(r_args.thb), float(r_args.atm_fee)
+    return amounts, fee
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -515,10 +539,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
         if len(rest) >= 1 and rest[0] == "rshb":
             print(
-                "rshb [THB] [ATM_FEE] — отчёт THB/RUB для РСХБ UnionPay.\n"
+                "rshb [THB …] [ATM_FEE] — отчёт THB/RUB для РСХБ UnionPay.\n"
+                "Два числа: сумма снятия и комиссия ATM; три и больше: несколько сумм, последнее — комиссия.\n"
                 "Примеры:\n"
                 "  rates.py rshb\n"
-                "  rates.py rshb 30000 250"
+                "  rates.py rshb 30000 250\n"
+                "  rates.py rshb 30000 20000 10000 250"
             )
             return 0
         print_global_help(build_arg_parser(add_help=True))
@@ -642,11 +668,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         from sources.rshb_unionpay.card_fx_calculator import build_rshb_text
 
         try:
-            thb, atm_fee = parse_rshb_cli_args(rest[1:])
+            thb_nets, atm_fee = parse_rshb_cli_args(rest[1:])
         except ValueError as e:
             print(str(e), file=sys.stderr)
             return 2
-        print(build_rshb_text(thb_net=thb, atm_fee_thb=atm_fee), end="")
+        print(build_rshb_text(thb_nets=thb_nets, atm_fee_thb=atm_fee), end="")
         return 0
 
     if head in source_ids:

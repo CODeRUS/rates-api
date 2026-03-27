@@ -39,6 +39,7 @@ load_repo_dotenv(_ROOT)
 
 from telethon import TelegramClient, events
 
+from bot.rates_tokens import parse_rates_command_tokens
 from bot.rshb_args import parse_rshb_command_args
 from bot.summary_adapter import (
     get_cash_cities_text,
@@ -66,27 +67,6 @@ def _env_int(name: str) -> int | None:
 
 def _env(name: str) -> str:
     return (os.environ.get(name) or "").strip()
-
-
-def _parse_rates_command_tokens(tokens: list[str]) -> tuple[bool, str]:
-    """
-    /rates [refresh] [filter NAME] — порядок аргументов любой.
-    Возвращает (refresh, output_filter). Неизвестный пресет обрабатывается тихо при сборке сводки.
-    """
-    if not tokens:
-        return False, ""
-    tlow = [x.lower() for x in tokens]
-    refresh = any(x in ("refresh", "r", "--refresh") for x in tlow[1:])
-    output_filter = ""
-    try:
-        fi = tlow.index("filter")
-        if fi + 1 < len(tokens):
-            cand = tokens[fi + 1].strip()
-            if cand.lower() not in ("refresh", "r", "--refresh"):
-                output_filter = cand
-    except ValueError:
-        pass
-    return refresh, output_filter
 
 
 def _fetch_timeout_sec() -> float:
@@ -371,7 +351,7 @@ async def _main_async() -> None:
                 rates_busy_chats.discard(chat_id)
 
     async def _send_rshb_report(
-        event: events.NewMessage.Event, *, thb_net: float, atm_fee: float
+        event: events.NewMessage.Event, *, thb_nets: list[float], atm_fee: float
     ) -> None:
         chat_id = event.chat_id
         async with rates_busy_guard:
@@ -389,7 +369,9 @@ async def _main_async() -> None:
             status_msg = await event.respond("Идёт получение RSHB…")
             try:
                 text = await asyncio.wait_for(
-                    asyncio.to_thread(get_rshb_text, thb_net=thb_net, atm_fee=atm_fee),
+                    asyncio.to_thread(
+                        get_rshb_text, thb_nets=thb_nets, atm_fee=atm_fee
+                    ),
                     timeout=fetch_timeout,
                 )
             except asyncio.TimeoutError:
@@ -459,11 +441,11 @@ async def _main_async() -> None:
     async def on_start(event: events.NewMessage.Event) -> None:
         await event.respond(
             "Команды:\n"
-            "/rates — сводка RUB/THB; /rates filter travelask — с пресетом; неизвестный фильтр без ошибки\n"
+            "/rates — сводка RUB/THB; /rates ta или /rates filter ta — пресет; неизвестный фильтр без ошибки\n"
             "/usdt — P2P RUB/USDT и USDT/THB\n"
             "/cash — список городов; /cash N [K] — курсы выбранного города (топ K)\n"
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)\n"
-            "/rshb — THB/RUB по картам РСХБ; /rshb THB ATM_FEE"
+            "/rshb — THB/RUB РСХБ; /rshb THB [ATM_FEE] или несколько сумм, последнее — комиссия ATM"
         )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+){0,2}$"))
@@ -517,21 +499,24 @@ async def _main_async() -> None:
     async def on_usdt(event: events.NewMessage.Event) -> None:
         await _send_usdt_report(event, refresh=False)
 
-    @client.on(events.NewMessage(pattern=r"(?i)^/rshb(?:@\S+)?(?:\s+\S+){0,2}$"))
+    @client.on(events.NewMessage(pattern=r"(?i)^/rshb(?:@\S+)?(?:\s+\S+)*$"))
     async def on_rshb(event: events.NewMessage.Event) -> None:
         msg = (event.message.message or "").strip()
         try:
-            thb_net, atm_fee = parse_rshb_command_args(msg)
+            thb_nets, atm_fee = parse_rshb_command_args(msg)
         except ValueError:
-            await event.respond("Формат: /rshb [THB] [ATM_FEE], например: /rshb 30000 250")
+            await event.respond(
+                "Формат: /rshb [THB] [ATM_FEE] или /rshb 30000 20000 10000 250 "
+                "(несколько снятий, последнее число — комиссия ATM)."
+            )
             return
-        await _send_rshb_report(event, thb_net=thb_net, atm_fee=atm_fee)
+        await _send_rshb_report(event, thb_nets=thb_nets, atm_fee=atm_fee)
 
     @client.on(events.NewMessage(pattern=r"(?i)^/rates(?:@\S+)?"))
     async def on_rates(event: events.NewMessage.Event) -> None:
         msg = event.message.message or ""
         tokens = msg.split()
-        refresh, output_filter = _parse_rates_command_tokens(tokens)
+        refresh, output_filter = parse_rates_command_tokens(tokens)
         await _send_rates_summary(
             event, refresh=refresh, output_filter=output_filter
         )

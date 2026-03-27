@@ -4,6 +4,7 @@ import io
 import logging
 import sys
 from pathlib import Path
+from typing import List, Optional
 
 _ROOT = Path(__file__).resolve().parent.parent
 if str(_ROOT) not in sys.path:
@@ -36,6 +37,7 @@ def get_summary_text(
     if not refresh:
         args.unified_allow_stale = bool(unified_allow_stale)
     rows, baseline, warnings = rates_mod.compute_summary_rows(args)
+    rows = rates_mod._maybe_apply_output_filter(args, rows)
     buf = io.StringIO()
     rates_mod.print_summary_text(rows, baseline, warnings, buf)
     get_summary_text._needs_background_refresh = bool(
@@ -122,9 +124,12 @@ def get_usdt_text(
 get_usdt_text._needs_background_refresh = False  # type: ignore[attr-defined]
 
 
-def get_rshb_text(*, thb_net: float = 30_000.0, atm_fee: float = 250.0) -> str:
-    """Текст отчёта THB/RUB для РСХБ UnionPay."""
-    return build_rshb_text(thb_net=thb_net, atm_fee_thb=atm_fee)
+def get_rshb_text(
+    *, thb_nets: Optional[List[float]] = None, atm_fee: float = 250.0
+) -> str:
+    """Текст отчёта THB/RUB для РСХБ UnionPay; несколько сумм — несколько блоков снятия."""
+    nets = thb_nets if thb_nets is not None else [30_000.0]
+    return build_rshb_text(thb_nets=nets, atm_fee_thb=atm_fee)
 
 
 def run_background_unified_refresh(kind: str) -> None:

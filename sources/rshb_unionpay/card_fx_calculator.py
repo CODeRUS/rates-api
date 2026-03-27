@@ -424,7 +424,7 @@ def _rshb_report_channels(
 
 def build_rshb_text(
     *,
-    thb_net: float = 30_000.0,
+    thb_nets: Sequence[float] = (30_000.0,),
     atm_fee_thb: float = 250.0,
     on: Optional[date] = None,
     moex_override: Optional[float] = None,
@@ -433,7 +433,14 @@ def build_rshb_text(
 ) -> str:
     """
     Единый текстовый отчёт THB/RUB для команды `rshb` (CLI и bot).
+
+    ``thb_nets`` — одна или несколько сумм нетто-снятия THB; для каждой повторяется
+    блок «🏧 СНЯТИЕ …» при общих курсах и ``atm_fee_thb``.
     """
+    amounts = list(thb_nets)
+    if not amounts:
+        amounts = [30_000.0]
+
     cpt, moex, rshb_sell_dec, rshb_date, online_sell_dec, _, _stale, _ = fetch_live_inputs(
         on, moex_override
     )
@@ -445,7 +452,6 @@ def build_rshb_text(
         rshb_app_cny_rub=float(online_sell_dec),
     )
 
-    thb_display = f"{thb_net:,.2f}".replace(",", " ")
     atm_fee_display = f"{atm_fee_thb:,.2f}".replace(",", " ")
 
     lines: List[str] = ["Курс THB/RUB:", "", "💳 ОПЛАТА картами UnionPay"]
@@ -454,36 +460,37 @@ def build_rshb_text(
         p = pct_vs_moex_cny_rub(ch.cny_rub, moex)
         lines.append(f"• {pay_rpt:.3f} RUB за 1 THB | {ch.label_payment} ({p:.3f}%)*")
 
-    lines.extend(
-        [
-            "",
-            f"🏧 СНЯТИЕ {thb_display} THB в банкомате",
-            f"(с учётом комиссии банкомата {atm_fee_display} THB)",
-        ]
-    )
-
     moex_rub_per_thb = rub_per_thb(cpt, moex)
-    for ch in channels:
-        if ch.rub_card:
-            _, atm_rpt = atm_rub_from_cny_path(
-                thb_net,
-                atm_fee_thb,
-                cpt,
-                ch.cny_rub,
-                issuer_fee_on_cny_base=0.0,
-                extra_rub_pct_of_base=rub_card_atm_pct,
-            )
-        else:
-            _, atm_rpt = atm_rub_from_cny_path(
-                thb_net,
-                atm_fee_thb,
-                cpt,
-                ch.cny_rub,
-                issuer_fee_on_cny_base=issuer_cny_atm_pct,
-                extra_rub_fee=0.0,
-            )
-        atm_pct = (atm_rpt / moex_rub_per_thb - 1.0) * 100.0
-        lines.append(f"• {atm_rpt:.3f} RUB за 1 THB | {ch.label_atm} ({atm_pct:.1f}%)*")
+    for thb_net in amounts:
+        thb_display = f"{thb_net:,.2f}".replace(",", " ")
+        lines.extend(
+            [
+                "",
+                f"🏧 СНЯТИЕ {thb_display} THB в банкомате",
+                f"(с учётом комиссии банкомата {atm_fee_display} THB)",
+            ]
+        )
+        for ch in channels:
+            if ch.rub_card:
+                _, atm_rpt = atm_rub_from_cny_path(
+                    thb_net,
+                    atm_fee_thb,
+                    cpt,
+                    ch.cny_rub,
+                    issuer_fee_on_cny_base=0.0,
+                    extra_rub_pct_of_base=rub_card_atm_pct,
+                )
+            else:
+                _, atm_rpt = atm_rub_from_cny_path(
+                    thb_net,
+                    atm_fee_thb,
+                    cpt,
+                    ch.cny_rub,
+                    issuer_fee_on_cny_base=issuer_cny_atm_pct,
+                    extra_rub_fee=0.0,
+                )
+            atm_pct = (atm_rpt / moex_rub_per_thb - 1.0) * 100.0
+            lines.append(f"• {atm_rpt:.3f} RUB за 1 THB | {ch.label_atm} ({atm_pct:.1f}%)*")
 
     lines.extend(
         [
@@ -512,7 +519,7 @@ def report_example1(
     """
     print(
         build_rshb_text(
-            thb_net=thb_net,
+            thb_nets=(thb_net,),
             atm_fee_thb=atm_fee_thb,
             on=on,
             moex_override=moex_override,
