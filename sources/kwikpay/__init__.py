@@ -24,7 +24,14 @@ def command(argv: list[str]) -> int:
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     from . import kwikpay_rates as kw
 
-    kq = kw.fetch_quotes_for_amounts([30_001])
+    try:
+        kq = kw.fetch_quotes_for_amounts([30_001])
+    except RuntimeError as e:
+        # KwikPay периодически возвращает пустой snap (currency/fee = None).
+        # Не шумим в summary, просто пропускаем источник до восстановления ответа.
+        if "Нет блока fee" in str(e):
+            return None
+        raise
     if not kq:
         return None
     q = kq[0]

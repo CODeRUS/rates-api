@@ -180,7 +180,9 @@ def fetch_quotes_for_amounts(
             update_uri,
             csrf,
             snap,
-            {"amount": str(amt)},
+            # В Livewire-снапшоте kwikpay значение currency может сбрасываться в None,
+            # если отправлять только amount. Явно дублируем country/currency на каждом шаге.
+            {"country": country, "currency": currency, "amount": str(amt)},
             [{"path": "", "method": "calculate", "params": []}],
             timeout=timeout,
         )
