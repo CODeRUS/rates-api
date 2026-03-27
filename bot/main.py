@@ -159,7 +159,10 @@ async def _main_async() -> None:
                 rates_busy_chats.discard(chat_id)
 
     async def _send_cash_report(
-        event: events.NewMessage.Event, *, city_n: int | None
+        event: events.NewMessage.Event,
+        *,
+        city_n: int | None,
+        top_n: int = 3,
     ) -> None:
         chat_id = event.chat_id
         async with rates_busy_guard:
@@ -195,7 +198,7 @@ async def _main_async() -> None:
                     asyncio.to_thread(
                         get_cash_text,
                         refresh=False,
-                        top_n=3,
+                        top_n=top_n,
                         city_label=city_label,
                     ),
                     timeout=fetch_timeout,
@@ -340,15 +343,16 @@ async def _main_async() -> None:
             "Команды:\n"
             "/rates — сводка RUB/THB\n"
             "/usdt — P2P RUB/USDT и USDT/THB\n"
-            "/cash — список городов; /cash N — курсы выбранного города\n"
+            "/cash — список городов; /cash N [K] — курсы выбранного города (топ K)\n"
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)"
         )
 
-    @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+)?$"))
+    @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+){0,2}$"))
     async def on_cash(event: events.NewMessage.Event) -> None:
         msg = (event.message.message or "").strip()
         tokens = msg.split()
         city_n: int | None = None
+        top_n = 3
         if len(tokens) > 1:
             try:
                 city_n = int(tokens[1])
@@ -357,7 +361,19 @@ async def _main_async() -> None:
                     "После /cash укажите номер города из списка, например: /cash 1"
                 )
                 return
-        await _send_cash_report(event, city_n=city_n)
+        if len(tokens) > 2:
+            try:
+                top_n = int(tokens[2])
+            except ValueError:
+                await event.respond(
+                    "Второй параметр /cash — число строк top, например: /cash 1 10"
+                )
+                return
+            if top_n < 1:
+                await event.respond("Число строк top должно быть не меньше 1.")
+                return
+            top_n = min(top_n, 50)
+        await _send_cash_report(event, city_n=city_n, top_n=top_n)
 
     @client.on(events.NewMessage(pattern=r"(?i)^/exchange(?:@\S+)?"))
     async def on_exchange(event: events.NewMessage.Event) -> None:
