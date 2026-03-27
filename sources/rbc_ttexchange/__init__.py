@@ -5,10 +5,12 @@
 """
 from __future__ import annotations
 
+import os
 from typing import Dict, List, Optional, Tuple
 
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
+from sources.banki_cash import BANKI_REGIONS, banki_sell_rows, fetch_banki_banks_or_exchanges
 from sources.rbc_cash_json import fetch_cash_rates_json, min_sell_rub_per_unit
 
 SOURCE_ID = "rbc_ttexchange"
@@ -17,9 +19,9 @@ IS_BASELINE = False
 CATEGORY = SourceCategory.TRANSFER
 
 # city_id → префикс label
-_RBC_CITIES: Tuple[Tuple[int, str], ...] = (
-    (1, "Москва"),
-    (2, "Санкт-Петербург"),
+_RBC_CITIES: Tuple[Tuple[int, str, str], ...] = (
+    (1, "Москва", "moskva"),
+    (2, "Санкт-Петербург", "sankt-peterburg"),
 )
 
 # (код валюты для label, currency в API РБК)
@@ -35,7 +37,7 @@ _CASH_RUB_SEQ_SPB = (200, 201, 202)
 
 def help_text() -> str:
     return (
-        "РБК cash (Москва, СПб) min sell × TT Exchange THB/USD|EUR|CNY → implied RUB/THB. "
+        "РБК/Banki cash (Москва, СПб) min sell × TT Exchange THB/USD|EUR|CNY → implied RUB/THB. "
         "См. rbc_ttexchange (без отдельного CLI)."
     )
 
@@ -86,6 +88,12 @@ def _ttex_thb_per_fiat() -> Tuple[Optional[Dict[str, float]], Dict[str, str], st
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
+    rbc_disabled = (os.environ.get("RATES_DISABLE_RBC") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     thb_map, tt_notes, _branch = _ttex_thb_per_fiat()
     if not thb_map:
         ctx.warnings.append(
@@ -97,29 +105,55 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     seq_m = list(_CASH_RUB_SEQ_MSK)
     seq_s = list(_CASH_RUB_SEQ_SPB)
 
-    for city_id, city_label in _RBC_CITIES:
+    for city_id, city_label, banki_key in _RBC_CITIES:
         seqs = seq_m if city_id == 1 else seq_s
         for idx, (fiat_code, cur_id) in enumerate(_RBC_FIAT):
             thb_per = thb_map.get(fiat_code)
             if thb_per is None or thb_per <= 0:
                 continue
-            data = fetch_cash_rates_json(city=city_id, currency_id=cur_id)
-            if not isinstance(data, dict):
-                ctx.warnings.append(
-                    f"rbc_ttexchange: не удалось JSON РБК {fiat_code} {city_label}"
+            bank_name = ""
+            source_tag = "РБК"
+            if rbc_disabled:
+                cfg = BANKI_REGIONS.get(banki_key)
+                cur_id_banki = {"USD": 840, "EUR": 978, "CNY": 156}.get(fiat_code)
+                if cfg is None or cur_id_banki is None:
+                    ctx.warnings.append(
+                        f"rbc_ttexchange: нет конфига Banki {fiat_code} для {city_label}"
+                    )
+                    continue
+                payload = fetch_banki_banks_or_exchanges(
+                    region_url=str(cfg["regionUrl"]),
+                    region_id=int(cfg["regionId"]),
+                    currency_id=int(cur_id_banki),
+                    sort_attribute=str(cfg.get("sortAttribute") or "recommend"),
+                    order=str(cfg.get("order") or "desc"),
                 )
-                continue
-            banks = data.get("banks")
-            rub_per, bank_name = min_sell_rub_per_unit(banks)
+                rows = banki_sell_rows(payload) if payload is not None else []
+                if not rows:
+                    ctx.warnings.append(
+                        f"rbc_ttexchange: нет min sell {fiat_code} для {city_label} (Banki)"
+                    )
+                    continue
+                rub_per, bank_name = rows[0]
+                source_tag = "Banki"
+            else:
+                data = fetch_cash_rates_json(city=city_id, currency_id=cur_id)
+                if not isinstance(data, dict):
+                    ctx.warnings.append(
+                        f"rbc_ttexchange: не удалось JSON РБК {fiat_code} {city_label}"
+                    )
+                    continue
+                banks = data.get("banks")
+                rub_per, bank_name = min_sell_rub_per_unit(banks)
             if rub_per is None or rub_per <= 0:
                 ctx.warnings.append(
-                    f"rbc_ttexchange: нет min sell {fiat_code} для {city_label} (РБК)"
+                    f"rbc_ttexchange: нет min sell {fiat_code} для {city_label} ({source_tag})"
                 )
                 continue
             implied = rub_per / thb_per
             if implied <= 0:
                 continue
-            label = f"{city_label} (РБК) {fiat_code} ➔ TT"
+            label = f"{city_label} ({source_tag}) {fiat_code} ➔ TT"
             tt_part = tt_notes.get(fiat_code, "")
             rbc_part = f"{rub_per:g} RUB"
             # if bank_name:

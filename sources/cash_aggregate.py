@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 from sources.banki_cash import (
@@ -22,6 +23,15 @@ BANKI_CURRENCY_ID: Dict[str, int] = {
 
 _SRC_RBC = "rbc"
 _SRC_BANKI = "banki"
+
+
+def rbc_cash_enabled() -> bool:
+    """
+    Временный флаг отключения РБК без изменения кода вызовов.
+    Значения для отключения: 1/true/yes/on (в любом регистре).
+    """
+    raw = (os.environ.get("RATES_DISABLE_RBC") or "").strip().lower()
+    return raw not in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -126,7 +136,7 @@ def unified_top_sell_offers(
     """
     warnings: List[str] = []
     rbc_offers: List[CashOffer] = []
-    if rbc_city_id is not None:
+    if rbc_city_id is not None and rbc_cash_enabled():
         rbc_data = fetch_cash_rates_json(
             city=rbc_city_id, currency_id=rbc_currency_id, timeout=timeout
         )

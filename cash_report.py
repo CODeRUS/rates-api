@@ -15,7 +15,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from rates_parallel import map_bounded
-from sources.cash_aggregate import unified_top_sell_offers
+from sources.cash_aggregate import rbc_cash_enabled, unified_top_sell_offers
 import rates_unified_cache as ucc
 
 _CashCellJob = Tuple[str, int, str, str, Optional[int]]
@@ -413,8 +413,13 @@ def build_cash_report_text(
                     _unified_served_stale_l2_plain = from_stale_l2
                     return body, w
     _unified_served_stale_l2_plain = False
+    cash_header = (
+        "Наличные: РБК + Banki (топ по курсу продажи); RUB/THB после TT Exchange"
+        if rbc_cash_enabled()
+        else "Наличные: Banki (РБК временно отключен) (топ по курсу продажи); RUB/THB после TT Exchange"
+    )
     lines: List[str] = [
-        "Наличные: РБК + Banki (топ по курсу продажи); RUB/THB после TT Exchange",
+        cash_header,
         "",
     ]
 
