@@ -187,6 +187,7 @@ async def _main_async() -> None:
                 "Ростов-на-Дону",
                 "Новосибирск",
                 "Красноярск",
+                "Иркутск",
             ]
             if city_n < 1 or city_n > len(cities):
                 await event.respond(f"Номер города должен быть от 1 до {len(cities)}.")
@@ -337,6 +338,47 @@ async def _main_async() -> None:
             async with rates_busy_guard:
                 rates_busy_chats.discard(chat_id)
 
+    async def _refresh_cash_cache(event: events.NewMessage.Event) -> None:
+        """Админский прогрев кеша cash для всех городов."""
+        chat_id = event.chat_id
+        async with rates_busy_guard:
+            if chat_id in rates_busy_chats:
+                busy = True
+            else:
+                busy = False
+                rates_busy_chats.add(chat_id)
+        if busy:
+            await event.respond(
+                "Уже выполняется запрос (/rates, /usdt, /cash или /exchange). Дождитесь результата."
+            )
+            return
+        try:
+            status_msg = await event.respond("Обновление кеша cash по всем городам…")
+            try:
+                _ = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        get_cash_text,
+                        refresh=True,
+                        top_n=20,
+                        city_label="",
+                    ),
+                    timeout=fetch_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error("refresh cash timed out after %.0fs", fetch_timeout)
+                await status_msg.edit(
+                    f"Таймаут {fetch_timeout:.0f} с при обновлении cash-кеша."
+                )
+                return
+            except Exception:
+                logger.exception("refresh cash cache failed")
+                await status_msg.edit("Не удалось обновить кеш cash.")
+                return
+            await status_msg.edit("Кеш cash обновлён (все города).")
+        finally:
+            async with rates_busy_guard:
+                rates_busy_chats.discard(chat_id)
+
     @client.on(events.NewMessage(pattern=r"(?i)^/start(?:@\S+)?$"))
     async def on_start(event: events.NewMessage.Event) -> None:
         await event.respond(
@@ -426,8 +468,14 @@ async def _main_async() -> None:
             logger.info("Admin /refresh usdt from sender_id=%s", sender)
             await _send_usdt_report(event, refresh=True)
             return
+        if sub == "cash":
+            logger.info("Admin /refresh cash from sender_id=%s", sender)
+            await _refresh_cash_cache(event)
+            return
         if len(tokens) > 1:
-            await event.respond("Неизвестная подкоманда. Для USDT: /refresh usdt")
+            await event.respond(
+                "Неизвестная подкоманда. Доступно: /refresh, /refresh usdt, /refresh cash"
+            )
             return
         logger.info("Admin /refresh from sender_id=%s", sender)
         await _send_rates_summary(event, refresh=True)

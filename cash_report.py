@@ -42,6 +42,7 @@ _CASH_LOCATIONS: Tuple[Tuple[str, str, Optional[int]], ...] = (
     ("Ростов-на-Дону", "rostov-na-donu", None),
     ("Новосибирск", "novosibirsk", None),
     ("Красноярск", "krasnoyarsk", None),
+    ("Иркутск", "irkutsk", None),
 )
 
 _FIAT: Tuple[Tuple[str, int], ...] = (
@@ -416,7 +417,7 @@ def build_cash_report_text(
     cash_header = (
         "Наличные: РБК + Banki (топ по курсу продажи); RUB/THB после TT Exchange"
         if rbc_cash_enabled()
-        else "Наличные: Banki (РБК временно отключен) (топ по курсу продажи); RUB/THB после TT Exchange"
+        else "Наличные: Banki (топ по курсу продажи); RUB/THB после TT Exchange"
     )
     lines: List[str] = [
         cash_header,
@@ -734,6 +735,7 @@ def main_cash_cli(argv: List[str]) -> int:
     text = format_cash_report_with_warnings(
         top_n=args.top,
         use_banki=not args.no_banki,
+        refresh=bool(args.refresh),
         city_label=city,
     )
     sys.stdout.write(text)

@@ -542,7 +542,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         if any(x in ("-h", "--help") for x in rest[1:]):
             print(cr.cash_subcommand_help())
             return 0
-        tail = rest[1:]
+        tail = list(rest[1:])
+        if args.refresh:
+            tail.append("--refresh")
         err = cr.main_cash_cli(tail)
         return err
 

@@ -62,6 +62,12 @@ BANKI_REGIONS: Dict[str, Dict[str, object]] = {
         "sortAttribute": "recommend",
         "order": "desc",
     },
+    "irkutsk": {
+        "regionUrl": "irkutsk",
+        "regionId": 626,
+        "sortAttribute": "recommend",
+        "order": "desc",
+    },
 }
 
 
