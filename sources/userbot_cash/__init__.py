@@ -96,7 +96,7 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
                     label=label,
                     note=note,
                     category=c,
-                    emoji="•",
+                    emoji="🤑",
                     compare_to_baseline=(c in {SourceCategory.TRANSFER, SourceCategory.CASH_RUB}),
                 )
             )

@@ -127,14 +127,16 @@ async def _run(*, login_only: bool, login_phone: str) -> None:
     cfg_by_chat = {_normalize_chat_ref(c.chat): c for c in USERBOT_SOURCES}
     compiled = {c.source_id: compile_rules(c) for c in USERBOT_SOURCES}
 
-    @client.on(events.NewMessage)
-    async def _on_msg(event: events.NewMessage.Event) -> None:
+    async def _process_event_message(event: object, *, event_kind: str) -> None:
         chat = getattr(event.chat, "username", None)
         chat_key = ("@" + chat.lower()) if chat else str(event.chat_id)
         cfg = cfg_by_chat.get(chat_key)
         if cfg is None:
             return
-        text = getattr(event.message, "message", "") or ""
+        msg = getattr(event, "message", None)
+        if msg is None:
+            return
+        text = getattr(msg, "message", "") or ""
         rows = parse_message(
             source_id=cfg.source_id,
             source_name=cfg.name,
@@ -142,20 +144,29 @@ async def _run(*, login_only: bool, login_phone: str) -> None:
             city=cfg.city,
             rules=compiled[cfg.source_id],
             text=text,
-            message_id=int(event.message.id),
-            message_unix=float(event.message.date.timestamp()),
+            message_id=int(msg.id),
+            message_unix=float(msg.date.timestamp()),
         )
         if not rows:
             return
         latest = _pick_latest_per_currency(rows)
         write_source_snapshot(source_id=cfg.source_id, rows=latest)
         logger.info(
-            "update: %s matched msg=%s rates=%d (%s)",
+            "%s: %s matched msg=%s rates=%d (%s)",
+            event_kind,
             cfg.source_id,
-            event.message.id,
+            msg.id,
             len(latest),
             _rates_brief(latest),
         )
+
+    @client.on(events.NewMessage)
+    async def _on_msg(event: events.NewMessage.Event) -> None:
+        await _process_event_message(event, event_kind="update")
+
+    @client.on(events.MessageEdited)
+    async def _on_msg_edited(event: events.MessageEdited.Event) -> None:
+        await _process_event_message(event, event_kind="edited")
 
     await client.run_until_disconnected()
 
