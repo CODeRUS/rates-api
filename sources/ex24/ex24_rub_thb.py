@@ -265,7 +265,7 @@ def _ex24_cash_buy_patterns(fiat: str) -> Tuple[re.Pattern, re.Pattern]:
 
 def _parse_ex24_cash_fiat_max_buy_across_denoms(html: str, fiat: str) -> Optional[float]:
     """
-    Если в витрине ex24 ключ для fiat приходит не как ровно ``"EUR"``,
+    Если в витрине ex24 ключ для fiat приходит не как ровно ``"EUR"`` / ``"CNY"``,
     а в виде деноминаций вроде ``"EUR 100"``, берём максимум ``buy`` по всем
     ключам, начинающимся с ``fiat``.
     """
@@ -313,8 +313,8 @@ def parse_ex24_cash_fiat_thb_per_fiat_unit(html: str, fiat: str) -> Optional[flo
     if not m:
         m = plain.search(html)
     if not m:
-        # Иногда ex24 даёт деноминации вида "EUR 100" вместо ровно "EUR".
-        if fiat == "EUR":
+        # Иногда ex24 даёт деноминации вида "EUR 100"/"CNY 100" вместо ровно "EUR"/"CNY".
+        if fiat in ("EUR", "CNY"):
             return _parse_ex24_cash_fiat_max_buy_across_denoms(html, fiat)
         return None
     thb_per_unit = float(m.group(1))

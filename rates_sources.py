@@ -45,6 +45,17 @@ _CASH_THB_PER_UNIT_DESC = frozenset(
 )
 
 
+def _dedup_should_replace_row(row: RateRow, existing: RateRow) -> bool:
+    """
+    При коллизии ключа dedup оставляем «лучший» курс для клиента:
+    - TRANSFER / CASH_RUB: ниже RUB за 1 THB — лучше;
+    - CASH_USD/EUR/CNY: выше THB за 1 единицу валюты — лучше.
+    """
+    if row.category in _CASH_THB_PER_UNIT_DESC:
+        return row.rate > existing.rate
+    return row.rate < existing.rate
+
+
 def is_cash_category(cat: SourceCategory) -> bool:
     return cat in _CASH_SET
 
@@ -389,7 +400,7 @@ def run_sources(
             row.compare_to_baseline,
             row.cash_rub_seq,
         )
-        if key not in dedup or row.rate < dedup[key].rate:
+        if key not in dedup or _dedup_should_replace_row(row, dedup[key]):
             dedup[key] = row
     rows = list(dedup.values())
 
@@ -500,7 +511,7 @@ def run_sources_unified(
             row.compare_to_baseline,
             row.cash_rub_seq,
         )
-        if key not in dedup or row.rate < dedup[key].rate:
+        if key not in dedup or _dedup_should_replace_row(row, dedup[key]):
             dedup[key] = row
     rows = list(dedup.values())
 

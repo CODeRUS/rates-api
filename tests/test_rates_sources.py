@@ -339,6 +339,16 @@ class TestRatesSources(unittest.TestCase):
         )
         self.assertAlmostEqual(parse_ex24_cash_fiat_thb_per_fiat_unit(frag, "EUR"), 40.0)
 
+    def test_parse_ex24_cash_cny_thb_per_cny_fallback_denoms(self):
+        from sources.ex24.ex24_rub_thb import parse_ex24_cash_fiat_thb_per_fiat_unit
+
+        frag = (
+            'tv\\":{\\"CNY 50\\":{\\"buy\\":\\"4.50\\",'
+            '\\"CNY 100\\":{\\"buy\\":\\"4.73\\",'
+            '\\"CNY 200\\":{\\"buy\\":\\"4.40\\"'
+        )
+        self.assertAlmostEqual(parse_ex24_cash_fiat_thb_per_fiat_unit(frag, "CNY"), 4.73)
+
     def test_ttexchange_eur_all_tiers_same_rate_omits_denoms(self):
         from sources.ttexchange import _pick_currency_row
 
