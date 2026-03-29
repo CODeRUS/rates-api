@@ -160,6 +160,13 @@ def build_arg_parser(*, add_help: bool = True) -> argparse.ArgumentParser:
         metavar="NAME",
         help="Пресет постфильтрации вывода (например travelask). Неизвестное имя — без эффекта.",
     )
+    p.add_argument(
+        "--gpt",
+        dest="gpt_prompt",
+        default=None,
+        metavar="PROMPT",
+        help="Запрос к OpenAI Chat: OPENAI_API_KEY, OPENAI_API_URL, опц. OPENAI_PROMPT (system) и OPENAI_MODEL.",
+    )
     return p
 
 
@@ -444,6 +451,9 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
         "  (сводка) Опции: --refresh, --json, --filter NAME — пресет постфильтрации строк "
         "(неизвестное имя игнорируется)."
     )
+    print(
+        "  --gpt PROMPT     Chat API: OPENAI_API_KEY, OPENAI_API_URL; OPENAI_PROMPT (system); OPENAI_MODEL."
+    )
     print("  sources              Список id доступных источников.")
     print("  env-status           Файл .env и типичные переменные (без значений).")
     print("  save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).")
@@ -517,6 +527,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = build_arg_parser(add_help=False)
     args, rest = parser.parse_known_args(argv)
     source_ids = frozenset(registered_source_ids())
+
+    if args.gpt_prompt is not None:
+        if rest:
+            print(
+                "С --gpt не используйте подкоманду: осталось "
+                + " ".join(rest),
+                file=sys.stderr,
+            )
+            return 2
+        import openai_gpt
+
+        return openai_gpt.run_openai_gpt(args.gpt_prompt)
 
     if getattr(args, "help", False):
         if len(rest) >= 2 and rest[0] in source_ids and rest[1] == "summary":
