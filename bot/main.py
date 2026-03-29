@@ -15,6 +15,7 @@ Telegram-бот (Telethon): /rates, /usdt, /cash, /exchange, /calc.
 
 Секреты не коммитьте. Файл сессии: ``bot/rates_bot.session`` (в .gitignore).
 Опционально ``BOT_ADMIN_ID``: ``/refresh`` — сброс кеша сводки; ``/refresh usdt`` — сброс кеша отчёта USDT.
+В личке с ботом текст админа **без** ``/`` уходит в OpenAI Chat (нужны ``OPENAI_API_KEY``, ``OPENAI_API_URL``, см. ``openai_gpt``).
 Опционально ``BOT_FETCH_TIMEOUT_SEC`` (по умолчанию 180): таймаут сборки сводки/USDT/cash/exchange в потоке.
 """
 from __future__ import annotations
@@ -501,7 +502,10 @@ async def _main_async() -> None:
             "/cash — список городов; /cash N [K] — курсы выбранного города (топ K)\n"
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)\n"
             "/rshb — THB/RUB РСХБ; /rshb THB [ATM_FEE] или несколько сумм, последнее — комиссия ATM\n"
-            "/calc — сравнение каналов RUB→THB; /calc RUB usd|eur|cny КУРС (₽ за 1 ед. валюты для TT)"
+            "/calc — сравнение каналов RUB→THB; /calc RUB usd|eur|cny КУРС (₽ за 1 ед. валюты для TT)\n"
+            "\n"
+            "Для администратора (BOT_ADMIN_ID) в личке: любой текст без / — запрос к GPT "
+            "(OPENAI_API_KEY, OPENAI_API_URL; опц. OPENAI_PROMPT, OPENAI_MODEL)."
         )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+){0,2}$"))
@@ -622,6 +626,62 @@ async def _main_async() -> None:
             return
         logger.info("Admin /refresh from sender_id=%s", sender)
         await _send_rates_summary(event, refresh=True)
+
+    admin_id_for_gpt = _env_int("BOT_ADMIN_ID")
+
+    def _admin_private_gpt_message(e: events.NewMessage.Event) -> bool:
+        if admin_id_for_gpt is None:
+            return False
+        if not e.is_private:
+            return False
+        if bool(getattr(e.message, "out", False)):
+            return False
+        sid = e.sender_id
+        if sid is None or int(sid) != admin_id_for_gpt:
+            return False
+        msg = (e.message.message or "").strip()
+        return bool(msg) and not msg.startswith("/")
+
+    @client.on(events.NewMessage(func=_admin_private_gpt_message))
+    async def on_admin_gpt(event: events.NewMessage.Event) -> None:
+        """Личка: обычный текст админа (не команда) → OpenAI Chat."""
+        if not _env("OPENAI_API_KEY") or not _env("OPENAI_API_URL"):
+            await event.respond(
+                "GPT: задайте OPENAI_API_KEY и OPENAI_API_URL в окружении бота."
+            )
+            return
+        msg = (event.message.message or "").strip()
+        import openai_gpt
+
+        status = await event.respond("Запрос к GPT…")
+        gpt_timeout = max(fetch_timeout, 120.0)
+        try:
+            code, out = await asyncio.wait_for(
+                asyncio.to_thread(openai_gpt.chat_completion, msg),
+                timeout=gpt_timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.error("chat_completion timed out after %.0fs", gpt_timeout)
+            await status.edit(
+                f"Таймаут {gpt_timeout:.0f} с при запросе к GPT. "
+                "При необходимости увеличьте BOT_FETCH_TIMEOUT_SEC."
+            )
+            return
+        except Exception:
+            logger.exception("chat_completion failed")
+            await status.edit("Не удалось выполнить запрос к GPT.")
+            return
+        if code != 0:
+            tail = (out or "ошибка")[:3500]
+            await status.edit(f"GPT: {tail}")
+            return
+        if not (out or "").strip():
+            await status.edit("(пустой ответ GPT)")
+            return
+        chunks = split_for_telegram(out)
+        await status.edit(chunks[0])
+        for chunk in chunks[1:]:
+            await event.respond(chunk)
 
     logger.info("Telethon polling (bot)…")
     await client.start(bot_token=bot_token)
