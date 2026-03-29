@@ -137,6 +137,7 @@ def build_calc_report_text(
     timeout: float = 28.0,
     parallel_max_workers: Optional[int] = None,
     refresh: bool = False,
+    readonly: bool = False,
 ) -> Tuple[str, List[str]]:
     from exchange_report import best_fiat_buy_thb_across_branches
     from sources.rshb_unionpay.card_fx_calculator import (
@@ -151,9 +152,9 @@ def build_calc_report_text(
     rows: List[_CalcRowOut] = []
 
     cpt, moex, rshb_sell_dec, _rshb_date, online_sell_dec, _, rshb_stale, _ = (
-        fetch_live_inputs(unionpay_on, moex_override)
+        fetch_live_inputs(unionpay_on, moex_override, readonly=readonly)
     )
-    if rshb_stale:
+    if rshb_stale and not readonly:
         warnings.append("РСХБ/UnionPay: использованы сохранённые курсы (таймаут сети).")
 
     rshb_sell = float(rshb_sell_dec)
@@ -207,13 +208,14 @@ def build_calc_report_text(
 
     try:
         am = _askmoney_rub_thb_module()
-        am_params = am.load_params(fetch=True, html_file=None)
+        if readonly:
+            am_params = am.load_params(fetch=False, html_file=None)
+        else:
+            am_params = am.load_params(fetch=True, html_file=None)
         am_thb_i = am.rub_to_thb(budget_rub, am_params)
         am_thb = float(am_thb_i)
         if am_thb > 0:
-            rows.append(
-                _CalcRowOut("AskMoney", am_thb, budget_rub / am_thb)
-            )
+            rows.append(_CalcRowOut("AskMoney", am_thb, budget_rub / am_thb))
     except Exception as e:
         warnings.append(f"AskMoney: {e}")
 
@@ -223,6 +225,7 @@ def build_calc_report_text(
         timeout=timeout,
         parallel_max_workers=parallel_max_workers,
         refresh=refresh,
+        readonly=readonly,
     )
     warnings.extend(tt_warn)
     if best_tt is not None and best_tt > 0:
@@ -271,6 +274,11 @@ def _parse_calc_argv(argv: List[str]) -> argparse.Namespace:
     p.add_argument("--lang", type=str, default="ru", help="Язык списка филиалов TT")
     p.add_argument("--timeout", type=float, default=28.0, help="Таймаут HTTP")
     p.add_argument("--refresh", action="store_true", help="Обновить L1 TT при расчёте")
+    p.add_argument(
+        "--readonly",
+        action="store_true",
+        help="Только кеш UnionPay/РСХБ (.card_fx_live_inputs_cache) и L1 TT, без сети",
+    )
     p.add_argument("--unionpay-date", default=None, help="YYYY-MM-DD (UnionPay / РСХБ)")
     p.add_argument("--moex-override", type=float, default=None)
     p.add_argument("rub", type=str, nargs="?")
@@ -296,17 +304,22 @@ def main_calc_cli(argv: List[str]) -> int:
     if args.atm_fee <= 0:
         print("--atm-fee должен быть > 0", file=sys.stderr)
         return 2
-    text, w = build_calc_report_text(
-        budget_rub=br,
-        fiat_code=fiat,
-        rub_per_fiat_unit=rp,
-        atm_fee_thb=float(args.atm_fee),
-        unionpay_on=on,
-        moex_override=args.moex_override,
-        lang=(args.lang or "ru").strip() or "ru",
-        timeout=max(5.0, float(args.timeout)),
-        refresh=bool(args.refresh),
-    )
+    try:
+        text, w = build_calc_report_text(
+            budget_rub=br,
+            fiat_code=fiat,
+            rub_per_fiat_unit=rp,
+            atm_fee_thb=float(args.atm_fee),
+            unionpay_on=on,
+            moex_override=args.moex_override,
+            lang=(args.lang or "ru").strip() or "ru",
+            timeout=max(5.0, float(args.timeout)),
+            refresh=bool(args.refresh),
+            readonly=bool(getattr(args, "readonly", False)),
+        )
+    except RuntimeError as e:
+        print(str(e), file=sys.stderr)
+        return 1
     sys.stdout.write(text)
     if w:
         sys.stdout.write("\nПредупреждения:\n")
