@@ -7,7 +7,26 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+
+_DEFAULT_OPENAI_HTTP_TIMEOUT_SEC = 300.0
+
+
+def http_timeout_sec() -> float:
+    """
+    Таймаут одного HTTP-запроса к Chat Completions (сек).
+
+    Переменная окружения: ``OPENAI_HTTP_TIMEOUT_SEC`` (по умолчанию 300).
+    """
+    raw = (os.environ.get("OPENAI_HTTP_TIMEOUT_SEC") or "").strip()
+    if not raw:
+        return _DEFAULT_OPENAI_HTTP_TIMEOUT_SEC
+    try:
+        v = float(raw)
+        return v if v >= 30.0 else _DEFAULT_OPENAI_HTTP_TIMEOUT_SEC
+    except ValueError:
+        return _DEFAULT_OPENAI_HTTP_TIMEOUT_SEC
 
 
 def _config() -> tuple[str, str, str, str]:
@@ -35,14 +54,29 @@ def _messages(user_text: str) -> tuple[int, str, List[Dict[str, str]]]:
     return 0, "", messages
 
 
-def chat_completion(user_prompt: str) -> Tuple[int, str]:
+def _payload_user_field(user_id: Optional[str]) -> Optional[str]:
+    """OpenAI Chat Completions: поле ``user`` (до 64 симв.), стабильный id конечного пользователя."""
+    if user_id is not None:
+        raw = user_id.strip()
+    else:
+        raw = (os.environ.get("OPENAI_GPT_USER") or "").strip()
+    if not raw:
+        return None
+    full = f"rates-client-{raw}"
+    return full[:64]
+
+
+def chat_completion(user_prompt: str, *, user_id: Optional[str] = None) -> Tuple[int, str]:
     """
     Один запрос к Chat Completions.
 
     Возвращает ``(код_выхода, текст)``: при успехе ``0`` и ответ ассистента; иначе ненулевой
     код и сообщение об ошибке (без печати в stderr).
 
-    Окружение: ``OPENAI_API_KEY``, ``OPENAI_API_URL``, опц. ``OPENAI_PROMPT``, ``OPENAI_MODEL``.
+    Окружение: ``OPENAI_API_KEY``, ``OPENAI_API_URL``, опц. ``OPENAI_PROMPT``, ``OPENAI_MODEL``,
+    ``OPENAI_GPT_USER``, ``OPENAI_HTTP_TIMEOUT_SEC`` (таймаут HTTP, по умолчанию 300 с).
+
+    ``user_id`` переопределяет суффикс для вызова из бота (Telegram user id и т.п.).
     """
     api_key, url, _env_prompt, model = _config()
     if not api_key:
@@ -58,6 +92,9 @@ def chat_completion(user_prompt: str) -> Tuple[int, str]:
         return err, _msg
 
     payload: Dict[str, Any] = {"model": model, "messages": messages}
+    user_field = _payload_user_field(user_id)
+    if user_field:
+        payload["user"] = user_field
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         url.strip(),
@@ -69,7 +106,7 @@ def chat_completion(user_prompt: str) -> Tuple[int, str]:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=http_timeout_sec()) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace") if e.fp else ""

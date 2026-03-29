@@ -654,17 +654,24 @@ async def _main_async() -> None:
         import openai_gpt
 
         status = await event.respond("Запрос к GPT…")
-        gpt_timeout = max(fetch_timeout, 120.0)
+        # urllib таймаут + запас, чтобы asyncio не оборвал поток раньше HTTP.
+        gpt_http = openai_gpt.http_timeout_sec()
+        gpt_timeout = max(fetch_timeout, gpt_http + 30.0)
         try:
+            gpt_uid = (
+                str(event.sender_id) if event.sender_id is not None else None
+            )
             code, out = await asyncio.wait_for(
-                asyncio.to_thread(openai_gpt.chat_completion, msg),
+                asyncio.to_thread(
+                    openai_gpt.chat_completion, msg, user_id=gpt_uid
+                ),
                 timeout=gpt_timeout,
             )
         except asyncio.TimeoutError:
             logger.error("chat_completion timed out after %.0fs", gpt_timeout)
             await status.edit(
                 f"Таймаут {gpt_timeout:.0f} с при запросе к GPT. "
-                "При необходимости увеличьте BOT_FETCH_TIMEOUT_SEC."
+                "Увеличьте OPENAI_HTTP_TIMEOUT_SEC (и при необходимости BOT_FETCH_TIMEOUT_SEC)."
             )
             return
         except Exception:

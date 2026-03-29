@@ -165,7 +165,7 @@ def build_arg_parser(*, add_help: bool = True) -> argparse.ArgumentParser:
         dest="gpt_prompt",
         default=None,
         metavar="PROMPT",
-        help="Запрос к OpenAI Chat: OPENAI_API_KEY, OPENAI_API_URL, опц. OPENAI_PROMPT (system) и OPENAI_MODEL.",
+        help="Запрос к OpenAI Chat: OPENAI_API_KEY, OPENAI_API_URL; опц. OPENAI_PROMPT, OPENAI_MODEL, OPENAI_HTTP_TIMEOUT_SEC.",
     )
     return p
 
@@ -452,7 +452,7 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
         "(неизвестное имя игнорируется)."
     )
     print(
-        "  --gpt PROMPT     Chat API: OPENAI_API_KEY, OPENAI_API_URL; OPENAI_PROMPT (system); OPENAI_MODEL."
+        "  --gpt PROMPT     Chat API: OPENAI_API_KEY, OPENAI_API_URL; OPENAI_PROMPT; OPENAI_MODEL; OPENAI_HTTP_TIMEOUT_SEC."
     )
     print("  sources              Список id доступных источников.")
     print("  env-status           Файл .env и типичные переменные (без значений).")
