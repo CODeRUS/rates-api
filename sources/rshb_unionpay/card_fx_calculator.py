@@ -388,6 +388,7 @@ def fetch_live_inputs(
     moex_override: Optional[float] = None,
     *,
     use_cache_on_timeout: bool = True,
+    readonly: bool = False,
 ) -> tuple[float, float, Decimal, date, Decimal, date, bool, Dict[str, Any]]:
     """
     UnionPay THB→CNY, MOEX CNY/RUB, РСХБ CNY/RUR (offline + online), даты таблиц.
@@ -403,9 +404,20 @@ def fetch_live_inputs(
     ``.card_fx_live_inputs_cache.json`` (последний успешный запуск), флаг
     ``used_stale_cache`` = True.
 
+    ``readonly=True`` — только файл ``.card_fx_live_inputs_cache.json``, без HTTP.
+
     ``unionpay_payload`` — тот же объект, что у :func:`unionpay_rates.fetch_daily_file`,
     для передачи в ``cache=`` в отчётах.
     """
+    if readonly:
+        cached = _load_live_inputs_cache()
+        if cached is None:
+            raise RuntimeError(
+                "readonly: нет файла .card_fx_live_inputs_cache.json "
+                "(нужен хотя бы один успешный онлайн-сбор курсов)."
+            )
+        cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up = cached
+        return cpt, moex, sell, rshb_on, online_sell, rshb_online_on, True, up
     try:
         cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up = (
             _fetch_live_inputs_network(on, moex_override)
@@ -530,6 +542,7 @@ def build_rshb_text(
     moex_override: Optional[float] = None,
     rub_card_atm_pct: float = 0.01,
     issuer_cny_atm_pct: float = 0.03,
+    readonly: bool = False,
 ) -> str:
     """
     Единый текстовый отчёт THB/RUB для команды `rshb` (CLI и bot).
@@ -542,7 +555,7 @@ def build_rshb_text(
         amounts = [30_000.0]
 
     cpt, moex, rshb_sell_dec, rshb_date, online_sell_dec, _, _stale, _ = fetch_live_inputs(
-        on, moex_override
+        on, moex_override, readonly=readonly
     )
     rshb_sell = float(rshb_sell_dec)
     channels = _rshb_report_channels(

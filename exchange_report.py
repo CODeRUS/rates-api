@@ -93,6 +93,7 @@ def best_fiat_buy_thb_across_branches(
     timeout: float = 28.0,
     parallel_max_workers: Optional[int] = None,
     refresh: bool = False,
+    readonly: bool = False,
 ) -> Tuple[Optional[float], List[str]]:
     """
     Максимальный курс TT (THB за 1 ед. ``fiat_code``) среди открытых филиалов.
@@ -116,15 +117,24 @@ def best_fiat_buy_thb_across_branches(
         hit_s = ucc.l1_get_valid(doc, stores_key)
         if hit_s is not None:
             stores_list = hit_s[1]
+    if readonly and stores_list is None:
+        t_any = ucc.l1_get_any(doc, stores_key)
+        if t_any is not None:
+            stores_list = t_any[1]
     if refresh or stores_list is None:
-        stores_list = ttx.get_stores(lang, timeout=timeout)
-        if isinstance(stores_list, list):
-            ucc.l1_set(
-                doc,
-                stores_key,
-                stores_list,
-                ttl_sec=ucc.TTL_L1_EXCHANGE_STORES_SEC,
-            )
+        if readonly:
+            if not isinstance(stores_list, list):
+                warnings.append("readonly: нет списка филиалов TT в L1")
+                return None, warnings
+        else:
+            stores_list = ttx.get_stores(lang, timeout=timeout)
+            if isinstance(stores_list, list):
+                ucc.l1_set(
+                    doc,
+                    stores_key,
+                    stores_list,
+                    ttl_sec=ucc.TTL_L1_EXCHANGE_STORES_SEC,
+                )
 
     if not isinstance(stores_list, list):
         warnings.append("TT /stores не список")
@@ -153,6 +163,11 @@ def best_fiat_buy_thb_across_branches(
                 cur_cached = hit[1]
                 if fiat_buy_thb_per_unit(cur_cached, code) is not None:
                     return cur_cached
+        if readonly:
+            t_any = ucc.l1_get_any(doc, cur_key)
+            if t_any is not None:
+                return t_any[1]
+            return None
         cur = ttx.get_currencies(bid_s, is_main=False, timeout=timeout)
         ucc.l1_set(
             doc,
@@ -172,7 +187,8 @@ def best_fiat_buy_thb_across_branches(
             if isinstance(exc, _TT_FETCH_ERRORS):
                 continue
             raise exc
-        assert cur is not None
+        if cur is None:
+            continue
         v = fiat_buy_thb_per_unit(cur, code)
         if v is None:
             continue
@@ -198,6 +214,7 @@ def build_exchange_report_text(
     parallel_max_workers: Optional[int] = None,
     refresh: bool = False,
     unified_allow_stale: bool = False,
+    readonly: bool = False,
 ) -> Tuple[str, List[str]]:
     global _unified_served_stale_l2
 
@@ -207,6 +224,7 @@ def build_exchange_report_text(
     lang = (lang or "ru").strip() or "ru"
     from_stale_l2 = False
 
+    allow_stale_ex = bool(unified_allow_stale or readonly)
     if not refresh:
         ent = ucc.l2_get(
             doc,
@@ -215,7 +233,7 @@ def build_exchange_report_text(
             require_fresh=False,
             allow_stale=False,
         )
-        if ent is None and unified_allow_stale:
+        if ent is None and allow_stale_ex:
             ent = ucc.l2_get(
                 doc,
                 l2_key,
@@ -227,14 +245,27 @@ def build_exchange_report_text(
                 from_stale_l2 = True
         if ent is not None:
             deps = ent.get("deps") or {}
-            if (not deps) or ucc.l2_deps_match(doc, deps):
-                body = str(ent.get("text") or "")
-                if body.strip():
-                    w = list((ent.get("payload") or {}).get("warnings") or [])
+            body = str(ent.get("text") or "")
+            if body.strip():
+                w = list((ent.get("payload") or {}).get("warnings") or [])
+                dep_ok = (not deps) or ucc.l2_deps_match(doc, deps)
+                if readonly:
+                    if not dep_ok:
+                        w.append(
+                            "readonly: L2 exchange — зависимости L1 не совпадают; показан снимок L2."
+                        )
+                    _unified_served_stale_l2 = from_stale_l2
+                    return body, w
+                if dep_ok:
                     _unified_served_stale_l2 = from_stale_l2
                     return body, w
 
     _unified_served_stale_l2 = False
+    if readonly:
+        return (
+            "Обмен наличные → THB (readonly)\n\nНет L2 exchange в unified-кеше для этих параметров.\n",
+            ["--readonly: нет кешированного отчёта exchange."],
+        )
     warnings: List[str] = []
     ttx = _ttexchange_api_module()
     stores_key = f"ex:l1:stores:{lang}"
@@ -302,7 +333,8 @@ def build_exchange_report_text(
                 warnings.append(f"TT курсы {label} ({bid_s}): {exc}")
                 continue
             raise exc
-        assert cur is not None
+        if cur is None:
+            continue
         usd = fiat_buy_thb_per_unit(cur, "USD")
         if usd is None:
             continue
@@ -358,6 +390,7 @@ def format_exchange_report_with_warnings(
     parallel_max_workers: Optional[int] = None,
     refresh: bool = False,
     unified_allow_stale: bool = False,
+    readonly: bool = False,
 ) -> str:
     body, w = build_exchange_report_text(
         top_n=top_n,
@@ -366,6 +399,7 @@ def format_exchange_report_with_warnings(
         parallel_max_workers=parallel_max_workers,
         refresh=refresh,
         unified_allow_stale=unified_allow_stale,
+        readonly=readonly,
     )
     if not w:
         return body
@@ -393,6 +427,11 @@ def _parse_exchange_argv(argv: List[str]) -> argparse.Namespace:
         action="store_true",
         help="Пропустить чтение L1/L2 unified, заново запросить TT API",
     )
+    p.add_argument(
+        "--readonly",
+        action="store_true",
+        help="Только кеш (в т.ч. с истёкшим TTL), без сети",
+    )
     p.add_argument("-h", "--help", action="store_true")
     return p.parse_args(argv)
 
@@ -410,6 +449,7 @@ def main_exchange_cli(argv: List[str]) -> int:
         lang=(args.lang or "ru").strip() or "ru",
         timeout=max(5.0, float(args.timeout)),
         refresh=bool(args.refresh),
+        readonly=bool(getattr(args, "readonly", False)),
     )
     sys.stdout.write(text)
     return 0

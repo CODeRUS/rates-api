@@ -337,6 +337,7 @@ def build_cash_report_text(
     refresh: bool = False,
     unified_allow_stale: bool = False,
     city_label: Optional[str] = None,
+    readonly: bool = False,
 ) -> Tuple[str, List[str]]:
     """
     Только курсы продажи наличной валюты (РБК + Banki).
@@ -373,7 +374,7 @@ def build_cash_report_text(
             if isinstance(p, dict):
                 thb_map = dict(p.get("thb_map") or {})
                 loaded_tt_from_l1 = True
-    if refresh or not loaded_tt_from_l1:
+    if refresh or (not loaded_tt_from_l1 and not readonly):
         thb_map_raw, _tt_branch = _tt_thb_branch()
         thb_map = dict(thb_map_raw or {})
         ucc.l1_set(
@@ -382,11 +383,20 @@ def build_cash_report_text(
             {"thb_map": thb_map, "branch": ""},
             ttl_sec=ucc.TTL_L1_CASH_TT_SEC,
         )
+    elif readonly and not loaded_tt_from_l1:
+        any_tt = ucc.l1_get_any(doc, tt_l1_key)
+        if any_tt is not None:
+            p = any_tt[1]
+            if isinstance(p, dict):
+                thb_map = dict(p.get("thb_map") or {})
+                if thb_map:
+                    loaded_tt_from_l1 = True
     if not thb_map:
         warnings.append(
             "Нет курсов USD/EUR/CNY у TT Exchange — итоговый RUB/THB не посчитать."
         )
 
+    allow_stale_l2 = bool(unified_allow_stale or readonly)
     if not refresh:
         ent = ucc.l2_get(
             doc,
@@ -395,7 +405,7 @@ def build_cash_report_text(
             require_fresh=False,
             allow_stale=False,
         )
-        if ent is None and unified_allow_stale:
+        if ent is None and allow_stale_l2:
             ent = ucc.l2_get(
                 doc,
                 l2_key,
@@ -407,13 +417,34 @@ def build_cash_report_text(
                 from_stale_l2 = True
         if ent is not None:
             deps = ent.get("deps") or {}
-            if ((not deps) or ucc.l2_deps_match(doc, deps)) and not need_rebuild_due_to_userbot:
-                body = str(ent.get("text") or "")
-                if body.strip():
-                    w = list((ent.get("payload") or {}).get("warnings") or [])
+            body = str(ent.get("text") or "")
+            if body.strip():
+                w = list((ent.get("payload") or {}).get("warnings") or [])
+                dep_ok = (not deps) or ucc.l2_deps_match(doc, deps)
+                if readonly:
+                    if not dep_ok:
+                        w.append(
+                            "readonly: L2 наличные — зависимости L1 не совпадают; показан снимок L2."
+                        )
+                    if need_rebuild_due_to_userbot:
+                        w.append(
+                            "readonly: есть свежие userbot-данные, сеть отключена — показан старый L2."
+                        )
+                    _unified_served_stale_l2_plain = from_stale_l2
+                    return body, w
+                if dep_ok and not need_rebuild_due_to_userbot:
                     _unified_served_stale_l2_plain = from_stale_l2
                     return body, w
     _unified_served_stale_l2_plain = False
+    if readonly:
+        return (
+            "Наличные (readonly)\n\n"
+            "Нет готового отчёта в L2 unified-кеше (или пустой курс TT в L1 при --readonly).\n",
+            warnings
+            + [
+                "--readonly: без сети не собрать отчёт — обновите кеш командой без --readonly."
+            ],
+        )
     cash_header = (
         "Наличные: РБК + Banki (топ по курсу продажи); RUB/THB после TT Exchange"
         if rbc_cash_enabled()
@@ -502,6 +533,7 @@ def build_cash_thb_report_text(
     parallel_max_workers: Optional[int] = None,
     refresh: bool = False,
     unified_allow_stale: bool = False,
+    readonly: bool = False,
 ) -> Tuple[str, List[str]]:
     """
     Цепочка: продажа валюты у банка (RUB/ед.) × TT → RUB за 1 THB.
@@ -516,6 +548,7 @@ def build_cash_thb_report_text(
     )
     from_stale_l2 = False
 
+    allow_stale_thb = bool(unified_allow_stale or readonly)
     if not refresh:
         ent = ucc.l2_get(
             doc,
@@ -524,7 +557,7 @@ def build_cash_thb_report_text(
             require_fresh=False,
             allow_stale=False,
         )
-        if ent is None and unified_allow_stale:
+        if ent is None and allow_stale_thb:
             ent = ucc.l2_get(
                 doc,
                 l2_key,
@@ -536,14 +569,27 @@ def build_cash_thb_report_text(
                 from_stale_l2 = True
         if ent is not None:
             deps = ent.get("deps") or {}
-            if (not deps) or ucc.l2_deps_match(doc, deps):
-                body = str(ent.get("text") or "")
-                if body.strip():
-                    w = list((ent.get("payload") or {}).get("warnings") or [])
+            body = str(ent.get("text") or "")
+            if body.strip():
+                w = list((ent.get("payload") or {}).get("warnings") or [])
+                dep_ok = (not deps) or ucc.l2_deps_match(doc, deps)
+                if readonly:
+                    if not dep_ok:
+                        w.append(
+                            "readonly: L2 cash-thb — зависимости L1 не совпадают; показан снимок L2."
+                        )
+                    _unified_served_stale_l2_thb = from_stale_l2
+                    return body, w
+                if dep_ok:
                     _unified_served_stale_l2_thb = from_stale_l2
                     return body, w
 
     _unified_served_stale_l2_thb = False
+    if readonly:
+        return (
+            "Наличные ➔ THB (readonly)\n\nНет L2 в unified-кеше для этих параметров.\n",
+            ["--readonly: нет кешированного отчёта cash-thb."],
+        )
     warnings: List[str] = []
     tt_l1_key = "cash_thb:l1:tt"
     thb_map: Dict[str, Any] = {}
@@ -644,6 +690,7 @@ def format_cash_report_with_warnings(
     refresh: bool = False,
     unified_allow_stale: bool = False,
     city_label: Optional[str] = None,
+    readonly: bool = False,
 ) -> str:
     body, w = build_cash_report_text(
         top_n=top_n,
@@ -652,6 +699,7 @@ def format_cash_report_with_warnings(
         refresh=refresh,
         unified_allow_stale=unified_allow_stale,
         city_label=city_label,
+        readonly=readonly,
     )
     if not w:
         return body
@@ -666,6 +714,7 @@ def format_cash_thb_report_with_warnings(
     use_banki: bool = True,
     refresh: bool = False,
     unified_allow_stale: bool = False,
+    readonly: bool = False,
 ) -> str:
     body, w = build_cash_thb_report_text(
         top_n=top_n,
@@ -673,6 +722,7 @@ def format_cash_thb_report_with_warnings(
         use_banki=use_banki,
         refresh=refresh,
         unified_allow_stale=unified_allow_stale,
+        readonly=readonly,
     )
     if not w:
         return body
@@ -708,6 +758,11 @@ def _parse_cash_argv(argv: List[str]) -> argparse.Namespace:
         help="Не запрашивать Banki.ru (только РБК, Москва и СПб)",
     )
     p.add_argument("--refresh", action="store_true", help="Зарезервировано")
+    p.add_argument(
+        "--readonly",
+        action="store_true",
+        help="Только кеш (в т.ч. с истёкшим TTL), без сети",
+    )
     p.add_argument("-h", "--help", action="store_true")
     return p.parse_args(argv)
 
@@ -737,6 +792,7 @@ def main_cash_cli(argv: List[str]) -> int:
         use_banki=not args.no_banki,
         refresh=bool(args.refresh),
         city_label=city,
+        readonly=bool(getattr(args, "readonly", False)),
     )
     sys.stdout.write(text)
     return 0

@@ -11,6 +11,7 @@
 
     python rates.py
     python rates.py --refresh --json
+    python rates.py --readonly
     python rates.py --help
     python rates.py sources
     python rates.py save out.txt
@@ -133,7 +134,16 @@ def build_arg_parser(*, add_help: bool = True) -> argparse.ArgumentParser:
     )
     if not add_help:
         p.add_argument("-h", "--help", action="store_true", help=argparse.SUPPRESS)
-    p.add_argument("--refresh", action="store_true", help="Игнорировать кеш")
+    grp = p.add_mutually_exclusive_group()
+    grp.add_argument("--refresh", action="store_true", help="Игнорировать кеш")
+    grp.add_argument(
+        "--readonly",
+        action="store_true",
+        help=(
+            "Без сетевых запросов: только данные из unified- и файловых кешей "
+            "(в т.ч. L2 с истёкшим TTL). Несовместимо с --refresh."
+        ),
+    )
     p.add_argument("--json", action="store_true", help="JSON в stdout")
     p.add_argument("--thb-ref", type=float, default=DEFAULT_THB_REF, help="Нетто THB для сценариев снятия")
     p.add_argument("--atm-fee", type=float, default=DEFAULT_ATM_FEE_THB, help="Комиссия банкомата, THB")
@@ -194,7 +204,10 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
         "moex_override": args.moex_override,
     }
     cache_key = _cache_key(key_params)
-    allow_stale = bool(getattr(args, "unified_allow_stale", False))
+    readonly = bool(getattr(args, "readonly", False))
+    allow_stale = bool(
+        getattr(args, "unified_allow_stale", False) or readonly
+    )
     digest = ucc.stable_digest(cache_key)
     l2_key = f"l2:summary:{digest}"
     from_stale_l2 = False
@@ -238,21 +251,37 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
                 from_stale_l2 = True
         if ent is not None:
             deps = ent.get("deps") or {}
-            if (not deps) or ucc.l2_deps_match(doc, deps):
-                payload = ent.get("payload") or {}
-                if payload.get("rows") is not None:
+            payload = ent.get("payload") or {}
+            if payload.get("rows") is not None:
+                dep_ok = (not deps) or ucc.l2_deps_match(doc, deps)
+                if dep_ok or readonly:
                     rows, baseline, warnings = _summary_rows_from_l2_payload(payload)
+                    if readonly and not dep_ok:
+                        warnings.append(
+                            "readonly: L2 сводка при несовпадении deps — только снимок из кеша."
+                        )
 
     if not rows and not args.refresh:
         hit = load_stale_cache(args.cache_file)
         if hit is not None:
             raw, saved = hit
-            if cache_valid(raw, saved, cache_key):
+            if cache_valid(raw, saved, cache_key) or (
+                readonly and raw.get("key") == cache_key
+            ):
                 rows, baseline = rows_from_cached(raw)
                 warnings = list(raw.get("warnings", []))
 
     deps: Dict[str, int] = {}
     if not rows:
+        if readonly:
+            return (
+                [],
+                0.0,
+                warnings
+                + [
+                    "--readonly: нет сводки в unified L2 и нет подходящей записи в файле legacy-кеша."
+                ],
+            )
         rebuilt = True
         ctx = FetchContext(
             thb_ref=args.thb_ref,
@@ -448,8 +477,8 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     parser.print_help()
     print("\nКоманды:")
     print(
-        "  (сводка) Опции: --refresh, --json, --filter NAME — пресет постфильтрации строк "
-        "(неизвестное имя игнорируется)."
+        "  (сводка) Опции: --refresh | --readonly, --json, --filter NAME — пресет постфильтрации строк "
+        "(неизвестное имя игнорируется). --readonly — без HTTP, только кеш."
     )
     print(
         "  --gpt PROMPT     Chat API: OPENAI_API_KEY, OPENAI_API_URL; OPENAI_PROMPT; OPENAI_MODEL; OPENAI_HTTP_TIMEOUT_SEC."
@@ -529,6 +558,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     source_ids = frozenset(registered_source_ids())
 
     if args.gpt_prompt is not None:
+        if getattr(args, "readonly", False):
+            print("С --readonly нельзя использовать --gpt.", file=sys.stderr)
+            return 2
         if rest:
             print(
                 "С --gpt не используйте подкоманду: осталось "
@@ -599,6 +631,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not rest:
         rows, baseline, warnings = compute_summary_rows(args)
         rows = _maybe_apply_output_filter(args, rows)
+        if getattr(args, "readonly", False) and not rows:
+            print(
+                "--readonly: нет данных сводки в кеше.",
+                file=sys.stderr,
+            )
+            return 1
         if args.json:
             print_json_summary(rows, baseline, warnings, sys.stdout)
         else:
@@ -649,6 +687,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                 setattr(args, k, v)
         rows, baseline, warnings = compute_summary_rows(args)
         rows = _maybe_apply_output_filter(args, rows)
+        if getattr(args, "readonly", False) and not rows:
+            print(
+                "--readonly: нет данных сводки в кеше.",
+                file=sys.stderr,
+            )
+            return 1
         try:
             with out_path.open("w", encoding="utf-8") as f:
                 if args.json:
@@ -669,6 +713,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         tail = list(rest[1:])
         if args.refresh:
             tail.append("--refresh")
+        if getattr(args, "readonly", False):
+            tail.append("--readonly")
         err = cr.main_cash_cli(tail)
         return err
 
@@ -683,6 +729,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         tail = list(rest[1:])
         if args.refresh:
             tail.append("--refresh")
+        if getattr(args, "readonly", False):
+            tail.append("--readonly")
         err = er.main_exchange_cli(tail)
         return err
 
@@ -701,9 +749,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"Неизвестные аргументы usdt: {' '.join(u_rest)}", file=sys.stderr)
             return 2
         # --refresh / --json до или после ``usdt`` обрабатываются общим парсером и не попадают в rest.
-        refresh = u_args.refresh or args.refresh
+        ro = bool(getattr(args, "readonly", False))
+        refresh = False if ro else (u_args.refresh or args.refresh)
         as_json = u_args.json or args.json
-        data, uw = ur.compute_usdt_report(refresh=refresh, cache_file=u_args.cache_file)
+        data, uw = ur.compute_usdt_report(
+            refresh=refresh,
+            cache_file=u_args.cache_file,
+            unified_allow_stale=ro,
+            readonly=ro,
+        )
         if as_json:
             ur.print_usdt_report_json(data, uw, sys.stdout)
         else:
@@ -718,7 +772,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         except ValueError as e:
             print(str(e), file=sys.stderr)
             return 2
-        print(build_rshb_text(thb_nets=thb_nets, atm_fee_thb=atm_fee), end="")
+        try:
+            print(
+                build_rshb_text(
+                    thb_nets=thb_nets,
+                    atm_fee_thb=atm_fee,
+                    readonly=bool(getattr(args, "readonly", False)),
+                ),
+                end="",
+            )
+        except RuntimeError as e:
+            print(str(e), file=sys.stderr)
+            return 1
         return 0
 
     if head == "calc":
@@ -730,6 +795,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         tail = list(rest[1:])
         if args.refresh:
             tail.append("--refresh")
+        if getattr(args, "readonly", False):
+            tail.append("--readonly")
         return cr.main_calc_cli(tail)
 
     if head in source_ids:
@@ -752,6 +819,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         elif args.refresh and not tail:
             want_summary = True
         if want_summary:
+            if getattr(args, "readonly", False):
+                print(
+                    "--readonly: отчёт одного источника всегда ходит в сеть; "
+                    "используйте общую сводку без подкоманды.",
+                    file=sys.stderr,
+                )
+                return 2
             return print_single_source_summary(mod, args)
         return mod.command(tail)
 

@@ -322,11 +322,29 @@ def fetch_usdt_payload(
     return data, warnings, deps
 
 
+def _empty_usdt_data() -> Dict[str, Any]:
+    return {
+        "rub_per_usdt": {
+            "bybit_cash": None,
+            "bybit_transfer": None,
+            "htx_cash": None,
+            "htx_no_cash": None,
+        },
+        "thb_per_usdt": {
+            "bitkub_highest_bid": None,
+            "binance_bid": None,
+            "fly_bid": None,
+            "it_obmen_bid": None,
+        },
+    }
+
+
 def compute_usdt_report(
     *,
     refresh: bool,
     cache_file: Optional[Path] = None,
     unified_allow_stale: bool = False,
+    readonly: bool = False,
 ) -> Tuple[Dict[str, Any], List[str]]:
     global _unified_served_stale_l2
 
@@ -341,6 +359,8 @@ def compute_usdt_report(
         doc, legacy_path=path, usdt_key=key, cache_version=USDT_CACHE_VERSION
     )
 
+    allow_stale_l2 = bool(unified_allow_stale or readonly)
+
     if not refresh:
         ent = ucc.l2_get(
             doc,
@@ -349,7 +369,7 @@ def compute_usdt_report(
             require_fresh=False,
             allow_stale=False,
         )
-        if ent is None and unified_allow_stale:
+        if ent is None and allow_stale_l2:
             ent = ucc.l2_get(
                 doc,
                 l2_key,
@@ -361,14 +381,32 @@ def compute_usdt_report(
                 from_stale_l2 = True
         if ent is not None:
             deps = ent.get("deps") or {}
-            if (not deps) or ucc.l2_deps_match(doc, deps):
-                payload = ent.get("payload") or {}
-                data = payload.get("data") or {}
-                if data:
+            payload = ent.get("payload") or {}
+            data = payload.get("data") or {}
+            if data:
+                match = (not deps) or ucc.l2_deps_match(doc, deps)
+                if match or readonly:
+                    w = list(payload.get("warnings", []))
+                    if readonly and not match:
+                        w.append(
+                            "readonly: L2 USDT при несовпадении deps — только снимок из кеша."
+                        )
                     _unified_served_stale_l2 = from_stale_l2
-                    return dict(data), list(payload.get("warnings", []))
+                    return dict(data), w
 
     _unified_served_stale_l2 = False
+
+    if readonly:
+        hit = _load_stale_usdt_cache(path)
+        if hit is not None:
+            raw, _saved = hit
+            if raw.get("key") == key:
+                data = raw.get("data") or {}
+                if isinstance(data, dict) and data:
+                    return dict(data), list(raw.get("warnings", []))
+        return _empty_usdt_data(), [
+            "--readonly: нет USDT в unified L2 и нет подходящей записи в legacy-файле кеша."
+        ]
 
     data, warnings, deps = fetch_usdt_payload(
         unified_doc=doc,
