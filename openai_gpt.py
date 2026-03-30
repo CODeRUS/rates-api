@@ -7,7 +7,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 _DEFAULT_OPENAI_HTTP_TIMEOUT_SEC = 300.0
@@ -66,6 +66,29 @@ def _payload_user_field(user_id: Optional[str]) -> Optional[str]:
     return full[:64]
 
 
+def _base_payload(
+    user_prompt: str, *, user_id: Optional[str]
+) -> Tuple[int, str, Optional[Dict[str, Any]]]:
+    api_key, url, _env_prompt, model = _config()
+    if not api_key:
+        return 2, "Задайте OPENAI_API_KEY в окружении.", None
+    if not url:
+        return (
+            2,
+            "Задайте OPENAI_API_URL (полный URL Chat Completions).",
+            None,
+        )
+    err, _msg, messages = _messages(user_prompt)
+    if err:
+        return err, _msg, None
+
+    payload: Dict[str, Any] = {"model": model, "messages": messages}
+    user_field = _payload_user_field(user_id)
+    if user_field:
+        payload["user"] = user_field
+    return 0, "", payload
+
+
 def chat_completion(user_prompt: str, *, user_id: Optional[str] = None) -> Tuple[int, str]:
     """
     Один запрос к Chat Completions.
@@ -78,23 +101,11 @@ def chat_completion(user_prompt: str, *, user_id: Optional[str] = None) -> Tuple
 
     ``user_id`` переопределяет суффикс для вызова из бота (Telegram user id и т.п.).
     """
-    api_key, url, _env_prompt, model = _config()
-    if not api_key:
-        return 2, "Задайте OPENAI_API_KEY в окружении."
-    if not url:
-        return (
-            2,
-            "Задайте OPENAI_API_URL (полный URL Chat Completions).",
-        )
-
-    err, _msg, messages = _messages(user_prompt)
+    api_key, url, _env_prompt, _model = _config()
+    err, msg, payload = _base_payload(user_prompt, user_id=user_id)
     if err:
-        return err, _msg
-
-    payload: Dict[str, Any] = {"model": model, "messages": messages}
-    user_field = _payload_user_field(user_id)
-    if user_field:
-        payload["user"] = user_field
+        return err, msg
+    assert payload is not None
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         url.strip(),
@@ -133,11 +144,77 @@ def chat_completion(user_prompt: str, *, user_id: Optional[str] = None) -> Tuple
     return 0, content
 
 
+def stream_chat_completion(
+    user_prompt: str,
+    *,
+    user_id: Optional[str] = None,
+    on_delta: Optional[Callable[[str], None]] = None,
+) -> Tuple[int, str]:
+    """Потоковый Chat Completions (SSE): возвращает полный текст, on_delta вызывается по кускам."""
+    api_key, url, _env_prompt, _model = _config()
+    err, msg, payload = _base_payload(user_prompt, user_id=user_id)
+    if err:
+        return err, msg
+    assert payload is not None
+    payload["stream"] = True
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        url.strip(),
+        data=data,
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    parts: List[str] = []
+    try:
+        with urllib.request.urlopen(req, timeout=http_timeout_sec()) as resp:
+            for bline in resp:
+                line = bline.decode("utf-8", errors="replace").strip()
+                if not line or line.startswith(":") or not line.startswith("data:"):
+                    continue
+                chunk = line[5:].strip()
+                if chunk == "[DONE]":
+                    break
+                try:
+                    obj = json.loads(chunk)
+                except json.JSONDecodeError:
+                    continue
+                choices = obj.get("choices")
+                if not isinstance(choices, list) or not choices:
+                    continue
+                first = choices[0] if isinstance(choices[0], dict) else {}
+                delta = first.get("delta") if isinstance(first, dict) else {}
+                piece = None
+                if isinstance(delta, dict):
+                    piece = delta.get("content")
+                if not isinstance(piece, str):
+                    msg_obj = first.get("message") if isinstance(first, dict) else {}
+                    if isinstance(msg_obj, dict):
+                        piece = msg_obj.get("content")
+                if isinstance(piece, str) and piece:
+                    parts.append(piece)
+                    if on_delta is not None:
+                        on_delta(piece)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace") if e.fp else ""
+        return 1, f"HTTP {e.code}: {body or e.reason}"
+    except urllib.error.URLError as e:
+        return 1, f"Сеть: {e.reason}"
+    except OSError as e:
+        return 1, str(e)
+    return 0, "".join(parts)
+
+
 def run_openai_gpt(cli_prompt: str) -> int:
     """CLI: печать ответа в stdout, код выхода как у процесса."""
-    code, text = chat_completion(cli_prompt)
+    code, text = stream_chat_completion(
+        cli_prompt, on_delta=lambda s: print(s, end="", flush=True)
+    )
     if code != 0:
         print(text, file=sys.stderr)
         return code
-    print(text, end="" if text.endswith("\n") else "\n")
+    if text and not text.endswith("\n"):
+        print()
     return 0
