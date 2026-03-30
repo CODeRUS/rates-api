@@ -661,11 +661,44 @@ async def _main_async() -> None:
             gpt_uid = (
                 str(event.sender_id) if event.sender_id is not None else None
             )
+            async def _stream_and_collect() -> tuple[int, str]:
+                loop = asyncio.get_running_loop()
+                stream_q: asyncio.Queue[str] = asyncio.Queue()
+
+                def _on_delta(piece: str) -> None:
+                    loop.call_soon_threadsafe(stream_q.put_nowait, piece)
+
+                stream_task = asyncio.create_task(
+                    asyncio.to_thread(
+                        openai_gpt.stream_chat_completion,
+                        msg,
+                        user_id=gpt_uid,
+                        on_delta=_on_delta,
+                    )
+                )
+                out_local = ""
+                last_edit = loop.time()
+                while True:
+                    if stream_task.done() and stream_q.empty():
+                        break
+                    try:
+                        piece = await asyncio.wait_for(stream_q.get(), timeout=0.4)
+                    except asyncio.TimeoutError:
+                        continue
+                    out_local += piece
+                    now = loop.time()
+                    if now - last_edit >= 1.0:
+                        preview = split_for_telegram(out_local)
+                        if preview and preview[0].strip():
+                            await status.edit(preview[0])
+                            last_edit = now
+                code_local, final_out = await stream_task
+                if final_out:
+                    out_local = final_out
+                return code_local, out_local
+
             code, out = await asyncio.wait_for(
-                asyncio.to_thread(
-                    openai_gpt.chat_completion, msg, user_id=gpt_uid
-                ),
-                timeout=gpt_timeout,
+                _stream_and_collect(), timeout=gpt_timeout
             )
         except asyncio.TimeoutError:
             logger.error("chat_completion timed out after %.0fs", gpt_timeout)
