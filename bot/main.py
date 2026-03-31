@@ -57,6 +57,43 @@ from bot.summary_adapter import (
 
 logger = logging.getLogger(__name__)
 
+_GPT_USERS_FILE = _ROOT / "gpt-users.txt"
+_GPT_PENDING_FILE = _ROOT / "gpt-pending.txt"
+
+
+def _load_id_file(path: Path) -> Set[int]:
+    ids: Set[int] = set()
+    if not path.is_file():
+        return ids
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return ids
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        try:
+            ids.add(int(s))
+        except ValueError:
+            continue
+    return ids
+
+
+def _save_id_file(path: Path, header: str, ids: Set[int]) -> bool:
+    lines = [header]
+    for uid in sorted(ids):
+        lines.append(f"{uid}\n")
+    try:
+        path.write_text("".join(lines), encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+def _load_gpt_user_ids() -> Set[int]:
+    return _load_id_file(_GPT_USERS_FILE)
+
 
 def _env_int(name: str) -> int | None:
     raw = (os.environ.get(name) or "").strip()
@@ -111,6 +148,8 @@ async def _main_async() -> None:
     rates_busy_guard = asyncio.Lock()
     rates_busy_chats: Set[int] = set()
     fetch_timeout = _fetch_timeout_sec()
+    gpt_allowed_users: Set[int] = _load_gpt_user_ids()
+    gpt_pending_users: Set[int] = _load_id_file(_GPT_PENDING_FILE)
 
     async def _send_rates_summary(
         event: events.NewMessage.Event,
@@ -629,22 +668,219 @@ async def _main_async() -> None:
 
     admin_id_for_gpt = _env_int("BOT_ADMIN_ID")
 
-    def _admin_private_gpt_message(e: events.NewMessage.Event) -> bool:
-        if admin_id_for_gpt is None:
+    def _is_gpt_user(user_id: int) -> bool:
+        return (admin_id_for_gpt is not None and user_id == admin_id_for_gpt) or (
+            user_id in gpt_allowed_users
+        )
+
+    def _append_gpt_user(user_id: int) -> bool:
+        if user_id in gpt_allowed_users:
             return False
+        gpt_allowed_users.add(user_id)
+        line = f"{user_id}\n"
+        try:
+            if not _GPT_USERS_FILE.exists():
+                _GPT_USERS_FILE.write_text(
+                    "# Telegram user ids with GPT access (one per line)\n",
+                    encoding="utf-8",
+                )
+            with _GPT_USERS_FILE.open("a", encoding="utf-8") as f:
+                f.write(line)
+            return True
+        except OSError:
+            gpt_allowed_users.discard(user_id)
+            return False
+
+    def _remove_gpt_user(user_id: int) -> bool:
+        if user_id not in gpt_allowed_users:
+            return False
+        gpt_allowed_users.discard(user_id)
+        lines = [
+            "# Telegram user ids with GPT access (one per line)\n",
+        ]
+        for uid in sorted(gpt_allowed_users):
+            lines.append(f"{uid}\n")
+        try:
+            _GPT_USERS_FILE.write_text("".join(lines), encoding="utf-8")
+            return True
+        except OSError:
+            gpt_allowed_users.add(user_id)
+            return False
+
+    def _append_pending_user(user_id: int) -> bool:
+        if user_id in gpt_pending_users:
+            return False
+        gpt_pending_users.add(user_id)
+        header = "# Telegram user ids with pending GPT access requests (one per line)\n"
+        if not _save_id_file(_GPT_PENDING_FILE, header, gpt_pending_users):
+            gpt_pending_users.discard(user_id)
+            return False
+        return True
+
+    def _remove_pending_user(user_id: int) -> None:
+        if user_id not in gpt_pending_users:
+            return
+        gpt_pending_users.discard(user_id)
+        if not gpt_pending_users:
+            try:
+                if _GPT_PENDING_FILE.exists():
+                    _GPT_PENDING_FILE.unlink()
+            except OSError:
+                return
+            return
+        header = "# Telegram user ids with pending GPT access requests (one per line)\n"
+        _save_id_file(_GPT_PENDING_FILE, header, gpt_pending_users)
+
+    def _gpt_message(e: events.NewMessage.Event) -> bool:
         if not e.is_private:
             return False
         if bool(getattr(e.message, "out", False)):
             return False
         sid = e.sender_id
-        if sid is None or int(sid) != admin_id_for_gpt:
+        if sid is None:
             return False
         msg = (e.message.message or "").strip()
-        return bool(msg) and not msg.startswith("/")
+        if not msg or msg.startswith("/"):
+            return False
+        return _is_gpt_user(int(sid))
 
-    @client.on(events.NewMessage(func=_admin_private_gpt_message))
-    async def on_admin_gpt(event: events.NewMessage.Event) -> None:
-        """Личка: обычный текст админа (не команда) → OpenAI Chat."""
+    @client.on(events.NewMessage(pattern=r"^/gpt($|\s)"))
+    async def on_gpt_request(event: events.NewMessage.Event) -> None:
+        """Скрытая команда /gpt: запрос доступа (для пользователя) или список ожиданий (для админа)."""
+        sid = event.sender_id
+        if sid is None:
+            return
+        uid = int(sid)
+        if admin_id_for_gpt is not None and uid == admin_id_for_gpt:
+            # Админ: показать список ожидающих подтверждения.
+            if not gpt_pending_users:
+                await event.respond("GPT pending: пусто (нет ожидающих подтверждения).")
+                return
+            lines = ["GPT pending (ожидают /gpt_add):"]
+            for pid in sorted(gpt_pending_users):
+                lines.append(f"  • {pid} — `/gpt_add {pid}`")
+            await event.respond("\n".join(lines))
+            return
+        if not event.is_private:
+            await event.respond("Команду /gpt отправляйте в личку боту.")
+            return
+        if _is_gpt_user(uid):
+            await event.respond("GPT уже доступен для этого аккаунта.")
+            return
+        if admin_id_for_gpt is None:
+            await event.respond("GPT сейчас недоступен: не задан BOT_ADMIN_ID.")
+            return
+        if uid in gpt_pending_users:
+            await event.respond("Запрос на доступ к GPT уже отправлен админу, ожидайте решения.")
+            return
+        if not _append_pending_user(uid):
+            await event.respond("Не удалось сохранить запрос на доступ к GPT.")
+            return
+        await event.respond("Запрос на доступ к GPT отправлен админу.")
+        try:
+            sender = await event.get_sender()
+        except Exception:
+            sender = None
+        name_parts = []
+        if sender is not None:
+            first = (getattr(sender, "first_name", "") or "").strip()
+            last = (getattr(sender, "last_name", "") or "").strip()
+            uname = (getattr(sender, "username", "") or "").strip()
+            if first or last:
+                name_parts.append((first + " " + last).strip())
+            if uname:
+                name_parts.append(f"@{uname}")
+        pretty = " / ".join(x for x in name_parts if x) or "(без имени)"
+        text = (
+            "Запрос доступа к GPT:\n"
+            f"  id: {uid}\n"
+            f"  пользователь: {pretty}\n\n"
+            f"Выдать доступ: `/gpt_add {uid}`\n"
+            "Отказать — просто проигнорировать это сообщение."
+        )
+        try:
+            await client.send_message(int(admin_id_for_gpt), text)
+        except Exception:
+            # Если не удалось уведомить админа — молча игнорируем, чтобы не спамить пользователя.
+            return
+
+    @client.on(events.NewMessage(pattern=r"^/gpt_add\b"))
+    async def on_admin_gpt_add(event: events.NewMessage.Event) -> None:
+        """Админ: /gpt_add <user_id> — добавить пользователя в gpt-users.txt."""
+        sid = event.sender_id
+        if admin_id_for_gpt is None or sid is None or int(sid) != admin_id_for_gpt:
+            return
+        msg = (event.message.message or "").strip()
+        parts = msg.split()
+        if len(parts) != 2:
+            await event.respond("Использование: /gpt_add <telegram_user_id>")
+            return
+        try:
+            uid = int(parts[1])
+        except ValueError:
+            await event.respond("user_id должен быть числом.")
+            return
+        if uid in gpt_allowed_users:
+            await event.respond(f"Пользователь {uid} уже имеет доступ к GPT.")
+            _remove_pending_user(uid)
+            return
+        if not _append_gpt_user(uid):
+            await event.respond("Не удалось обновить gpt-users.txt.")
+            return
+        _remove_pending_user(uid)
+        await event.respond(
+            f"Пользователь {uid} добавлен в gpt-users.txt и может пользоваться GPT.\n"
+            f"Отозвать доступ: `/gpt_remove {uid}`"
+        )
+        try:
+            await client.send_message(
+                uid,
+                "Доступ к GPT выдан. Теперь можно писать боту в личку обычным текстом (без /), и запрос уйдёт в GPT.",
+            )
+        except Exception:
+            # Пользователь мог не начать диалог с ботом или запретить сообщения.
+            pass
+
+    @client.on(events.NewMessage(pattern=r"^/gpt_remove\b"))
+    async def on_admin_gpt_remove(event: events.NewMessage.Event) -> None:
+        """Админ: /gpt_remove <user_id> — удалить пользователя из gpt-users.txt."""
+        sid = event.sender_id
+        if admin_id_for_gpt is None or sid is None or int(sid) != admin_id_for_gpt:
+            return
+        msg = (event.message.message or "").strip()
+        parts = msg.split()
+        if len(parts) != 2:
+            await event.respond("Использование: /gpt_remove <telegram_user_id>")
+            return
+        try:
+            uid = int(parts[1])
+        except ValueError:
+            await event.respond("user_id должен быть числом.")
+            return
+        if uid == admin_id_for_gpt:
+            await event.respond("Админа удалить нельзя: у него всегда есть доступ к GPT.")
+            return
+        if uid not in gpt_allowed_users:
+            await event.respond(f"Пользователь {uid} не найден в gpt-users.txt.")
+            _remove_pending_user(uid)
+            return
+        if not _remove_gpt_user(uid):
+            await event.respond("Не удалось обновить gpt-users.txt.")
+            return
+        _remove_pending_user(uid)
+        await event.respond(f"Пользователь {uid} удалён из gpt-users.txt.")
+        try:
+            await client.send_message(
+                uid,
+                "Доступ к GPT завершен. Спасибо за тестирование!",
+            )
+        except Exception:
+            # Пользователь мог отключить/удалить диалог.
+            pass
+
+    @client.on(events.NewMessage(func=_gpt_message))
+    async def on_gpt(event: events.NewMessage.Event) -> None:
+        """Личка: обычный текст GPT-пользователя (админ или whitelisted id) → OpenAI Chat."""
         if not _env("OPENAI_API_KEY") or not _env("OPENAI_API_URL"):
             await event.respond(
                 "GPT: задайте OPENAI_API_KEY и OPENAI_API_URL в окружении бота."
@@ -661,6 +897,8 @@ async def _main_async() -> None:
             gpt_uid = (
                 str(event.sender_id) if event.sender_id is not None else None
             )
+            sender_id = int(event.sender_id or 0)
+            is_admin = admin_id_for_gpt is not None and sender_id == admin_id_for_gpt
             async def _stream_and_collect() -> tuple[int, str]:
                 loop = asyncio.get_running_loop()
                 stream_q: asyncio.Queue[str] = asyncio.Queue()
@@ -674,7 +912,7 @@ async def _main_async() -> None:
                         msg,
                         user_id=gpt_uid,
                         on_delta=_on_delta,
-                        include_env_system=False,
+                        include_env_system=not is_admin,
                     )
                 )
                 out_local = ""
