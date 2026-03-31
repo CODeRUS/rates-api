@@ -29,8 +29,11 @@ _unified_served_stale_l2: bool = False
 USDT_CACHE_TTL_SEC = 60
 
 _USDT_CACHE_OVERRIDE = (os.environ.get("RATES_USDT_CACHE_FILE") or "").strip()
+_USDT_CACHE_OVERRIDE_PATH = Path(_USDT_CACHE_OVERRIDE) if _USDT_CACHE_OVERRIDE else None
+if _USDT_CACHE_OVERRIDE_PATH is not None and not _USDT_CACHE_OVERRIDE_PATH.is_absolute():
+    _USDT_CACHE_OVERRIDE_PATH = (_SCRIPT_DIR / _USDT_CACHE_OVERRIDE_PATH).resolve()
 USDT_CACHE_FILE = (
-    Path(_USDT_CACHE_OVERRIDE) if _USDT_CACHE_OVERRIDE else _SCRIPT_DIR / ".rates_usdt_cache.json"
+    _USDT_CACHE_OVERRIDE_PATH if _USDT_CACHE_OVERRIDE_PATH is not None else _SCRIPT_DIR / ".rates_usdt_cache.json"
 )
 
 

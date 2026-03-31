@@ -20,8 +20,11 @@ _SCHEMA_VERSION = 1
 
 _UNIFIED_OVERRIDE = (os.environ.get("RATES_UNIFIED_CACHE_FILE") or "").strip()
 _SCRIPT_DIR = Path(__file__).resolve().parent
+_UNIFIED_OVERRIDE_PATH = Path(_UNIFIED_OVERRIDE) if _UNIFIED_OVERRIDE else None
+if _UNIFIED_OVERRIDE_PATH is not None and not _UNIFIED_OVERRIDE_PATH.is_absolute():
+    _UNIFIED_OVERRIDE_PATH = (_SCRIPT_DIR / _UNIFIED_OVERRIDE_PATH).resolve()
 DEFAULT_UNIFIED_CACHE_PATH = (
-    Path(_UNIFIED_OVERRIDE) if _UNIFIED_OVERRIDE else _SCRIPT_DIR / ".rates_unified_cache.json"
+    _UNIFIED_OVERRIDE_PATH if _UNIFIED_OVERRIDE_PATH is not None else _SCRIPT_DIR / ".rates_unified_cache.json"
 )
 
 # TTL секунд по типу L1 (значения по умолчанию; можно переопределить env)

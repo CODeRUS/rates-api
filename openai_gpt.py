@@ -37,20 +37,23 @@ def _config() -> tuple[str, str, str, str]:
     return api_key, url, env_prompt, model
 
 
-def _messages(user_text: str) -> tuple[int, str, List[Dict[str, str]]]:
+def _messages(
+    user_text: str, *, include_env_system: bool = True
+) -> tuple[int, str, List[Dict[str, str]]]:
     user_text = (user_text or "").strip()
     _, _, env_prompt, _ = _config()
     messages: List[Dict[str, str]] = []
-    if env_prompt:
+    if include_env_system and env_prompt:
         messages.append({"role": "system", "content": env_prompt})
     if user_text:
         messages.append({"role": "user", "content": user_text})
     if not messages:
-        return (
-            2,
-            "Пустой запрос: укажите текст или OPENAI_PROMPT в .env.",
-            [],
+        hint = (
+            "Пустой запрос: укажите текст или OPENAI_PROMPT в .env."
+            if include_env_system
+            else "Пустой запрос: укажите текст."
         )
+        return (2, hint, [])
     return 0, "", messages
 
 
@@ -67,7 +70,10 @@ def _payload_user_field(user_id: Optional[str]) -> Optional[str]:
 
 
 def _base_payload(
-    user_prompt: str, *, user_id: Optional[str]
+    user_prompt: str,
+    *,
+    user_id: Optional[str],
+    include_env_system: bool = True,
 ) -> Tuple[int, str, Optional[Dict[str, Any]]]:
     api_key, url, _env_prompt, model = _config()
     if not api_key:
@@ -78,7 +84,9 @@ def _base_payload(
             "Задайте OPENAI_API_URL (полный URL Chat Completions).",
             None,
         )
-    err, _msg, messages = _messages(user_prompt)
+    err, _msg, messages = _messages(
+        user_prompt, include_env_system=include_env_system
+    )
     if err:
         return err, _msg, None
 
@@ -89,7 +97,12 @@ def _base_payload(
     return 0, "", payload
 
 
-def chat_completion(user_prompt: str, *, user_id: Optional[str] = None) -> Tuple[int, str]:
+def chat_completion(
+    user_prompt: str,
+    *,
+    user_id: Optional[str] = None,
+    include_env_system: bool = True,
+) -> Tuple[int, str]:
     """
     Один запрос к Chat Completions.
 
@@ -100,9 +113,14 @@ def chat_completion(user_prompt: str, *, user_id: Optional[str] = None) -> Tuple
     ``OPENAI_GPT_USER``, ``OPENAI_HTTP_TIMEOUT_SEC`` (таймаут HTTP, по умолчанию 300 с).
 
     ``user_id`` переопределяет суффикс для вызова из бота (Telegram user id и т.п.).
+    ``include_env_system=False`` — не подставлять ``OPENAI_PROMPT`` в system (например, бот для админа).
     """
     api_key, url, _env_prompt, _model = _config()
-    err, msg, payload = _base_payload(user_prompt, user_id=user_id)
+    err, msg, payload = _base_payload(
+        user_prompt,
+        user_id=user_id,
+        include_env_system=include_env_system,
+    )
     if err:
         return err, msg
     assert payload is not None
@@ -149,10 +167,15 @@ def stream_chat_completion(
     *,
     user_id: Optional[str] = None,
     on_delta: Optional[Callable[[str], None]] = None,
+    include_env_system: bool = True,
 ) -> Tuple[int, str]:
     """Потоковый Chat Completions (SSE): возвращает полный текст, on_delta вызывается по кускам."""
     api_key, url, _env_prompt, _model = _config()
-    err, msg, payload = _base_payload(user_prompt, user_id=user_id)
+    err, msg, payload = _base_payload(
+        user_prompt,
+        user_id=user_id,
+        include_env_system=include_env_system,
+    )
     if err:
         return err, msg
     assert payload is not None

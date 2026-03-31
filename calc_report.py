@@ -321,7 +321,7 @@ def main_calc_cli(argv: List[str]) -> int:
         print(str(e), file=sys.stderr)
         return 1
     sys.stdout.write(text)
-    if w:
+    if w and not getattr(args, "readonly", False):
         sys.stdout.write("\nПредупреждения:\n")
         for x in w:
             sys.stdout.write(f"  • {x}\n")

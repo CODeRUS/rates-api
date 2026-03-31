@@ -401,6 +401,8 @@ def format_exchange_report_with_warnings(
         unified_allow_stale=unified_allow_stale,
         readonly=readonly,
     )
+    if readonly:
+        return body
     if not w:
         return body
     extra = "\n".join(f"  • {x}" for x in w)

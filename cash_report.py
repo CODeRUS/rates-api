@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -104,6 +105,116 @@ def _cash_l2_key(*, kind: str, top_n: int, use_banki: bool, timeout: float) -> s
     if kind == "thb":
         ident["cell_l1_ns"] = "cash_thb_cell_v2"
     return f"l2:cash:{ucc.stable_digest(ident)}"
+
+
+_CASH_FIAT_ORDER: Tuple[str, ...] = ("USD", "EUR", "CNY")
+_CASH_SECTION_HEADER_RE = re.compile(r"^(USD|EUR|CNY)\s+")
+
+
+def _split_cash_report_header(full_text: str) -> Tuple[List[str], List[str]]:
+    lines = full_text.splitlines()
+    if not lines:
+        return [], []
+    header: List[str] = [lines[0]]
+    i = 1
+    if i < len(lines) and not lines[i].strip():
+        header.append(lines[i])
+        i += 1
+    return header, lines[i:]
+
+
+def _extract_city_sections_from_cash_body(
+    body_lines: List[str], city_label: str, top_n: int
+) -> Optional[List[str]]:
+    out: List[str] = []
+    for fiat in _CASH_FIAT_ORDER:
+        want = f"{fiat} {city_label}"
+        start: Optional[int] = None
+        for i, ln in enumerate(body_lines):
+            if ln.strip() == want:
+                start = i
+                break
+        if start is None:
+            return None
+        content: List[str] = []
+        j = start + 1
+        while j < len(body_lines):
+            ln = body_lines[j]
+            if not ln.strip():
+                break
+            if _CASH_SECTION_HEADER_RE.match(ln.strip()):
+                break
+            content.append(ln)
+            j += 1
+        if len(content) > top_n:
+            content = content[:top_n]
+        out.append(body_lines[start])
+        out.extend(content)
+        out.append("")
+    return out
+
+
+def _is_plain_cash_l2_ent(ent: Dict[str, Any]) -> bool:
+    deps = ent.get("deps") or {}
+    if not isinstance(deps, dict) or not deps:
+        return True
+    for k in deps:
+        if str(k).startswith("cash_thb:l1:cell"):
+            return False
+    return any(str(k).startswith("cash:l1:") for k in deps)
+
+
+def _find_best_plain_cash_l2_key_for_city(
+    doc: Dict[str, Any], city_label: str
+) -> Optional[str]:
+    l2 = doc.get("l2") or {}
+    if not isinstance(l2, dict):
+        return None
+    usd_hdr = f"USD {city_label}"
+    best_k: Optional[str] = None
+    best_sv = -1.0
+    for k, ent in l2.items():
+        sk = str(k)
+        if not sk.startswith("l2:cash:") or ":city:" in sk:
+            continue
+        if not isinstance(ent, dict):
+            continue
+        if not _is_plain_cash_l2_ent(ent):
+            continue
+        body = str(ent.get("text") or "")
+        if not body.strip():
+            continue
+        if not any(ln.strip() == usd_hdr for ln in body.splitlines()):
+            continue
+        sv = float(ent.get("saved_unix") or 0)
+        if sv > best_sv:
+            best_sv = sv
+            best_k = sk
+    return best_k
+
+
+def _cash_l2_get_fresh_or_stale(
+    doc: Dict[str, Any], key: str, *, allow_stale_l2: bool
+) -> Tuple[Optional[Dict[str, Any]], bool]:
+    from_stale_l2 = False
+    ent = ucc.l2_get(
+        doc,
+        key,
+        ttl_sec=ucc.TTL_L2_CASH_SEC,
+        require_fresh=False,
+        allow_stale=False,
+    )
+    if ent is None and allow_stale_l2:
+        ent = ucc.l2_get(
+            doc,
+            key,
+            ttl_sec=ucc.TTL_L2_CASH_SEC,
+            require_fresh=False,
+            allow_stale=True,
+        )
+        if ent is not None:
+            from_stale_l2 = True
+    return ent, from_stale_l2
 
 
 def _deps_for_l1_keys(doc: Dict[str, Any], keys: List[str]) -> Dict[str, int]:
@@ -347,11 +458,14 @@ def build_cash_report_text(
 
     unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
     doc = ucc.load_unified(unified_path)
-    l2_key = _cash_l2_key(
+    l2_key_base = _cash_l2_key(
         kind="plain_tt", top_n=top_n, use_banki=use_banki, timeout=timeout
     )
-    if city_label:
-        l2_key = f"{l2_key}:city:{ucc.stable_digest(city_label)}"
+    l2_key = (
+        l2_key_base
+        if not city_label
+        else f"{l2_key_base}:city:{ucc.stable_digest(city_label)}"
+    )
     from_stale_l2 = False
 
     locs_all = _locations(use_banki)
@@ -398,43 +512,72 @@ def build_cash_report_text(
 
     allow_stale_l2 = bool(unified_allow_stale or readonly)
     if not refresh:
-        ent = ucc.l2_get(
-            doc,
-            l2_key,
-            ttl_sec=ucc.TTL_L2_CASH_SEC,
-            require_fresh=False,
-            allow_stale=False,
-        )
-        if ent is None and allow_stale_l2:
-            ent = ucc.l2_get(
-                doc,
-                l2_key,
-                ttl_sec=ucc.TTL_L2_CASH_SEC,
-                require_fresh=False,
-                allow_stale=True,
+        body = ""
+        ent: Optional[Dict[str, Any]] = None
+        slice_from_full = False
+        keys_try: List[str] = [l2_key]
+        if city_label and l2_key != l2_key_base:
+            keys_try.append(l2_key_base)
+        for ck in keys_try:
+            ent, from_stale_l2 = _cash_l2_get_fresh_or_stale(
+                doc, ck, allow_stale_l2=allow_stale_l2
             )
-            if ent is not None:
-                from_stale_l2 = True
+            if ent is not None and str(ent.get("text") or "").strip():
+                slice_from_full = bool(
+                    city_label and ck == l2_key_base and l2_key != l2_key_base
+                )
+                break
+            ent = None
+
+        if ent is None and readonly and city_label:
+            alt_k = _find_best_plain_cash_l2_key_for_city(doc, city_label)
+            if alt_k is not None:
+                ent, from_stale_l2 = _cash_l2_get_fresh_or_stale(
+                    doc, alt_k, allow_stale_l2=allow_stale_l2
+                )
+                if ent is not None and str(ent.get("text") or "").strip():
+                    slice_from_full = True
+                else:
+                    ent = None
+
         if ent is not None:
             deps = ent.get("deps") or {}
             body = str(ent.get("text") or "")
             if body.strip():
-                w = list((ent.get("payload") or {}).get("warnings") or [])
-                dep_ok = (not deps) or ucc.l2_deps_match(doc, deps)
-                if readonly:
-                    if not dep_ok:
-                        w.append(
-                            "readonly: L2 наличные — зависимости L1 не совпадают; показан снимок L2."
-                        )
-                    if need_rebuild_due_to_userbot:
-                        w.append(
-                            "readonly: есть свежие userbot-данные, сеть отключена — показан старый L2."
-                        )
-                    _unified_served_stale_l2_plain = from_stale_l2
-                    return body, w
-                if dep_ok and not need_rebuild_due_to_userbot:
-                    _unified_served_stale_l2_plain = from_stale_l2
-                    return body, w
+                if slice_from_full and city_label:
+                    hdr, rest = _split_cash_report_header(body)
+                    sliced = _extract_city_sections_from_cash_body(
+                        rest, city_label, top_n
+                    )
+                    if sliced is None:
+                        ent = None
+                    else:
+                        body = "\n".join(hdr + sliced).rstrip() + "\n"
+            else:
+                ent = None
+
+        if ent is not None and body.strip():
+            w = list((ent.get("payload") or {}).get("warnings") or [])
+            dep_ok = (not deps) or ucc.l2_deps_match(doc, deps)
+            if readonly:
+                if slice_from_full:
+                    w.append(
+                        "readonly: фрагмент города из полного L2 cash (cron/бот кешируют без :city:, "
+                        "часто с другим --top)."
+                    )
+                if not dep_ok:
+                    w.append(
+                        "readonly: L2 наличные — зависимости L1 не совпадают; показан снимок L2."
+                    )
+                if need_rebuild_due_to_userbot:
+                    w.append(
+                        "readonly: есть свежие userbot-данные, сеть отключена — показан старый L2."
+                    )
+                _unified_served_stale_l2_plain = from_stale_l2
+                return body, w
+            if dep_ok and not need_rebuild_due_to_userbot:
+                _unified_served_stale_l2_plain = from_stale_l2
+                return body, w
     _unified_served_stale_l2_plain = False
     if readonly:
         return (
@@ -701,6 +844,8 @@ def format_cash_report_with_warnings(
         city_label=city_label,
         readonly=readonly,
     )
+    if readonly:
+        return body
     if not w:
         return body
     extra = "\n".join(f"  • {x}" for x in w)
@@ -724,6 +869,8 @@ def format_cash_thb_report_with_warnings(
         unified_allow_stale=unified_allow_stale,
         readonly=readonly,
     )
+    if readonly:
+        return body
     if not w:
         return body
     extra = "\n".join(f"  • {x}" for x in w)

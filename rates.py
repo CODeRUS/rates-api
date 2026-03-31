@@ -62,7 +62,12 @@ _SUMMARY_OMIT_CASH_FX = frozenset(
 )
 
 _CACHE_OVERRIDE = (os.environ.get("RATES_CACHE_FILE") or "").strip()
-CACHE_FILE = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else _SCRIPT_DIR / ".rates_summary_cache.json"
+_CACHE_OVERRIDE_PATH = Path(_CACHE_OVERRIDE) if _CACHE_OVERRIDE else None
+if _CACHE_OVERRIDE_PATH is not None and not _CACHE_OVERRIDE_PATH.is_absolute():
+    _CACHE_OVERRIDE_PATH = (_SCRIPT_DIR / _CACHE_OVERRIDE_PATH).resolve()
+CACHE_FILE = (
+    _CACHE_OVERRIDE_PATH if _CACHE_OVERRIDE_PATH is not None else _SCRIPT_DIR / ".rates_summary_cache.json"
+)
 CACHE_TTL_SEC = 30 * 60
 CACHE_VERSION = 32
 
@@ -640,7 +645,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.json:
             print_json_summary(rows, baseline, warnings, sys.stdout)
         else:
-            print_summary_text(rows, baseline, warnings, sys.stdout)
+            out_warnings = [] if getattr(args, "readonly", False) else warnings
+            print_summary_text(rows, baseline, out_warnings, sys.stdout)
         return 0
 
     head = rest[0]
@@ -698,7 +704,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if args.json:
                     print_json_summary(rows, baseline, warnings, f)
                 else:
-                    print_summary_text(rows, baseline, warnings, f)
+                    out_warnings = [] if getattr(args, "readonly", False) else warnings
+                    print_summary_text(rows, baseline, out_warnings, f)
         except OSError as e:
             print(f"Не удалось записать файл: {e}", file=sys.stderr)
             return 1
@@ -761,7 +768,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         if as_json:
             ur.print_usdt_report_json(data, uw, sys.stdout)
         else:
-            print(ur.format_usdt_report_text(data, uw), end="")
+            text = ur.format_usdt_report_text(
+                data,
+                [] if ro else uw,
+            )
+            print(text, end="")
         return 0
 
     if head == "rshb":

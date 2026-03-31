@@ -15,7 +15,7 @@ Telegram-бот (Telethon): /rates, /usdt, /cash, /exchange, /calc.
 
 Секреты не коммитьте. Файл сессии: ``bot/rates_bot.session`` (в .gitignore).
 Опционально ``BOT_ADMIN_ID``: ``/refresh`` — сброс кеша сводки; ``/refresh usdt`` — сброс кеша отчёта USDT.
-В личке с ботом текст админа **без** ``/`` уходит в OpenAI Chat (нужны ``OPENAI_API_KEY``, ``OPENAI_API_URL``, см. ``openai_gpt``).
+В личке с ботом текст админа **без** ``/`` уходит в OpenAI Chat (нужны ``OPENAI_API_KEY``, ``OPENAI_API_URL``, см. ``openai_gpt``); ``OPENAI_PROMPT`` в запрос не подставляется — только текст сообщения.
 Опционально ``BOT_FETCH_TIMEOUT_SEC`` (по умолчанию 180): таймаут сборки сводки/USDT/cash/exchange в потоке.
 """
 from __future__ import annotations
@@ -674,6 +674,7 @@ async def _main_async() -> None:
                         msg,
                         user_id=gpt_uid,
                         on_delta=_on_delta,
+                        include_env_system=False,
                     )
                 )
                 out_local = ""
