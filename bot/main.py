@@ -242,6 +242,7 @@ async def _main_async() -> None:
                 "Новосибирск",
                 "Красноярск",
                 "Иркутск",
+                "Екатеринбург",
             ]
             if city_n < 1 or city_n > len(cities):
                 await event.respond(f"Номер города должен быть от 1 до {len(cities)}.")
@@ -542,9 +543,6 @@ async def _main_async() -> None:
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)\n"
             "/rshb — THB/RUB РСХБ; /rshb THB [ATM_FEE] или несколько сумм, последнее — комиссия ATM\n"
             "/calc — сравнение каналов RUB→THB; /calc RUB usd|eur|cny КУРС (₽ за 1 ед. валюты для TT)\n"
-            "\n"
-            "Для администратора (BOT_ADMIN_ID) в личке: любой текст без / — запрос к GPT "
-            "(OPENAI_API_KEY, OPENAI_API_URL; опц. OPENAI_PROMPT, OPENAI_MODEL)."
         )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+){0,2}$"))

@@ -44,6 +44,7 @@ _CASH_LOCATIONS: Tuple[Tuple[str, str, Optional[int]], ...] = (
     ("Новосибирск", "novosibirsk", None),
     ("Красноярск", "krasnoyarsk", None),
     ("Иркутск", "irkutsk", None),
+    ("Екатеринбург", "ekaterinburg", None),
 )
 
 _FIAT: Tuple[Tuple[str, int], ...] = (
