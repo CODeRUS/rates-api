@@ -34,6 +34,7 @@ _PRESETS_RAW: Dict[str, _OutputFilterPreset] = {
             "Bybit",
             "Unired",
             "Ex24",
+            "Novawallet"
         ),
     ),
 }
