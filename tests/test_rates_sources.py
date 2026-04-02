@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import importlib
+import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -308,6 +310,20 @@ class TestRatesSources(unittest.TestCase):
 
         frag = 'foo\\"RUB\\":{\\"buy\\":\\"0.5\\",\\"sell\\":\\"0.6\\"bar'
         self.assertAlmostEqual(parse_ex24_cash_rub_buy_rub_per_thb(frag), 2.0)
+
+    def test_load_ex24_proxy_urls_file(self):
+        from sources.ex24 import ex24_rub_thb
+
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as f:
+            f.write("# skip\n1.2.3.4:8080\n\nhttp://x:9\n")
+            path = f.name
+        try:
+            os.environ["EX24_PROXIES_FILE"] = path
+            urls = ex24_rub_thb.load_ex24_proxy_urls()
+        finally:
+            os.environ.pop("EX24_PROXIES_FILE", None)
+            os.unlink(path)
+        self.assertEqual(urls, ["http://1.2.3.4:8080", "http://x:9"])
 
     def test_rate_row_format_without_forex_delta_when_not_comparable(self):
         r = RateRow(

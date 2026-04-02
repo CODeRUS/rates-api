@@ -1,7 +1,7 @@
 import random
 import threading
 import urllib.request
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from typing import List
 
 
@@ -112,50 +112,23 @@ def find_working_proxies(
     found_set = set()
     lock = threading.Lock()
 
-    # 1. Проверяем уже найденные прокси из файла первыми (параллельно).
     existing = load_existing_proxies(output_file)
-    if existing:
-        print(f"Checking existing proxies from {output_file} ...")
+    seen = set()
+    head: List[str] = []
+    for p in existing:
+        if p not in seen:
+            seen.add(p)
+            head.append(p)
 
-        def check_existing_item(item):
-            idx, proxy = item
-            ok = check_proxy_http(proxy, url, timeout=timeout)
-            return idx, proxy, ok
+    tail = collect_candidate_proxies(per_source_limit=per_source_limit)
+    tail = [p for p in tail if p not in seen][:check_limit]
 
-        indexed = list(enumerate(existing))
-        results: List[tuple[int, str, bool]] = []
-        with ThreadPoolExecutor(max_workers=min(workers, len(indexed))) as executor:
-            future_map = {
-                executor.submit(check_existing_item, item): item for item in indexed
-            }
-            for future in as_completed(future_map):
-                results.append(future.result())
+    to_check = head + tail
+    if not to_check:
+        save_proxies(output_file, [])
+        return []
 
-        for idx, proxy, ok in sorted(results, key=lambda t: t[0]):
-            tag = "[OK][existing]" if ok else "[FAIL][existing]"
-            print(f"{tag:16} {proxy}")
-
-        ok_by_index = sorted((i, p) for i, p, o in results if o)
-        for idx, proxy in ok_by_index:
-            if proxy not in found_set:
-                found.append(proxy)
-                found_set.add(proxy)
-            if len(found) >= need:
-                break
-
-    # Сразу сохраняем только те старые прокси, которые всё ещё живы.
-    save_proxies(output_file, found)
-
-    if len(found) >= need:
-        return found[:need]
-
-    # 2. Добираем новые прокси из публичных списков.
-    candidates = collect_candidate_proxies(per_source_limit=per_source_limit)
-
-    # Исключаем уже проверенные/найденные прокси.
-    existing_set = set(existing)
-    candidates = [p for p in candidates if p not in existing_set and p not in found_set]
-    candidates = candidates[:check_limit]
+    print(f"Checking {len(to_check)} proxies ({len(head)} from {output_file}, then public lists) ...")
 
     def worker(proxy: str):
         ok = check_proxy_http(proxy, url, timeout=timeout)
@@ -163,10 +136,9 @@ def find_working_proxies(
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
         pending = set()
-        iterator = iter(candidates)
+        iterator = iter(to_check)
 
-        # Стартовая порция задач.
-        for _ in range(min(workers, len(candidates))):
+        for _ in range(min(workers, len(to_check))):
             try:
                 proxy = next(iterator)
             except StopIteration:
@@ -183,14 +155,11 @@ def find_working_proxies(
                     if ok and proxy not in found_set:
                         found.append(proxy)
                         found_set.add(proxy)
-                        with open(output_file, "a", encoding="utf-8") as f:
-                            f.write(proxy + "\n")
                         print(f"[OK]   {proxy}")
                     else:
                         print(f"[FAIL] {proxy}")
 
                 if len(found) >= need:
-                    # Больше новые задачи не добавляем.
                     break
 
                 try:
@@ -199,11 +168,12 @@ def find_working_proxies(
                     continue
                 pending.add(executor.submit(worker, next_proxy))
 
-        # Отменяем ещё не начавшиеся задачи.
         for future in pending:
             future.cancel()
 
-    return found[:need]
+    out = found[:need]
+    save_proxies(output_file, out)
+    return out
 
 
 if __name__ == "__main__":
@@ -217,7 +187,7 @@ if __name__ == "__main__":
         per_source_limit=150,
         check_limit=100,
         workers=20,
-        timeout=10,
+        timeout=3,
     )
 
     print("\nDone.")

@@ -6,7 +6,11 @@
 Актуальные курсы забираются с **главной** ``GET https://ex24.pro/``: в HTML встроен JSON
 ``"type":"rates","payload":{"rates":[...]}``. Таймаут и число повторов на URL задаются
 env ``EX24_HTTP_TIMEOUT_SEC`` (по умолчанию 10) и ``EX24_HTTP_MAX_ATTEMPTS`` (по умолчанию 2),
-чтобы не тянуть минуты при глобальных 4×25 с на попытку. Нужная запись: ``from`` = RUB, ``to`` = THB,
+чтобы не тянуть минуты при глобальных 4×25 с на попытку. Прокси: файл ``.ex24_proxies``
+в корне репозитория (как у ``cron/refresh_proxy.py``) или путь в ``EX24_PROXIES_FILE``;
+по одному ``host:port`` или полному URL на строку, строки с ``#`` — комментарии.
+Сначала запрос без прокси, затем по очереди прокси из файла. Если задано
+``EX24_USE_PROXY_ONLY=1``, прямое подключение не используется. Нужная запись: ``from`` = RUB, ``to`` = THB,
 при необходимости ``fromType`` = «по СБП». Поле **``rate``** — то, что показывают в интерфейсе;
 **``realRate``** — база для наценки по сумме (как в их калькуляторе). При сбое разбора см.
 ``--real-rate`` и константу ``DEFAULT_REAL_RATE``.
@@ -39,6 +43,7 @@ import ssl
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from rates_http import urlopen_retriable
@@ -80,6 +85,55 @@ def ex24_http_max_attempts() -> int:
     Env ``EX24_HTTP_MAX_ATTEMPTS`` (1–6), выше 2 — только через env.
     """
     return _env_int("EX24_HTTP_MAX_ATTEMPTS", 2, lo=1, hi=6)
+
+
+def _ex24_env_truthy(name: str) -> bool:
+    v = (os.environ.get(name) or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _ex24_normalize_proxy_line(proxy: str) -> str:
+    """Как ``normalize_proxy`` в ``cron/refresh_proxy.py``: схема по умолчанию ``http://``."""
+    proxy = proxy.strip()
+    if not proxy:
+        return ""
+    if proxy.startswith(("http://", "https://")):
+        return proxy
+    return f"http://{proxy}"
+
+
+def ex24_proxies_file_path() -> Path:
+    """Путь к списку прокси: env ``EX24_PROXIES_FILE`` или ``<корень репо>/.ex24_proxies``."""
+    raw = (os.environ.get("EX24_PROXIES_FILE") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path(__file__).resolve().parents[2] / ".ex24_proxies"
+
+
+def load_ex24_proxy_urls() -> List[str]:
+    """Непустые строки из файла прокси (без комментариев ``#``), с нормализацией URL."""
+    path = ex24_proxies_file_path()
+    if not path.is_file():
+        return []
+    out: List[str] = []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                s = line.strip()
+                if not s or s.startswith("#"):
+                    continue
+                p = _ex24_normalize_proxy_line(s)
+                if p:
+                    out.append(p)
+    except OSError:
+        return []
+    return out
+
+
+def _ex24_build_proxy_opener(proxy_url: str, ctx: ssl.SSLContext) -> urllib.request.OpenerDirector:
+    ph = urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url})
+    hh = urllib.request.HTTPSHandler(context=ctx)
+    return urllib.request.build_opener(ph, hh)
 
 # Маркер массива курсов во встроенном JSON (Next.js с экранированными кавычками).
 _PAYLOAD_RATES_MARKERS = (
@@ -204,28 +258,46 @@ def load_ex24_main_html(
     timeout: Optional[float] = None,
     max_attempts: Optional[int] = None,
 ) -> Optional[str]:
-    """Первый успешный HTML главной (ru root или /en)."""
+    """Первый успешный HTML главной (ru root или /en); при сбое прямого доступа — прокси из файла."""
     t = ex24_http_timeout_sec() if timeout is None else float(timeout)
     att = ex24_http_max_attempts() if max_attempts is None else max(1, int(max_attempts))
     ctx = ssl.create_default_context()
-    for url in ("https://ex24.pro/", "https://ex24.pro/en"):
-        try:
-            req = urllib.request.Request(
-                url,
-                headers={
-                    "User-Agent": USER_AGENT,
-                    "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-                },
-            )
-            with urlopen_retriable(
-                req,
-                timeout=t,
-                context=ctx,
-                max_attempts_override=att,
-            ) as resp:
-                return resp.read().decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
-            continue
+    urls = ("https://ex24.pro/", "https://ex24.pro/en")
+    proxies = load_ex24_proxy_urls()
+    proxy_only = _ex24_env_truthy("EX24_USE_PROXY_ONLY")
+
+    def try_urls(opener: Optional[urllib.request.OpenerDirector]) -> Optional[str]:
+        for url in urls:
+            try:
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": USER_AGENT,
+                        "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+                    },
+                )
+                with urlopen_retriable(
+                    req,
+                    timeout=t,
+                    context=ctx,
+                    max_attempts_override=att,
+                    opener=opener,
+                ) as resp:
+                    return resp.read().decode(
+                        resp.headers.get_content_charset() or "utf-8", errors="replace"
+                    )
+            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
+                continue
+        return None
+
+    if not proxy_only:
+        direct = try_urls(None)
+        if direct is not None:
+            return direct
+    for proxy in proxies:
+        got = try_urls(_ex24_build_proxy_opener(proxy, ctx))
+        if got is not None:
+            return got
     return None
 
 

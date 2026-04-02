@@ -36,6 +36,23 @@ class TestRatesHttp(unittest.TestCase):
         self.assertIs(out, ok)
         self.assertEqual(m.call_count, 3)
 
+    def test_urlopen_retriable_uses_opener_when_set(self) -> None:
+        req = urllib.request.Request("https://example.com/test")
+        fake_resp = mock.MagicMock()
+        fake_resp.__enter__ = mock.Mock(return_value=fake_resp)
+        fake_resp.__exit__ = mock.Mock(return_value=False)
+        opener = mock.MagicMock(spec=urllib.request.OpenerDirector)
+        opener.open.return_value = fake_resp
+        out = rates_http.urlopen_retriable(
+            req,
+            timeout=3.0,
+            opener=opener,
+            max_attempts_override=2,
+            backoff_override=0.01,
+        )
+        self.assertIs(out, fake_resp)
+        opener.open.assert_called_once_with(req, timeout=3.0)
+
     def test_urlopen_retriable_ssl_reason_no_retry_storm(self) -> None:
         ctx = ssl.create_default_context()
         req = urllib.request.Request("https://example.com/test")

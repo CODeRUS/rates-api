@@ -130,16 +130,25 @@ def urlopen_retriable(
     context: Optional[ssl.SSLContext] = None,
     max_attempts_override: Optional[int] = None,
     backoff_override: Optional[float] = None,
+    opener: Optional[urllib.request.OpenerDirector] = None,
 ) -> Any:
     """
     Аналог :func:`urllib.request.urlopen` с повторами при
     :class:`~urllib.error.URLError`, разрыве соединения и временных HTTP-кодах.
+
+    Если задан ``opener`` (например, с :class:`~urllib.request.ProxyHandler`),
+    используется ``opener.open``; ``context`` при этом игнорируется — SSL задаётся
+    при сборке opener (см. :class:`~urllib.request.HTTPSHandler`).
     """
     attempts = max_attempts_override if max_attempts_override is not None else max_attempts()
     base = backoff_override if backoff_override is not None else backoff_base_sec()
     last: Optional[BaseException] = None
 
     def _open() -> Any:
+        if opener is not None:
+            if timeout is not None:
+                return opener.open(req, timeout=timeout)
+            return opener.open(req)
         if context is not None and timeout is not None:
             return urllib.request.urlopen(req, timeout=timeout, context=context)
         if context is not None:
