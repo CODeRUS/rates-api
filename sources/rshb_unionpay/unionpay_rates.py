@@ -17,15 +17,22 @@
 from __future__ import annotations
 
 import json
+import logging
 import ssl
+import urllib.error
 import urllib.request
-from datetime import date
+from datetime import date, timedelta
 
 from rates_http import urlopen_retriable
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 UNIONPAY_DAILY_JSON = "https://www.unionpayintl.com/upload/jfimg/{yyyymmdd}.json"
 USER_AGENT = "unionpay-rates/1.0 (python; research)"
+
+# Файл за «сегодня» часто ещё не выложен (404) — берём последний доступный день.
+_UNIONPAY_404_FALLBACK_DAYS = 10
+
+logger = logging.getLogger(__name__)
 
 
 def _get_json(url: str, *, timeout: float = 45.0) -> Any:
@@ -38,16 +45,44 @@ def _get_json(url: str, *, timeout: float = 45.0) -> Any:
         return json.loads(r.read().decode("utf-8"))
 
 
-def fetch_daily_file(d: Optional[date] = None, *, timeout: float = 45.0) -> Dict[str, Any]:
-    """Скачивает JSON на дату ``d`` (по умолчанию сегодня, UTC/локаль — как у сервера)."""
-    if d is None:
-        d = date.today()
+def _fetch_daily_file_exact(d: date, *, timeout: float) -> Dict[str, Any]:
     ymd = f"{d.year:04d}{d.month:02d}{d.day:02d}"
     url = UNIONPAY_DAILY_JSON.format(yyyymmdd=ymd)
     data = _get_json(url, timeout=timeout)
     if not isinstance(data, dict) or "exchangeRateJson" not in data:
         raise ValueError(f"Неожиданная структура ответа: {url}")
     return data
+
+
+def fetch_daily_file(d: Optional[date] = None, *, timeout: float = 45.0) -> Dict[str, Any]:
+    """
+    Скачивает JSON на дату ``d``.
+
+    Если ``d`` не задана: пробуем ``date.today()``, при ответе **404** (файл ещё не
+    опубликован) — предыдущие календарные дни до :data:`_UNIONPAY_404_FALLBACK_DAYS`.
+    Явная дата: без отката, 404 пробрасывается.
+    """
+    if d is not None:
+        return _fetch_daily_file_exact(d, timeout=timeout)
+    today = date.today()
+    last_404: Optional[urllib.error.HTTPError] = None
+    for back in range(0, _UNIONPAY_404_FALLBACK_DAYS + 1):
+        cand = today - timedelta(days=back)
+        try:
+            return _fetch_daily_file_exact(cand, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                last_404 = e
+                if back == 0:
+                    logger.info(
+                        "UnionPay JSON за %s недоступен (404), пробуем предыдущие дни",
+                        cand.isoformat(),
+                    )
+                continue
+            raise
+    if last_404 is not None:
+        raise last_404
+    raise RuntimeError("UnionPay: не удалось загрузить дневной JSON")
 
 
 def build_index(rows: List[Dict[str, Any]]) -> Dict[Tuple[str, str], float]:

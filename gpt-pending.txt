@@ -1,2 +1,0 @@
-# Telegram user ids with pending GPT access requests (one per line)
-

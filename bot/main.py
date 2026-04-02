@@ -59,8 +59,16 @@ from bot.summary_adapter import (
 
 logger = logging.getLogger(__name__)
 
-_GPT_USERS_FILE = _ROOT / "gpt-users.txt"
-_GPT_PENDING_FILE = _ROOT / "gpt-pending.txt"
+def _gpt_data_path(env_name: str, default: Path) -> Path:
+    raw = (os.environ.get(env_name) or "").strip()
+    if not raw:
+        return default
+    p = Path(raw)
+    return p if p.is_absolute() else (_ROOT / p).resolve()
+
+
+_GPT_USERS_FILE = _gpt_data_path("BOT_GPT_USERS_FILE", _ROOT / "gpt-users.txt")
+_GPT_PENDING_FILE = _gpt_data_path("BOT_GPT_PENDING_FILE", _ROOT / "gpt-pending.txt")
 
 
 def _load_id_file(path: Path) -> Set[int]:
