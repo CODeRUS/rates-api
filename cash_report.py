@@ -57,6 +57,51 @@ _FIAT: Tuple[Tuple[str, int], ...] = (
     ("CNY", 423),
 )
 
+_KNOWN_CASH_SOURCE_TOKENS = frozenset({"all", "banki", "vbr", "rbc"})
+
+
+def parse_cash_sources_str(spec: str) -> Tuple[bool, bool, bool]:
+    """
+    ``all`` или список через запятую: ``rbc``, ``banki``, ``vbr``
+    → флаги (use_rbc, use_banki, use_vbr).
+    """
+    s = spec.strip().lower().replace(" ", "")
+    if not s or s == "all":
+        return True, True, True
+    parts = [p for p in s.split(",") if p]
+    valid = frozenset({"rbc", "banki", "vbr"})
+    for p in parts:
+        if p not in valid:
+            raise ValueError(f"неизвестный источник наличных: {p}")
+    return ("rbc" in parts, "banki" in parts, "vbr" in parts)
+
+
+def resolve_cash_sources_flags(
+    *,
+    sources: Optional[str],
+    no_banki: bool,
+    no_vbr: bool,
+) -> Tuple[bool, bool, bool]:
+    """Явный ``--sources`` перекрывает ``--no-banki`` / ``--no-vbr``."""
+    if sources:
+        return parse_cash_sources_str(sources)
+    ur, ub, uv = True, True, True
+    if no_banki:
+        ub = False
+    if no_vbr:
+        uv = False
+    return ur, ub, uv
+
+
+def _cash_locations_for_sources(
+    use_rbc: bool, use_banki: bool, use_vbr: bool
+) -> Tuple[Tuple[str, str, Optional[int]], ...]:
+    if use_banki or use_vbr:
+        return _CASH_LOCATIONS
+    if use_rbc:
+        return tuple(loc for loc in _CASH_LOCATIONS if loc[2] is not None)
+    return ()
+
 
 def _locations(use_banki: bool) -> Tuple[Tuple[str, str, Optional[int]], ...]:
     if use_banki:
@@ -83,6 +128,8 @@ def _cash_cell_jobs(locs: Tuple[Tuple[str, str, Optional[int]], ...]) -> List[_C
 def _cash_cell_l1_key(
     job: _CashCellJob,
     *,
+    top_n: int,
+    use_rbc: bool = True,
     use_banki: bool,
     use_vbr: bool = True,
     chain_thb: bool = False,
@@ -93,7 +140,8 @@ def _cash_cell_l1_key(
     rid = "x" if rbc_id is None else str(int(rbc_id))
     core = (
         f"{fiat_code}:{banki_key}:{rid}:{int(cur_id)}:"
-        f"b{1 if use_banki else 0}:ti{1 if with_tt_implied else 0}:vbr{1 if use_vbr else 0}"
+        f"r{1 if use_rbc else 0}:b{1 if use_banki else 0}:ti{1 if with_tt_implied else 0}:vbr{1 if use_vbr else 0}"
+        f":tn{int(top_n)}"
     )
     if chain_thb:
         return f"cash_thb:l1:cell:v3:{core}"
@@ -104,6 +152,7 @@ def _cash_l2_key(
     *,
     kind: str,
     top_n: int,
+    use_rbc: bool = True,
     use_banki: bool,
     use_vbr: bool = True,
     timeout: float,
@@ -111,6 +160,7 @@ def _cash_l2_key(
     ident: Dict[str, Any] = {
         "kind": kind,
         "top_n": int(top_n),
+        "use_rbc": bool(use_rbc),
         "use_banki": bool(use_banki),
         "use_vbr": bool(use_vbr),
         "timeout": round(float(timeout), 3),
@@ -179,12 +229,24 @@ def _is_plain_cash_l2_ent(ent: Dict[str, Any]) -> bool:
 
 
 def _find_best_plain_cash_l2_key_for_city(
-    doc: Dict[str, Any], city_label: str
+    doc: Dict[str, Any],
+    city_label: str,
+    *,
+    top_n: int,
+    use_rbc: bool,
+    use_banki: bool,
+    use_vbr: bool,
 ) -> Optional[str]:
+    """
+    Запасной L2 «полный отчёт по всем городам» для вырезки одного города.
+    Учитывает top_n и набор источников: нельзя брать снимок, собранный с меньшим
+    топом или другим mix РБК/Banki/VBR (иначе в боте /cash N vbr 20 останется 3 строки).
+    """
     l2 = doc.get("l2") or {}
     if not isinstance(l2, dict):
         return None
     usd_hdr = f"USD {city_label}"
+    want_top = int(top_n)
     best_k: Optional[str] = None
     best_sv = -1.0
     for k, ent in l2.items():
@@ -199,6 +261,18 @@ def _find_best_plain_cash_l2_key_for_city(
         if not body.strip():
             continue
         if not any(ln.strip() == usd_hdr for ln in body.splitlines()):
+            continue
+        pl = ent.get("payload") or {}
+        if not isinstance(pl, dict):
+            pl = {}
+        cached_top = int(pl.get("top_n", 3))
+        if cached_top < want_top:
+            continue
+        if bool(pl.get("use_rbc", True)) != bool(use_rbc):
+            continue
+        if bool(pl.get("use_banki", True)) != bool(use_banki):
+            continue
+        if bool(pl.get("use_vbr", True)) != bool(use_vbr):
             continue
         sv = float(ent.get("saved_unix") or 0)
         if sv > best_sv:
@@ -353,6 +427,7 @@ def _fetch_cash_cell(
     *,
     top_n: int,
     timeout: float,
+    use_rbc: bool = True,
     use_banki: bool,
     use_vbr: bool = True,
     userbot_offers: Optional[List[Any]] = None,
@@ -368,6 +443,7 @@ def _fetch_cash_cell(
         rbc_currency_id=cur_id,
         top_n=top_n,
         timeout=timeout,
+        use_rbc=use_rbc,
         use_banki=use_banki,
         use_vbr=use_vbr,
     )
@@ -415,6 +491,7 @@ def _fetch_cash_thb_cell(
     thb_map: dict,
     top_n: int,
     timeout: float,
+    use_rbc: bool = True,
     use_banki: bool,
     use_vbr: bool = True,
 ) -> Tuple[List[str], List[str]]:
@@ -429,6 +506,7 @@ def _fetch_cash_thb_cell(
         rbc_currency_id=cur_id,
         top_n=top_n,
         timeout=timeout,
+        use_rbc=use_rbc,
         use_banki=use_banki,
         use_vbr=use_vbr,
     )
@@ -461,6 +539,7 @@ def build_cash_report_text(
     *,
     top_n: int = 3,
     timeout: float = 22.0,
+    use_rbc: bool = True,
     use_banki: bool = True,
     use_vbr: bool = True,
     parallel_max_workers: Optional[int] = None,
@@ -480,6 +559,7 @@ def build_cash_report_text(
     l2_key_base = _cash_l2_key(
         kind="plain_tt",
         top_n=top_n,
+        use_rbc=use_rbc,
         use_banki=use_banki,
         use_vbr=use_vbr,
         timeout=timeout,
@@ -491,7 +571,7 @@ def build_cash_report_text(
     )
     from_stale_l2 = False
 
-    locs_all = _locations(use_banki)
+    locs_all = _cash_locations_for_sources(use_rbc, use_banki, use_vbr)
     if city_label:
         locs = tuple(x for x in locs_all if x[0] == city_label)
     else:
@@ -553,7 +633,14 @@ def build_cash_report_text(
             ent = None
 
         if ent is None and readonly and city_label:
-            alt_k = _find_best_plain_cash_l2_key_for_city(doc, city_label)
+            alt_k = _find_best_plain_cash_l2_key_for_city(
+                doc,
+                city_label,
+                top_n=top_n,
+                use_rbc=use_rbc,
+                use_banki=use_banki,
+                use_vbr=use_vbr,
+            )
             if alt_k is not None:
                 ent, from_stale_l2 = _cash_l2_get_fresh_or_stale(
                     doc, alt_k, allow_stale_l2=allow_stale_l2
@@ -612,7 +699,7 @@ def build_cash_report_text(
             ],
         )
     src_bits: List[str] = []
-    if rbc_cash_enabled():
+    if use_rbc and rbc_cash_enabled():
         src_bits.append("РБК")
     if use_banki:
         src_bits.append("Banki")
@@ -637,7 +724,12 @@ def build_cash_report_text(
             doc, fiat_code=fiat_code, city_label=city_label
         )
         k = _cash_cell_l1_key(
-            job, use_banki=use_banki, use_vbr=use_vbr, with_tt_implied=True
+            job,
+            top_n=top_n,
+            use_rbc=use_rbc,
+            use_banki=use_banki,
+            use_vbr=use_vbr,
+            with_tt_implied=True,
         )
         can_use_l1 = (not ub_offers)
         if (not refresh) and can_use_l1:
@@ -652,6 +744,7 @@ def build_cash_report_text(
             job,
             top_n=top_n,
             timeout=timeout,
+            use_rbc=use_rbc,
             use_banki=use_banki,
             use_vbr=use_vbr,
             userbot_offers=ub_offers,
@@ -679,7 +772,12 @@ def build_cash_report_text(
     dep_keys = (
         [
             _cash_cell_l1_key(
-                j, use_banki=use_banki, use_vbr=use_vbr, with_tt_implied=True
+                j,
+                top_n=top_n,
+                use_rbc=use_rbc,
+                use_banki=use_banki,
+                use_vbr=use_vbr,
+                with_tt_implied=True,
             )
             for j in jobs
         ]
@@ -692,7 +790,13 @@ def build_cash_report_text(
         ttl_sec=ucc.TTL_L2_CASH_SEC,
         text=full,
         deps=deps_map,
-        payload={"warnings": warnings},
+        payload={
+            "warnings": warnings,
+            "top_n": int(top_n),
+            "use_rbc": bool(use_rbc),
+            "use_banki": bool(use_banki),
+            "use_vbr": bool(use_vbr),
+        },
     )
     try:
         ucc.save_unified(doc, unified_path)
@@ -706,6 +810,7 @@ def build_cash_thb_report_text(
     *,
     top_n: int = 3,
     timeout: float = 22.0,
+    use_rbc: bool = True,
     use_banki: bool = True,
     use_vbr: bool = True,
     parallel_max_workers: Optional[int] = None,
@@ -724,6 +829,7 @@ def build_cash_thb_report_text(
     l2_key = _cash_l2_key(
         kind="thb",
         top_n=top_n,
+        use_rbc=use_rbc,
         use_banki=use_banki,
         use_vbr=use_vbr,
         timeout=timeout,
@@ -805,12 +911,17 @@ def build_cash_thb_report_text(
         "",
     ]
 
-    locs = _locations(use_banki)
+    locs = _cash_locations_for_sources(use_rbc, use_banki, use_vbr)
     jobs = _cash_cell_jobs(locs)
 
     def _work_thb(job: _CashCellJob) -> Tuple[List[str], List[str]]:
         k = _cash_cell_l1_key(
-            job, use_banki=use_banki, use_vbr=use_vbr, chain_thb=True
+            job,
+            top_n=top_n,
+            use_rbc=use_rbc,
+            use_banki=use_banki,
+            use_vbr=use_vbr,
+            chain_thb=True,
         )
         if not refresh:
             hit = ucc.l1_get_valid(doc, k)
@@ -825,6 +936,7 @@ def build_cash_thb_report_text(
             thb_map=thb_map,
             top_n=top_n,
             timeout=timeout,
+            use_rbc=use_rbc,
             use_banki=use_banki,
             use_vbr=use_vbr,
         )
@@ -848,7 +960,14 @@ def build_cash_thb_report_text(
 
     full = "\n".join(lines).rstrip() + "\n"
     dep_keys = [tt_l1_key] + [
-        _cash_cell_l1_key(j, use_banki=use_banki, use_vbr=use_vbr, chain_thb=True)
+        _cash_cell_l1_key(
+            j,
+            top_n=top_n,
+            use_rbc=use_rbc,
+            use_banki=use_banki,
+            use_vbr=use_vbr,
+            chain_thb=True,
+        )
         for j in jobs
     ]
     deps_map = _deps_for_l1_keys(doc, dep_keys)
@@ -872,6 +991,7 @@ def format_cash_report_with_warnings(
     *,
     top_n: int = 3,
     timeout: float = 22.0,
+    use_rbc: bool = True,
     use_banki: bool = True,
     use_vbr: bool = True,
     refresh: bool = False,
@@ -882,6 +1002,7 @@ def format_cash_report_with_warnings(
     body, w = build_cash_report_text(
         top_n=top_n,
         timeout=timeout,
+        use_rbc=use_rbc,
         use_banki=use_banki,
         use_vbr=use_vbr,
         refresh=refresh,
@@ -901,6 +1022,7 @@ def format_cash_thb_report_with_warnings(
     *,
     top_n: int = 3,
     timeout: float = 22.0,
+    use_rbc: bool = True,
     use_banki: bool = True,
     use_vbr: bool = True,
     refresh: bool = False,
@@ -910,6 +1032,7 @@ def format_cash_thb_report_with_warnings(
     body, w = build_cash_thb_report_text(
         top_n=top_n,
         timeout=timeout,
+        use_rbc=use_rbc,
         use_banki=use_banki,
         use_vbr=use_vbr,
         refresh=refresh,
@@ -928,8 +1051,10 @@ def cash_subcommand_help() -> str:
     return (
         "cash — курсы продажи наличной валюты по выбранному городу.\n"
         "  cash                          вывести нумерованный список городов.\n"
-        "  cash N [--top N] [--no-banki] [--no-vbr] [--refresh]   вывести только город №N.\n"
-        "  Параллельные ячейки валюта×город: RATES_PARALLEL_MAX_WORKERS."
+        "  cash N [banki|vbr|rbc|all] [число_top] [--top K] [--sources SPEC] …\n"
+        "  SPEC: all, banki, vbr, rbc или через запятую (rbc,banki). "
+        "Явный источник перекрывает --no-banki / --no-vbr.\n"
+        "  Параллельные ячейки: RATES_PARALLEL_MAX_WORKERS."
     )
 
 
@@ -937,7 +1062,7 @@ def cash_thb_subcommand_help() -> str:
     return (
         "cash-thb — те же топы по продажи × курс TT Exchange → RUB за 1 THB.\n"
         "Формат строки: продажа (RUB/ед.) | RUB/THB | банк (источник).\n"
-        "  cash-thb [--top N] [--no-banki] [--no-vbr] [--refresh]   как у cash.\n"
+        "  cash-thb [--top N] [--sources SPEC] [--no-banki] [--no-vbr] [--refresh]   как у cash.\n"
         "  Параллелизм: RATES_PARALLEL_MAX_WORKERS (после одного запроса курсов TT)."
     )
 
@@ -946,6 +1071,13 @@ def _parse_cash_argv(argv: List[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument("city_n", nargs="?", type=int, help="Номер города из списка")
     p.add_argument("--top", type=int, default=3, help="Число строк по городу")
+    p.add_argument(
+        "--sources",
+        type=str,
+        default=None,
+        metavar="SPEC",
+        help="Источники: all, banki, vbr, rbc или список через запятую",
+    )
     p.add_argument(
         "--no-banki",
         action="store_true",
@@ -966,16 +1098,57 @@ def _parse_cash_argv(argv: List[str]) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def _strip_standalone_cash_source_tokens(argv: List[str]) -> Tuple[List[str], Optional[str]]:
+    spec: Optional[str] = None
+    out: List[str] = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a.startswith("-"):
+            out.extend(argv[i:])
+            break
+        al = a.lower()
+        if al in _KNOWN_CASH_SOURCE_TOKENS:
+            spec = al
+            i += 1
+            continue
+        out.append(a)
+        i += 1
+    return out, spec
+
+
+def _inject_cash_top_from_adjacent_ints(filtered: List[str]) -> List[str]:
+    if (
+        len(filtered) >= 2
+        and filtered[0].isdigit()
+        and filtered[1].isdigit()
+        and not filtered[1].startswith("-")
+    ):
+        return [filtered[0], "--top", filtered[1], *filtered[2:]]
+    return filtered
+
+
 def main_cash_cli(argv: List[str]) -> int:
-    args = _parse_cash_argv(argv)
+    stripped, pos_spec = _strip_standalone_cash_source_tokens(list(argv))
+    normalized = _inject_cash_top_from_adjacent_ints(stripped)
+    args = _parse_cash_argv(normalized)
     if args.help:
         print(cash_subcommand_help())
         return 0
     if args.top < 1:
         print("--top должен быть >= 1", file=sys.stderr)
         return 2
-    locs = _locations(not args.no_banki)
-    cities = [x[0] for x in locs]
+    spec = args.sources or pos_spec
+    try:
+        use_rbc, use_banki, use_vbr = resolve_cash_sources_flags(
+            sources=spec,
+            no_banki=args.no_banki,
+            no_vbr=args.no_vbr,
+        )
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+    cities = [x[0] for x in _CASH_LOCATIONS]
     if args.city_n is None:
         print("Доступные города:")
         for i, c in enumerate(cities, start=1):
@@ -988,8 +1161,9 @@ def main_cash_cli(argv: List[str]) -> int:
     city = cities[idx - 1]
     text = format_cash_report_with_warnings(
         top_n=args.top,
-        use_banki=not args.no_banki,
-        use_vbr=not args.no_vbr,
+        use_rbc=use_rbc,
+        use_banki=use_banki,
+        use_vbr=use_vbr,
         refresh=bool(args.refresh),
         city_label=city,
         readonly=bool(getattr(args, "readonly", False)),
@@ -999,17 +1173,30 @@ def main_cash_cli(argv: List[str]) -> int:
 
 
 def main_cash_thb_cli(argv: List[str]) -> int:
-    args = _parse_cash_argv(argv)
+    stripped, pos_spec = _strip_standalone_cash_source_tokens(list(argv))
+    normalized = _inject_cash_top_from_adjacent_ints(stripped)
+    args = _parse_cash_argv(normalized)
     if args.help:
         print(cash_thb_subcommand_help())
         return 0
     if args.top < 1:
         print("--top должен быть >= 1", file=sys.stderr)
         return 2
+    spec = args.sources or pos_spec
+    try:
+        use_rbc, use_banki, use_vbr = resolve_cash_sources_flags(
+            sources=spec,
+            no_banki=args.no_banki,
+            no_vbr=args.no_vbr,
+        )
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
     text = format_cash_thb_report_with_warnings(
         top_n=args.top,
-        use_banki=not args.no_banki,
-        use_vbr=not args.no_vbr,
+        use_rbc=use_rbc,
+        use_banki=use_banki,
+        use_vbr=use_vbr,
     )
     sys.stdout.write(text)
     return 0

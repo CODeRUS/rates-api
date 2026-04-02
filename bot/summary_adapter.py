@@ -65,6 +65,9 @@ def get_cash_text(
     top_n: int = 3,
     unified_allow_stale: bool = True,
     city_label: str = "",
+    use_rbc: bool = True,
+    use_banki: bool = True,
+    use_vbr: bool = True,
 ) -> str:
     """Тот же текст, что ``rates.py cash``."""
     if refresh:
@@ -72,6 +75,9 @@ def get_cash_text(
     allow = (not refresh) and unified_allow_stale
     text = cash_mod.format_cash_report_with_warnings(
         top_n=top_n,
+        use_rbc=use_rbc,
+        use_banki=use_banki,
+        use_vbr=use_vbr,
         refresh=refresh,
         unified_allow_stale=allow,
         city_label=(city_label or "").strip() or None,
@@ -86,7 +92,9 @@ get_cash_text._needs_background_refresh = False  # type: ignore[attr-defined]
 
 
 def get_cash_cities_text(*, use_banki: bool = True) -> str:
-    locs = cash_mod._locations(use_banki)
+    # Всегда полный список из 8 городов (нумерация как у ``rates.py cash``).
+    _ = use_banki  # сохранён для совместимости вызовов
+    locs = cash_mod._CASH_LOCATIONS
     lines = ["Доступные города:"]
     for i, x in enumerate(locs, start=1):
         lines.append(f"{i}. {x[0]}")

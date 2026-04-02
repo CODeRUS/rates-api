@@ -158,6 +158,7 @@ def unified_top_sell_offers(
     rbc_currency_id: int,
     top_n: int,
     timeout: float = 22.0,
+    use_rbc: bool = True,
     use_banki: bool = True,
     use_vbr: bool = True,
 ) -> Tuple[List[CashOffer], List[str]]:
@@ -168,7 +169,11 @@ def unified_top_sell_offers(
     """
     warnings: List[str] = []
     rbc_offers: List[CashOffer] = []
-    if rbc_city_id is not None and rbc_cash_enabled():
+    if (
+        use_rbc
+        and rbc_city_id is not None
+        and rbc_cash_enabled()
+    ):
         rbc_data = fetch_cash_rates_json(
             city=rbc_city_id, currency_id=rbc_currency_id, timeout=timeout
         )

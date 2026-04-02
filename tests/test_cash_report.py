@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import unittest
 
+import cash_report
 from sources.rbc_bank_title import rbc_short_bank_name
 from sources.rbc_cash_json import bank_sell_rows, top_sell_offers
 
@@ -41,6 +42,72 @@ class TestRbcBankTitle(unittest.TestCase):
             rbc_short_bank_name("ПАО ПримерБанк, филиал Центральный, г. Тула"),
             "ПримерБанк",
         )
+
+
+class TestFindBestPlainCashL2(unittest.TestCase):
+    def test_skips_when_cached_top_smaller_than_requested(self):
+        body = (
+            "Наличные\n\n"
+            "USD Москва\n"
+            "80.0 | — | A (VBR)\n"
+            "81.0 | — | B (VBR)\n"
+            "82.0 | — | C (VBR)\n"
+            "\n"
+        )
+        doc = {
+            "l2": {
+                "l2:cash:stub": {
+                    "text": body,
+                    "payload": {
+                        "top_n": 3,
+                        "use_rbc": False,
+                        "use_banki": False,
+                        "use_vbr": True,
+                    },
+                    "saved_unix": 100.0,
+                    "deps": {},
+                }
+            }
+        }
+        k = cash_report._find_best_plain_cash_l2_key_for_city(
+            doc,
+            "Москва",
+            top_n=20,
+            use_rbc=False,
+            use_banki=False,
+            use_vbr=True,
+        )
+        self.assertIsNone(k)
+
+    def test_picks_when_cached_top_sufficient(self):
+        lines = "\n".join(
+            [f"{80.0 + i:.1f} | — | B{i} (VBR)" for i in range(8)]
+        )
+        body = f"Наличные\n\nUSD Москва\n{lines}\n\n"
+        doc = {
+            "l2": {
+                "l2:cash:stub": {
+                    "text": body,
+                    "payload": {
+                        "top_n": 20,
+                        "use_rbc": False,
+                        "use_banki": False,
+                        "use_vbr": True,
+                    },
+                    "saved_unix": 100.0,
+                    "deps": {},
+                }
+            }
+        }
+        k = cash_report._find_best_plain_cash_l2_key_for_city(
+            doc,
+            "Москва",
+            top_n=8,
+            use_rbc=False,
+            use_banki=False,
+            use_vbr=True,
+        )
+        self.assertEqual(k, "l2:cash:stub")
 
 
 class TestTopSellOffers(unittest.TestCase):

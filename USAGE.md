@@ -332,25 +332,39 @@ python3.9 rates.py --readonly rshb
 
 ### `cash`
 
-Парсер: `cash_report._parse_cash_argv` (все флаги только **после** подкоманды `cash`).
+Парсер: `cash_report._parse_cash_argv` (все флаги только **после** подкоманды `cash`).  
+Источники данных: **РБК** (только Москва и Санкт-Петербург), **Banki.ru**, **Выберу.ру (VBR)**. Список из **8 городов** при вызове без номера всегда полный (нумерация 1…8).
 
 | Параметр | Тип / дефолт | Описание |
 |----------|----------------|----------|
 | `city_n` | целое, опционально | Номер города из списка. |
+| Позиционно после `city_n` | `banki` / `vbr` / `rbc` / `all` | Явный набор источников (см. ниже). Можно **до** флагов: `cash 1 banki`, `cash 1 vbr 10`. |
 | `--top` | int, `3` | Сколько строк курсов по выбранному городу. |
-| `--no-banki` | флаг | Не тянуть Banki.ru (остаются РБК Москва/СПб). |
+| `--sources SPEC` | строка | То же, что слово-источник: `all`, `banki`, `vbr`, `rbc` или несколько через запятую (`rbc,banki`, `banki,vbr`, …). **Перекрывает** `--no-banki` и `--no-vbr`. |
+| `--no-banki` | флаг | Убрать Banki из режима «все источники» (остаются РБК + VBR, если не отключены). |
+| `--no-vbr` | флаг | Убрать VBR из режима «все источники». |
 | `--refresh` | флаг | Проброс с глобального `rates.py --refresh`. |
 | `--readonly` | флаг | Только кеш unified (в т.ч. истёкший TTL), без HTTP. |
 | `-h`, `--help` | флаг | Текст `cash_subcommand_help()`. |
+
+**Режимы `--sources` / позиционного слова:** `all` — РБК (где есть) + Banki + VBR; `banki` — только Banki; `vbr` — только VBR; `rbc` — только РБК (фактически только города с `city_id` РБК). Комбинации: `--sources rbc,vbr` и т.д.  
+Глобальное отключение РБК: переменная **`RATES_DISABLE_RBC`**; отключение VBR: **`RATES_DISABLE_VBR`** (см. [§8](#8-кеши-и-переменные-окружения)).
+
+Порядок аргументов: удобно **`cash N [источник] [топ]`** или **`cash N --top K --sources banki`**. Источник **после** `--top` в конце строки `argparse` может не распознать — используйте **`--sources`** или поставьте слово источника **перед** `--top`.
 
 ```bash
 python3.9 rates.py cash
 python3.9 rates.py cash 1
 python3.9 rates.py cash 1 --top 10
+python3.9 rates.py cash 1 banki
+python3.9 rates.py cash 1 vbr 15
+python3.9 rates.py cash 2 --sources rbc,banki
 python3.9 rates.py cash 2 --no-banki
 python3.9 rates.py cash --refresh
 python3.9 rates.py --readonly cash 1
 ```
+
+Отчёт «наличные ➔ THB» (TT Exchange) и кеш **`cash_thb:*`** остаются в `cash_report`; отдельная команда **`rates.py cash-thb` отключена** — при таком первом аргументе скрипт печатает подсказку использовать **`cash`**. Парсер `main_cash_thb_cli` в коде использует те же флаги, что и `cash`, на случай повторного подключения точки входа.
 
 **Пример без номера города** (`rates.py cash`):
 
@@ -765,6 +779,13 @@ THB         2.471346    1.000000    0.030729
 
 Список ключей для `rates.py env-status` — `env_loader.ENV_STATUS_KEYS` (Bangkok Bank, Telegram, Avosend, …).
 
+### Наличные (`cash` / unified)
+
+| Переменная | Назначение |
+|------------|------------|
+| `RATES_DISABLE_RBC` | Значения `1` / `true` / `yes` / `on` — не запрашивать РБК в отчёте наличных. |
+| `RATES_DISABLE_VBR` | То же — не запрашивать Выберу.ру (VBR). |
+
 ### OpenAI (`--gpt`)
 
 - `OPENAI_API_KEY`, `OPENAI_API_URL` (обязательны для запроса)  
@@ -801,7 +822,7 @@ python3.9 bot/main.py
 |---------|-----------|
 | `/rates` | Сводка; можно `filter ta` / `ta` — пресет как в CLI (`parse_rates_command_tokens`). |
 | `/usdt` | Отчёт USDT, кеш. |
-| `/cash` | Без аргументов — список городов; `/cash N` или `/cash N K` — город `N`, топ `K` (до 50). |
+| `/cash` | Без аргументов — список городов (8 шт.). Далее: `/cash N` и при необходимости одно из слов `banki`, `vbr`, `rbc`, `all`, затем при необходимости топ `K` (до 50). Примеры: `/cash 1 banki`, `/cash 2 vbr`, `/cash 1 all 10`. |
 | `/exchange` | Топ TT; опционально `/exchange 5` (число филиалов, до 50). |
 | `/rshb` | Как CLI: суммы THB и комиссия ATM. |
 | `/calc` | `RUB usd|eur|cny КУРС` (см. `bot/calc_args.parse_calc_command_args`). |
@@ -935,7 +956,7 @@ optional arguments:
   save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).
   usdt [--refresh] [--json] [--cache-file ПУТЬ]  Отчёт P2P RUB/USDT и USDT/THB (отдельный кеш).
   rshb [THB …] [ATM_FEE]  Отчёт THB/RUB РСХБ UnionPay; 3+ числа — несколько снятий, последнее — комиссия ATM.
-  cash [N] [--top K] [--no-banki] [--refresh]  Без N — список городов; с N — курсы выбранного города.
+  cash [N] [banki|vbr|rbc|all] [K] [--sources SPEC] [--no-banki] [--no-vbr] [--refresh]  Без N — список городов; с N — курсы города (K или --top — число строк).
   exchange [--top N] [--lang ru]   Топ филиалов TT (USD/EUR/CNY→THB).
   calc RUB usd|eur|cny КУРС [--atm-fee THB]  Сравнение RUB→THB; КУРС — ₽ за 1 ед. валюты (TT).
   <source_id> summary [--refresh]  Только этот источник (те же --korona-*, --avosend-rub, …).

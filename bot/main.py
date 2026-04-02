@@ -43,6 +43,8 @@ from telethon import TelegramClient, events
 from bot.rates_tokens import parse_rates_command_tokens
 from bot.calc_args import parse_calc_command_args
 from bot.rshb_args import parse_rshb_command_args
+import cash_report as _cash_report
+
 from bot.summary_adapter import (
     get_calc_text,
     get_cash_cities_text,
@@ -217,6 +219,9 @@ async def _main_async() -> None:
         *,
         city_n: int | None,
         top_n: int = 3,
+        use_rbc: bool = True,
+        use_banki: bool = True,
+        use_vbr: bool = True,
     ) -> None:
         chat_id = event.chat_id
         async with rates_busy_guard:
@@ -234,16 +239,7 @@ async def _main_async() -> None:
             if city_n is None:
                 await event.respond(get_cash_cities_text())
                 return
-            cities = [
-                "Москва",
-                "Санкт-Петербург",
-                "Казань",
-                "Ростов-на-Дону",
-                "Новосибирск",
-                "Красноярск",
-                "Иркутск",
-                "Екатеринбург",
-            ]
+            cities = [x[0] for x in _cash_report._CASH_LOCATIONS]
             if city_n < 1 or city_n > len(cities):
                 await event.respond(f"Номер города должен быть от 1 до {len(cities)}.")
                 return
@@ -256,6 +252,9 @@ async def _main_async() -> None:
                         refresh=False,
                         top_n=top_n,
                         city_label=city_label,
+                        use_rbc=use_rbc,
+                        use_banki=use_banki,
+                        use_vbr=use_vbr,
                     ),
                     timeout=fetch_timeout,
                 )
@@ -539,18 +538,20 @@ async def _main_async() -> None:
             "Команды:\n"
             "/rates — сводка RUB/THB; /rates ta или /rates filter ta — пресет; неизвестный фильтр без ошибки\n"
             "/usdt — P2P RUB/USDT и USDT/THB\n"
-            "/cash — список городов; /cash N [K] — курсы выбранного города (топ K)\n"
+            "/cash — список городов; /cash N [banki|vbr|rbc|all] [K] — курсы города, опц. источник и топ K\n"
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)\n"
             "/rshb — THB/RUB РСХБ; /rshb THB [ATM_FEE] или несколько сумм, последнее — комиссия ATM\n"
             "/calc — сравнение каналов RUB→THB; /calc RUB usd|eur|cny КУРС (₽ за 1 ед. валюты для TT)\n"
         )
 
-    @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+){0,2}$"))
+    @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+){0,4}$"))
     async def on_cash(event: events.NewMessage.Event) -> None:
         msg = (event.message.message or "").strip()
         tokens = msg.split()
         city_n: int | None = None
         top_n = 3
+        use_rbc, use_banki, use_vbr = True, True, True
+        _SRC = frozenset({"all", "banki", "vbr", "rbc"})
         if len(tokens) > 1:
             try:
                 city_n = int(tokens[1])
@@ -559,19 +560,42 @@ async def _main_async() -> None:
                     "После /cash укажите номер города из списка, например: /cash 1"
                 )
                 return
-        if len(tokens) > 2:
+        rest = tokens[2:]
+        i = 0
+        source_spec: str | None = None
+        if i < len(rest):
+            low = rest[i].lower()
+            if low in _SRC:
+                source_spec = low
+                i += 1
+            elif rest[i].isdigit():
+                top_n = int(rest[i])
+                i += 1
+        if i < len(rest):
+            if rest[i].isdigit():
+                top_n = min(int(rest[i]), 50)
+            elif rest[i].lower() in _SRC and source_spec is None:
+                source_spec = rest[i].lower()
+        if source_spec:
             try:
-                top_n = int(tokens[2])
-            except ValueError:
-                await event.respond(
-                    "Второй параметр /cash — число строк top, например: /cash 1 10"
+                use_rbc, use_banki, use_vbr = _cash_report.parse_cash_sources_str(
+                    source_spec
                 )
+            except ValueError as e:
+                await event.respond(f"Источник: {e}")
                 return
-            if top_n < 1:
-                await event.respond("Число строк top должно быть не меньше 1.")
-                return
-            top_n = min(top_n, 50)
-        await _send_cash_report(event, city_n=city_n, top_n=top_n)
+        if top_n < 1:
+            await event.respond("Число строк top должно быть не меньше 1.")
+            return
+        top_n = min(top_n, 50)
+        await _send_cash_report(
+            event,
+            city_n=city_n,
+            top_n=top_n,
+            use_rbc=use_rbc,
+            use_banki=use_banki,
+            use_vbr=use_vbr,
+        )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/exchange(?:@\S+)?"))
     async def on_exchange(event: events.NewMessage.Event) -> None:

@@ -496,7 +496,8 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
         "  rshb [THB …] [ATM_FEE]  Отчёт THB/RUB РСХБ UnionPay; 3+ числа — несколько снятий, последнее — комиссия ATM."
     )
     print(
-        "  cash [N] [--top K] [--no-banki] [--no-vbr] [--refresh]  Без N — список городов; с N — курсы выбранного города."
+        "  cash [N] [banki|vbr|rbc|all] [K] [--sources SPEC] [--no-banki] [--no-vbr] [--refresh]  "
+        "Без N — список городов; с N — курсы города (K или --top — число строк)."
     )
     print(
         "  exchange [--top N] [--lang ru]   Топ филиалов TT (USD/EUR/CNY→THB)."
