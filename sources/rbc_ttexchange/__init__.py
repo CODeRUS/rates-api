@@ -5,8 +5,12 @@
 """
 from __future__ import annotations
 
+import logging
 import os
+import time
 from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
@@ -51,9 +55,15 @@ def _ttex_thb_per_fiat() -> Tuple[Optional[Dict[str, float]], Dict[str, str], st
     from sources.ttexchange import _branch_display_name, _pick_currency_row
     from sources.ttexchange import ttexchange_api as ttx
 
+    logger.info("rbc_ttexchange: TT Exchange get_stores + get_currencies (см. логи ttexchange http)")
+    t0 = time.perf_counter()
     stores = ttx.get_stores("ru")
     bid = ttx._pick_default_branch_id(stores)
     if not bid:
+        logger.info(
+            "rbc_ttexchange: TT блок пуст за %.2fs (нет branch_id)",
+            time.perf_counter() - t0,
+        )
         return None, {}, ""
     branch_name = _branch_display_name(stores, bid)
     cur = ttx.get_currencies(bid, is_main=False)
@@ -84,6 +94,11 @@ def _ttex_thb_per_fiat() -> Tuple[Optional[Dict[str, float]], Dict[str, str], st
         if branch_name:
             parts.append(branch_name)
         notes[code] = " · ".join(parts)
+    logger.info(
+        "rbc_ttexchange: TT блок готов за %.2fs (branch=%s)",
+        time.perf_counter() - t0,
+        branch_name or "—",
+    )
     return out, notes, branch_name
 
 
@@ -137,6 +152,12 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
                 rub_per, bank_name = rows[0]
                 source_tag = "Banki"
             else:
+                logger.info(
+                    "rbc_ttexchange: РБК JSON city_id=%s %s currency_id=%s (см. rbc_cash http)",
+                    city_id,
+                    city_label,
+                    cur_id,
+                )
                 data = fetch_cash_rates_json(city=city_id, currency_id=cur_id)
                 if not isinstance(data, dict):
                     ctx.warnings.append(

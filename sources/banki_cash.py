@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import random
 import ssl
 import time
@@ -18,6 +19,8 @@ from rates_http import (
     is_retryable_exception,
     max_attempts,
 )
+
+logger = logging.getLogger(__name__)
 
 USER_AGENT = "rates-banki-cash/1.0 (python)"
 BANKI_ORIGIN = "https://www.banki.ru"
@@ -148,8 +151,18 @@ def fetch_banki_banks_or_exchanges(
         headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*"},
     )
     try:
+        logger.info(
+            "banki_cash http bootstrap GET start region_url=%s currency_id=%s",
+            region_url,
+            currency_id,
+        )
+        t_boot = time.time()
         with _opener_open_retriable(opener, boot_req, timeout=timeout) as boot_resp:
             _ = _read_response_body(boot_resp)
+        logger.info(
+            "banki_cash http bootstrap GET done in %.2fs",
+            time.time() - t_boot,
+        )
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
         return None
 
@@ -178,8 +191,21 @@ def fetch_banki_banks_or_exchanges(
             },
         )
         try:
+            logger.info(
+                "banki_cash http API GET start page=%s region_id=%s currency_id=%s",
+                page,
+                region_id,
+                currency_id,
+            )
+            t_pg = time.time()
             with _opener_open_retriable(opener, api_req, timeout=timeout) as resp:
                 raw = _read_response_body(resp)
+            logger.info(
+                "banki_cash http API GET done page=%s in %.2fs (%d bytes)",
+                page,
+                time.time() - t_pg,
+                len(raw.encode("utf-8")),
+            )
             payload = json.loads(raw)
         except (
             urllib.error.URLError,

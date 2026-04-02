@@ -13,6 +13,8 @@ from typing import List, Optional
 
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
+from rates_primitives import read_bybit_p2p, read_novawallet_bundle
+
 from ..bybit_bitkub import bybit_p2p_usdt_rub as bp
 from .novawallet_api import fetch_cashout_fee_usd, fetch_thb_per_usdt
 
@@ -61,9 +63,27 @@ def _min_bybit_rub_per_usdt(items: list) -> Optional[float]:
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    items = bp.fetch_all_online_items(size=20, verification_filter=0)
-    items = bp.filter_by_target_usdt(items, target_usdt=bp.DEFAULT_TARGET_USDT)
-    p_min = _min_bybit_rub_per_usdt(items)
+    doc = ctx.unified_doc
+    fee_usd: Optional[float] = None
+    w_fee = ""
+
+    if doc is not None:
+        c_p, t_p, w_bp = read_bybit_p2p(doc)
+        ctx.warnings.extend(w_bp)
+        opts = [x for x in (c_p, t_p) if x is not None and x > 0]
+        p_min = min(opts) if opts else None
+        r_thb, fee_usd, w_nw = read_novawallet_bundle(doc)
+        ctx.warnings.extend(w_nw)
+    else:
+        items = bp.fetch_all_online_items(size=20, verification_filter=0)
+        items = bp.filter_by_target_usdt(items, target_usdt=bp.DEFAULT_TARGET_USDT)
+        p_min = _min_bybit_rub_per_usdt(items)
+        r_thb, w_rate = fetch_thb_per_usdt()
+        if w_rate:
+            ctx.warnings.append(w_rate)
+        if r_thb is not None and r_thb > 0:
+            fee_usd, w_fee = fetch_cashout_fee_usd()
+
     if p_min is None:
         ctx.warnings.append(
             "Bybit→NovaWallet: нет объявлений (18 или 14 без 18) с completion≥99 "
@@ -71,13 +91,9 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         )
         return None
 
-    r_thb, w_rate = fetch_thb_per_usdt()
-    if w_rate:
-        ctx.warnings.append(w_rate)
     if r_thb is None or r_thb <= 0:
         return None
 
-    fee_usd, w_fee = fetch_cashout_fee_usd()
     if fee_usd is None or fee_usd < 0:
         ctx.warnings.append(
             (w_fee or "NovaWallet ledger: нет cashout")

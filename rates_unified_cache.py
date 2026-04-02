@@ -43,15 +43,15 @@ TTL_L1_RATE_SOURCE_BYBIT_SEC = _env_int("RATES_UNIFIED_TTL_RS_BYBIT", 60)
 TTL_L1_USDT_BRANCH_SEC = _env_int("RATES_UNIFIED_TTL_USDT", 60)
 TTL_L1_CASH_CELL_SEC = _env_int("RATES_UNIFIED_TTL_CASH_CELL", 15 * 60)
 TTL_L1_CASH_TT_SEC = _env_int("RATES_UNIFIED_TTL_CASH_TT", 15 * 60)
-TTL_L1_EXCHANGE_STORES_SEC = _env_int("RATES_UNIFIED_TTL_EX_TT_STORES", 10 * 60)
-TTL_L1_EXCHANGE_CUR_SEC = _env_int("RATES_UNIFIED_TTL_EX_TT_CUR", 10 * 60)
+TTL_L1_EXCHANGE_STORES_SEC = _env_int("RATES_UNIFIED_TTL_EX_TT_STORES", 30 * 60)
+TTL_L1_EXCHANGE_CUR_SEC = _env_int("RATES_UNIFIED_TTL_EX_TT_CUR", 30 * 60)
 TTL_L1_EX24_SEC = _env_int("RATES_UNIFIED_TTL_EX24", 10 * 60)
 
 TTL_L2_SUMMARY_SEC = _env_int("RATES_UNIFIED_TTL_L2_SUMMARY", 30 * 60)
 TTL_L2_USDT_SEC = _env_int("RATES_UNIFIED_TTL_L2_USDT", 60)
 TTL_L2_CASH_SEC = _env_int("RATES_UNIFIED_TTL_L2_CASH", 15 * 60)
 TTL_L2_CASH_THB_SEC = _env_int("RATES_UNIFIED_TTL_L2_CASH_THB", 15 * 60)
-TTL_L2_EXCHANGE_SEC = _env_int("RATES_UNIFIED_TTL_L2_EXCHANGE", 10 * 60)
+TTL_L2_EXCHANGE_SEC = _env_int("RATES_UNIFIED_TTL_L2_EXCHANGE", 30 * 60)
 
 _save_lock = threading.Lock()
 _l1_lock = threading.Lock()
@@ -75,12 +75,13 @@ def load_unified(path: Optional[Path] = None) -> Dict[str, Any]:
         return _empty_doc()
     raw.setdefault("l1", {})
     raw.setdefault("l2", {})
+    raw.setdefault("prim", {})
     raw.setdefault("version_counter", 0)
     return raw
 
 
 def _empty_doc() -> Dict[str, Any]:
-    return {"schema": _SCHEMA_VERSION, "l1": {}, "l2": {}, "version_counter": 0}
+    return {"schema": _SCHEMA_VERSION, "l1": {}, "l2": {}, "prim": {}, "version_counter": 0}
 
 
 def save_unified(doc: Dict[str, Any], path: Optional[Path] = None) -> None:
@@ -134,6 +135,40 @@ def l1_set(
         return ver
 
 
+def prim_get_valid(
+    doc: Dict[str, Any], key: str, *, now: Optional[float] = None
+) -> Optional[Tuple[int, Any]]:
+    """Как :func:`l1_get_valid`, но секция ``prim`` (сырые данные до расчёта источников)."""
+    t = time.time() if now is None else now
+    ent = doc.get("prim", {}).get(key)
+    if not isinstance(ent, dict):
+        return None
+    saved = float(ent.get("saved_unix", 0))
+    ttl = int(ent.get("ttl_sec", 60))
+    if t - saved > ttl:
+        return None
+    return int(ent.get("version", 0)), ent.get("payload")
+
+
+def prim_set(
+    doc: Dict[str, Any],
+    key: str,
+    payload: Any,
+    *,
+    ttl_sec: int,
+) -> int:
+    with _l1_lock:
+        ver = _next_version(doc)
+        doc.setdefault("prim", {})
+        doc["prim"][key] = {
+            "version": ver,
+            "saved_unix": time.time(),
+            "ttl_sec": ttl_sec,
+            "payload": payload,
+        }
+        return ver
+
+
 def l1_get_any(
     doc: Dict[str, Any], key: str
 ) -> Optional[Tuple[int, Any, float]]:
@@ -149,11 +184,27 @@ def l1_get_any(
 
 
 def l2_deps_match(doc: Dict[str, Any], deps: Dict[str, int]) -> bool:
+    t = time.time()
     for k, ver in deps.items():
+        if isinstance(k, str) and k.startswith("prim:"):
+            ent = doc.get("prim", {}).get(k)
+            if not isinstance(ent, dict):
+                return False
+            if int(ent.get("version", 0)) != int(ver):
+                return False
+            saved = float(ent.get("saved_unix", 0))
+            ttl = int(ent.get("ttl_sec", 60))
+            if t - saved > ttl:
+                return False
+            continue
         ent = doc.get("l1", {}).get(k)
         if not isinstance(ent, dict):
             return False
         if int(ent.get("version", 0)) != int(ver):
+            return False
+        saved = float(ent.get("saved_unix", 0))
+        ttl = int(ent.get("ttl_sec", 60))
+        if t - saved > ttl:
             return False
     return True
 

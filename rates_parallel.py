@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import os
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Callable, List, Optional, Sequence, Tuple, TypeVar
 
 T = TypeVar("T")
@@ -39,8 +39,20 @@ def map_bounded(
     """
     Для каждого ``item`` вызывает ``func(item)`` в ограниченном пуле потоков.
 
+    Все задачи ставятся в очередь сразу; одновременно работает не больше
+    ``max_workers`` (или ``RATES_PARALLEL_MAX_WORKERS`` / 12). Итоговое время
+    близко к **максимуму** длительностей задач, а не к сумме — даже если в логах
+    «done» идут один за другим (у каждого потока свой конец).
+
     Порядок элементов в списке совпадает с ``items``. Исключения из ``func``
     не пробрасываются: они приходят третьим полем кортежа (``Exception``).
+
+    Примечание: ``ThreadPoolExecutor.map`` на главном потоке вызывает
+    ``Future.result()`` **по порядку** списка, из‑за чего кажется, что «ждём
+    первый, потом второй»; сами воркеры при этом уже крутятся параллельно.
+    Здесь после ``wait`` берём ``.result()`` в том же порядке ``items``, когда
+    **все** задачи завершены — поведение для вызывающего то же, семантика
+    параллелизма явная.
     """
     cap = default_max_workers() if max_workers is None else max(1, max_workers)
     if not items:
@@ -54,4 +66,6 @@ def map_bounded(
 
     workers = min(cap, len(items))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        return list(pool.map(one, items))
+        futures = [pool.submit(one, it) for it in items]
+        wait(futures)
+        return [f.result() for f in futures]

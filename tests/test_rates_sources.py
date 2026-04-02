@@ -518,6 +518,187 @@ class TestRatesSources(unittest.TestCase):
             hx.row_has_cash({"payMethods": [], "payMethod": "69,21,28"})
         )
 
+    def test_htx_fetch_best_one_page_when_both_buckets_found(self):
+        from unittest.mock import patch
+
+        from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+
+        pages: list[int] = []
+
+        def fake_page(page: int, timeout: float = 60.0):
+            pages.append(page)
+            return {
+                "code": 200,
+                "totalPage": 30,
+                "data": [
+                    {
+                        "price": "70",
+                        "tradeCount": 200,
+                        "minTradeLimit": "7000",
+                        "maxTradeLimit": "1e9",
+                        "payMethods": [{"payMethodId": 69, "name": "SBP"}],
+                    },
+                    {
+                        "price": "75",
+                        "tradeCount": 200,
+                        "minTradeLimit": "7500",
+                        "maxTradeLimit": "1e9",
+                        "payMethods": [{"payMethodId": 169, "name": "Cash in Person"}],
+                    },
+                ],
+            }
+
+        with patch.object(hx, "fetch_trade_market_page", side_effect=fake_page):
+            bc, bnc = hx.fetch_best_cash_and_non_cash_offers(max_pages=30, target_usdt=100)
+        self.assertEqual(pages, [1])
+        self.assertIsNotNone(bc)
+        self.assertIsNotNone(bnc)
+        self.assertEqual(float(bc["price"]), 75.0)
+        self.assertEqual(float(bnc["price"]), 70.0)
+
+    def test_htx_fetch_best_second_page_for_cash(self):
+        from unittest.mock import patch
+
+        from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+
+        pages: list[int] = []
+
+        def fake_page(page: int, timeout: float = 60.0):
+            pages.append(page)
+            if page == 1:
+                return {
+                    "code": 200,
+                    "totalPage": 5,
+                    "data": [
+                        {
+                            "price": "70",
+                            "tradeCount": 200,
+                            "minTradeLimit": "7000",
+                            "maxTradeLimit": "1e9",
+                            "payMethods": [{"payMethodId": 69, "name": "SBP"}],
+                        },
+                    ],
+                }
+            if page == 2:
+                return {
+                    "code": 200,
+                    "totalPage": 5,
+                    "data": [
+                        {
+                            "price": "72",
+                            "tradeCount": 200,
+                            "minTradeLimit": "7200",
+                            "maxTradeLimit": "1e9",
+                            "payMethods": [{"payMethodId": 169, "name": "Cash in Person"}],
+                        },
+                    ],
+                }
+            return {"code": 200, "totalPage": 5, "data": []}
+
+        with patch.object(hx, "fetch_trade_market_page", side_effect=fake_page):
+            bc, bnc = hx.fetch_best_cash_and_non_cash_offers(max_pages=30, target_usdt=100)
+        self.assertEqual(pages, [1, 2])
+        self.assertIsNotNone(bc)
+        self.assertIsNotNone(bnc)
+
+    def test_bybit_fetch_best_one_page_when_both_scenarios_found(self):
+        from unittest.mock import patch
+
+        from sources.bybit_bitkub import bybit_p2p_usdt_rub as bp
+
+        posts: list[int] = []
+
+        def fake_post(url: str, body: object, *, timeout: float = 60.0):
+            posts.append(int(body["page"]))
+            return {
+                "ret_code": 0,
+                "result": {
+                    "count": 100,
+                    "items": [
+                        {
+                            "price": "70",
+                            "lastQuantity": "200",
+                            "minAmount": "7000",
+                            "payments": ["14"],
+                            "recentExecuteRate": 99.0,
+                        },
+                        {
+                            "price": "75",
+                            "lastQuantity": "200",
+                            "minAmount": "7500",
+                            "payments": ["18"],
+                            "recentExecuteRate": 99.0,
+                        },
+                    ],
+                },
+            }
+
+        with patch.object(bp, "post_json", side_effect=fake_post):
+            cash, bank = bp.fetch_best_cash_and_bank_transfer_items(
+                size=20,
+                target_usdt=100.0,
+                min_completion=99.0,
+            )
+        self.assertEqual(posts, [1])
+        self.assertIsNotNone(cash)
+        self.assertIsNotNone(bank)
+        self.assertEqual(float(cash["price"]), 75.0)
+        self.assertEqual(float(bank["price"]), 70.0)
+
+    def test_bybit_fetch_best_second_page_for_bank_only(self):
+        from unittest.mock import patch
+
+        from sources.bybit_bitkub import bybit_p2p_usdt_rub as bp
+
+        posts: list[int] = []
+
+        def fake_post(url: str, body: object, *, timeout: float = 60.0):
+            page = int(body["page"])
+            posts.append(page)
+            if page == 1:
+                return {
+                    "ret_code": 0,
+                    "result": {
+                        "count": 50,
+                        "items": [
+                            {
+                                "price": "75",
+                                "lastQuantity": "200",
+                                "minAmount": "7500",
+                                "payments": ["18"],
+                                "recentExecuteRate": 99.0,
+                            },
+                        ],
+                    },
+                }
+            if page == 2:
+                return {
+                    "ret_code": 0,
+                    "result": {
+                        "count": 50,
+                        "items": [
+                            {
+                                "price": "72",
+                                "lastQuantity": "200",
+                                "minAmount": "7200",
+                                "payments": ["14"],
+                                "recentExecuteRate": 99.0,
+                            },
+                        ],
+                    },
+                }
+            return {"ret_code": 0, "result": {"count": 50, "items": []}}
+
+        with patch.object(bp, "post_json", side_effect=fake_post):
+            cash, bank = bp.fetch_best_cash_and_bank_transfer_items(
+                size=20,
+                target_usdt=100.0,
+                min_completion=99.0,
+            )
+        self.assertEqual(posts, [1, 2])
+        self.assertIsNotNone(cash)
+        self.assertIsNotNone(bank)
+
     def test_bybit_item_passes_target_usdt_quantity_and_min_amount(self):
         from sources.bybit_bitkub.bybit_p2p_usdt_rub import item_passes_target_usdt_filters
 

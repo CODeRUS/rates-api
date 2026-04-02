@@ -128,6 +128,66 @@ def fetch_all_offers(
     return out
 
 
+def fetch_best_cash_and_non_cash_offers(
+    *,
+    max_pages: Optional[int] = 30,
+    timeout: float = 60.0,
+    target_usdt: float = DEFAULT_TARGET_USDT,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """
+    Два лучших объявления: минимальная цена с наличными и минимальная без наличных.
+
+    API trade-market отдаёт строки **по возрастанию цены** (как веб-фильтры HTX).
+    Тогда первое в порядке обхода объявление, прошедшее фильтры ликвидности и
+    попадающее в «наличные», уже есть глобальный минимум по наличным; аналогично
+    для корзины без наличных. Достаточно идти по страницам, пока не найдены оба
+    (или кончились страницы) — без загрузки всех 30+ страниц.
+    """
+    best_cash: Optional[Dict[str, Any]] = None
+    best_nc: Optional[Dict[str, Any]] = None
+    page = 1
+    total_cap: Optional[int] = None
+
+    while True:
+        if max_pages is not None and page > max_pages:
+            break
+        if total_cap is not None and page > total_cap:
+            break
+
+        resp = fetch_trade_market_page(page, timeout=timeout)
+        if resp.get("code") != 200:
+            raise RuntimeError(resp.get("message") or f"HTX OTC page {page}: {resp!r}")
+
+        if page == 1:
+            try:
+                tp = int(resp.get("totalPage") or 1)
+            except (TypeError, ValueError):
+                tp = 1
+            total_cap = tp
+            if max_pages is not None:
+                total_cap = min(total_cap, max_pages)
+
+        chunk = list(resp.get("data") or [])
+        if not chunk:
+            break
+
+        for row in chunk:
+            if not row_passes_target_usdt_filters(row, target_usdt=target_usdt):
+                continue
+            if row_has_cash(row):
+                if best_cash is None:
+                    best_cash = row
+            else:
+                if best_nc is None:
+                    best_nc = row
+            if best_cash is not None and best_nc is not None:
+                return best_cash, best_nc
+
+        page += 1
+
+    return best_cash, best_nc
+
+
 def pay_method_ids_from_field(row: Dict[str, Any]) -> List[int]:
     raw = row.get("payMethod")
     if raw is None or raw == "":
@@ -264,6 +324,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="legacy_min_usdt",
         help="Синоним --target-usdt (если задан, переопределяет)",
     )
+    p.add_argument(
+        "--full-scan",
+        action="store_true",
+        help="Загрузить все страницы до --max-pages и посчитать matched (медленнее)",
+    )
     return p
 
 
@@ -275,31 +340,46 @@ def cli_main(argv: Optional[List[str]] = None) -> int:
         else float(args.target_usdt)
     )
     try:
-        rows = fetch_all_offers(max_pages=args.max_pages)
+        if args.full_scan:
+            rows = fetch_all_offers(max_pages=args.max_pages)
+            wc, wo = partition_cash_non_cash(rows, target_usdt=target_usdt)
+            bcash = min_by_price(wc)
+            bno = min_by_price(wo)
+        else:
+            rows = None
+            wc = wo = None
+            bcash, bno = fetch_best_cash_and_non_cash_offers(
+                max_pages=args.max_pages,
+                target_usdt=target_usdt,
+            )
     except RuntimeError as e:
         print(str(e), file=sys.stderr)
         return 1
-    wc, wo = partition_cash_non_cash(rows, target_usdt=target_usdt)
-    bcash = min_by_price(wc)
-    bno = min_by_price(wo)
     if args.json:
-        out = {
-            "matched": {
-                "cash": len(wc),
-                "non_cash": len(wo),
-            },
+        out: Dict[str, Any] = {
             "best": {
                 "cash": {"price": float(bcash["price"]), "id": bcash.get("id")} if bcash else None,
                 "non_cash": {"price": float(bno["price"]), "id": bno.get("id")} if bno else None,
             },
         }
+        if args.full_scan and rows is not None and wc is not None and wo is not None:
+            out["matched"] = {"cash": len(wc), "non_cash": len(wo)}
+            out["rows_fetched"] = len(rows)
+        else:
+            out["scan"] = "best_first_pages"
         print(json.dumps(out, ensure_ascii=False, indent=2))
         return 0
-    print(f"Объявлений всего (снято с API): {len(rows)}")
-    print(
-        f"С tradeCount >= {target_usdt:g} и minTradeLimit >= {target_usdt:g}·price: "
-        f"наличные {len(wc)}, без наличных {len(wo)}"
-    )
+    if args.full_scan and rows is not None and wc is not None and wo is not None:
+        print(f"Объявлений всего (снято с API): {len(rows)}")
+        print(
+            f"С tradeCount >= {target_usdt:g} и minTradeLimit >= {target_usdt:g}·price: "
+            f"наличные {len(wc)}, без наличных {len(wo)}"
+        )
+    else:
+        print(
+            f"Ранний обход (API по возрастанию цены), до {args.max_pages} стр.: "
+            f"tradeCount ≥ {target_usdt:g}, minTradeLimit ≥ {target_usdt:g}·price"
+        )
     if bcash:
         print(f"  мин. цена (наличные):     {bcash.get('price')} RUB/USDT  id={bcash.get('id')}")
     if bno:

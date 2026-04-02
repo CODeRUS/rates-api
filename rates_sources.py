@@ -13,14 +13,22 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import rates_unified_cache as uc
 
 from rates_categories import SourceCategory
-from rates_parallel import map_bounded
+from rates_parallel import default_max_workers, map_bounded
+from rates_primitives import (
+    PRIMITIVE_KEYS_BY_SOURCE_ID,
+    primitive_keys_for_sources,
+    run_ensure_primitives,
+)
 
+logger = logging.getLogger(__name__)
 
 # --- Публичные типы --- (SourceCategory — в :mod:`rates_categories`, без цикла с плагинами)
 
@@ -89,6 +97,8 @@ class FetchContext:
     unionpay_date: Optional[str]
     moex_override: Optional[float]
     warnings: List[str] = field(default_factory=list)
+    #: Ссылка на unified doc (только :func:`run_sources_unified`) — примитивы ``prim:*``.
+    unified_doc: Optional[Dict[str, Any]] = None
 
 
 SourceFetch = Callable[[FetchContext], Optional[List[SourceQuote]]]
@@ -442,18 +452,50 @@ def run_sources_unified(
     w = ctx.warnings
     rows: List[RateRow] = []
 
+    prim_keys = primitive_keys_for_sources([s.id for s in seq])
+    refetched_prims = run_ensure_primitives(
+        doc,
+        prim_keys,
+        refresh=refresh,
+        max_concurrent=parallel_max_workers,
+    )
+    logger.info("summary: примитивы готовы, параллельно %d источников сводки", len(seq))
+    _pool_cap = default_max_workers() if parallel_max_workers is None else max(1, parallel_max_workers)
+    _workers = min(_pool_cap, len(seq))
+    logger.info(
+        "summary: постановка в пул %d источников (одновременно до %d воркеров)",
+        len(seq),
+        _workers,
+    )
+    for i, src in enumerate(seq, start=1):
+        logger.info("summary source queued %d/%d %s", i, len(seq), src.id)
+
     def worker(src: RateSource) -> _SourceFetchPack:
         l1_key = f"rs:{src.id}:{ctx_digest}"
         if not refresh:
             hit = uc.l1_get_valid(doc, l1_key)
             if hit is not None:
-                _ver, payload = hit
-                quotes = _quotes_from_payload(payload)
-                return _SourceFetchPack(quotes, None, [])
-        lc = replace(ctx, warnings=[])
+                prim_for_src = PRIMITIVE_KEYS_BY_SOURCE_ID.get(src.id, ())
+                if refetched_prims.isdisjoint(prim_for_src):
+                    _ver, payload = hit
+                    quotes = _quotes_from_payload(payload)
+                    logger.debug("summary source %s: попадание в L1", src.id)
+                    return _SourceFetchPack(quotes, None, [])
+                logger.debug(
+                    "summary source %s: L1 есть, но примитивы обновлены — повторный fetch",
+                    src.id,
+                )
+        logger.debug("summary source worker begin %s", src.id)
+        t0 = time.perf_counter()
+        lc = replace(ctx, warnings=[], unified_doc=doc)
         try:
             q = src.fetch(lc)
         except Exception as e:
+            logger.info(
+                "summary source fetch error %s after %.2fs",
+                src.id,
+                time.perf_counter() - t0,
+            )
             return _SourceFetchPack(None, e, list(lc.warnings))
         uc.l1_set(
             doc,
@@ -461,18 +503,25 @@ def run_sources_unified(
             _quotes_payload(q),
             ttl_sec=_rate_source_l1_ttl_sec(src.id),
         )
+        logger.info(
+            "summary source fetch done %s in %.2fs",
+            src.id,
+            time.perf_counter() - t0,
+        )
         return _SourceFetchPack(q, None, list(lc.warnings))
 
-    for src, pack, thr_exc in map_bounded(
-        seq, worker, max_workers=parallel_max_workers
-    ):
+    outcomes = map_bounded(seq, worker, max_workers=parallel_max_workers)
+    logger.info("summary: пул источников завершён (%d задач), склейка строк", len(seq))
+
+    for src, pack, thr_exc in outcomes:
         if thr_exc is not None:
             raise thr_exc
         assert pack is not None
-        w.extend(pack.local_warnings)
         if pack.err:
             _warn_source(src, pack.err, w)
+            w.extend(pack.local_warnings)
             continue
+        w.extend(pack.local_warnings)
         quotes = pack.quotes
         if not quotes:
             continue
@@ -537,6 +586,10 @@ def run_sources_unified(
         ent = doc.get("l1", {}).get(l1_key)
         if isinstance(ent, dict) and "version" in ent:
             deps[l1_key] = int(ent["version"])
+    for pk in prim_keys:
+        ent = doc.get("prim", {}).get(pk)
+        if isinstance(ent, dict) and "version" in ent:
+            deps[pk] = int(ent["version"])
 
     return rows, baseline, w, deps
 

@@ -23,14 +23,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import ssl
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Union
 
 from rates_http import urlopen_retriable
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Константы: базовые URL (источник — минифицированный main.*.js сайта).
@@ -103,9 +107,18 @@ def _http_get_json(
     ctx = ssl.create_default_context()
     req = urllib.request.Request(url, method="GET", headers=dict(h))
 
+    url_short = url if len(url) <= 160 else url[:157] + "..."
+    logger.info("ttexchange http GET start %s timeout=%.1fs", url_short, timeout)
+    t0 = time.perf_counter()
     with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
         raw = resp.read().decode(charset, errors="replace")
+    logger.info(
+        "ttexchange http GET done in %.2fs (%d chars) %s",
+        time.perf_counter() - t0,
+        len(raw),
+        url_short,
+    )
     return json.loads(raw)
 
 

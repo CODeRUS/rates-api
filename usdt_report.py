@@ -73,12 +73,16 @@ def _usdt_fetch_bybit_branch() -> _UsdtParallelBranch:
         "bybit_transfer": None,
     }
     w: List[str] = []
-    items = bp.fetch_all_online_items(size=20, verification_filter=0)
-    items = bp.filter_by_target_usdt(items, target_usdt=bp.DEFAULT_TARGET_USDT)
-    a = bp.filter_cash_deposit_to_bank(items, 99.0)
-    b = bp.filter_bank_transfer_no_cash(items, 99.0)
-    ia = bp.min_by_price(a)
-    ib = bp.min_by_price(b)
+    try:
+        ia, ib = bp.fetch_best_cash_and_bank_transfer_items(
+            size=20,
+            verification_filter=0,
+            target_usdt=bp.DEFAULT_TARGET_USDT,
+            min_completion=99.0,
+        )
+    except RuntimeError as e:
+        w.append(f"Bybit P2P: {e}")
+        return rub, {}, w
     if ia:
         rub["bybit_cash"] = float(ia["price"])
     else:
@@ -105,13 +109,10 @@ def _usdt_fetch_htx_branch() -> _UsdtParallelBranch:
     }
     w: List[str] = []
     try:
-        rows = hx.fetch_all_offers(max_pages=30)
+        ha, hb = hx.fetch_best_cash_and_non_cash_offers(max_pages=30)
     except RuntimeError as e:
         w.append(f"HTX OTC: {e}")
         return rub, {}, w
-    with_cash, without_cash = hx.partition_cash_non_cash(rows)
-    ha = hx.min_by_price(with_cash)
-    hb = hx.min_by_price(without_cash)
     if ha:
         rub["htx_cash"] = float(ha["price"])
     else:

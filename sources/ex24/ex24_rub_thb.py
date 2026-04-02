@@ -4,7 +4,9 @@
 Расчёт курса и суммы к получению RUB → THB по правилам ex24.pro (как в их фронтенде).
 
 Актуальные курсы забираются с **главной** ``GET https://ex24.pro/``: в HTML встроен JSON
-``"type":"rates","payload":{"rates":[...]}``. Нужная запись: ``from`` = RUB, ``to`` = THB,
+``"type":"rates","payload":{"rates":[...]}``. Таймаут и число повторов на URL задаются
+env ``EX24_HTTP_TIMEOUT_SEC`` (по умолчанию 10) и ``EX24_HTTP_MAX_ATTEMPTS`` (по умолчанию 2),
+чтобы не тянуть минуты при глобальных 4×25 с на попытку. Нужная запись: ``from`` = RUB, ``to`` = THB,
 при необходимости ``fromType`` = «по СБП». Поле **``rate``** — то, что показывают в интерфейсе;
 **``realRate``** — база для наценки по сумме (как в их калькуляторе). При сбое разбора см.
 ``--real-rate`` и константу ``DEFAULT_REAL_RATE``.
@@ -31,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import ssl
 import urllib.error
@@ -42,6 +45,41 @@ from rates_http import urlopen_retriable
 
 # Fallback, если не удалось разобрать главную (см. :func:`try_fetch_real_rate_rub_thb`).
 DEFAULT_REAL_RATE = 2.7014
+
+
+def _env_float(name: str, default: float, *, lo: float, hi: float) -> float:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return max(lo, min(hi, float(raw)))
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int, *, lo: int, hi: int) -> int:
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return max(lo, min(hi, int(raw)))
+    except ValueError:
+        return default
+
+
+def ex24_http_timeout_sec() -> float:
+    """Таймаут HTTP на одну попытку; env ``EX24_HTTP_TIMEOUT_SEC`` (по умолчанию 10)."""
+    return _env_float("EX24_HTTP_TIMEOUT_SEC", 10.0, lo=5.0, hi=90.0)
+
+
+def ex24_http_max_attempts() -> int:
+    """
+    Повторы :func:`urlopen_retriable` на один URL (не число URL).
+
+    По умолчанию не больше **двух** попыток по **10 с** на URL (см. :func:`ex24_http_timeout_sec`).
+    Env ``EX24_HTTP_MAX_ATTEMPTS`` (1–6), выше 2 — только через env.
+    """
+    return _env_int("EX24_HTTP_MAX_ATTEMPTS", 2, lo=1, hi=6)
 
 # Маркер массива курсов во встроенном JSON (Next.js с экранированными кавычками).
 _PAYLOAD_RATES_MARKERS = (
@@ -161,8 +199,14 @@ def pick_rub_thb_rate_row(
     return None
 
 
-def load_ex24_main_html(*, timeout: float = 25.0) -> Optional[str]:
+def load_ex24_main_html(
+    *,
+    timeout: Optional[float] = None,
+    max_attempts: Optional[int] = None,
+) -> Optional[str]:
     """Первый успешный HTML главной (ru root или /en)."""
+    t = ex24_http_timeout_sec() if timeout is None else float(timeout)
+    att = ex24_http_max_attempts() if max_attempts is None else max(1, int(max_attempts))
     ctx = ssl.create_default_context()
     for url in ("https://ex24.pro/", "https://ex24.pro/en"):
         try:
@@ -173,7 +217,12 @@ def load_ex24_main_html(*, timeout: float = 25.0) -> Optional[str]:
                     "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
                 },
             )
-            with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
+            with urlopen_retriable(
+                req,
+                timeout=t,
+                context=ctx,
+                max_attempts_override=att,
+            ) as resp:
                 return resp.read().decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
             continue
@@ -186,7 +235,7 @@ _load_ex24_main_html = load_ex24_main_html
 
 def fetch_ex24_rub_thb_row(
     *,
-    timeout: float = 25.0,
+    timeout: Optional[float] = None,
     from_type: Optional[str] = "по СБП",
 ) -> Optional[Dict[str, Any]]:
     """
@@ -334,7 +383,7 @@ def parse_ex24_cash_rub_buy_rub_per_thb(html: str) -> Optional[float]:
     return 1.0 / thb_per_rub
 
 
-def try_fetch_cash_rub_per_thb(*, timeout: float = 25.0) -> Optional[float]:
+def try_fetch_cash_rub_per_thb(*, timeout: Optional[float] = None) -> Optional[float]:
     """Главная ex24.pro → RUB за 1 THB из ``RUB.buy`` витрины наличных, или ``None``."""
     text = _load_ex24_main_html(timeout=timeout)
     if not text:
@@ -342,20 +391,19 @@ def try_fetch_cash_rub_per_thb(*, timeout: float = 25.0) -> Optional[float]:
     return parse_ex24_cash_rub_buy_rub_per_thb(text)
 
 
-def try_fetch_real_rate_rub_thb(
+def real_rate_rub_thb_from_html(
+    html: str,
     *,
-    timeout: float = 25.0,
     from_type: Optional[str] = "по СБП",
 ) -> Optional[float]:
     """
-    Сначала ``payload.rates`` (приоритет ``realRate``), с той же страницы — запасной regex.
+    Из уже загруженной главной ex24: ``payload.rates`` (приоритет ``realRate``), иначе regex.
 
-    Для расчёта наценки нужен ``realRate``; ``rate`` в той же записи — как в UI.
+    Для :func:`try_fetch_real_rate_rub_thb` и для сводки с **одним** HTTP-запросом на вызов.
     """
-    text = _load_ex24_main_html(timeout=timeout)
-    if not text:
+    if not html:
         return None
-    rates = parse_rates_array_from_ex24_html(text)
+    rates = parse_rates_array_from_ex24_html(html)
     if rates:
         row = pick_rub_thb_rate_row(rates, from_type=from_type)
         if row is not None:
@@ -365,10 +413,24 @@ def try_fetch_real_rate_rub_thb(
             rt = row.get("rate")
             if rt is not None:
                 return float(rt)
-    hit = _try_fetch_real_rate_regex(text)
+    hit = _try_fetch_real_rate_regex(html)
     if hit is not None:
         return hit
     return None
+
+
+def try_fetch_real_rate_rub_thb(
+    *,
+    timeout: Optional[float] = None,
+    from_type: Optional[str] = "по СБП",
+) -> Optional[float]:
+    """
+    Сначала ``payload.rates`` (приоритет ``realRate``), с той же страницы — запасной regex.
+
+    Для расчёта наценки нужен ``realRate``; ``rate`` в той же записи — как в UI.
+    """
+    text = _load_ex24_main_html(timeout=timeout)
+    return real_rate_rub_thb_from_html(text, from_type=from_type)
 
 
 @dataclass(frozen=True)

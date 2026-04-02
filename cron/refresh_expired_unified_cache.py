@@ -87,15 +87,19 @@ def _is_expired(ent: Any, now: float) -> bool:
     return (now - saved) > ttl
 
 
-def _collect_expired(doc: Dict[str, Any], now: float) -> Tuple[List[str], List[str]]:
+def _collect_expired(doc: Dict[str, Any], now: float) -> Tuple[List[str], List[str], List[str]]:
     l1 = doc.get("l1") or {}
     l2 = doc.get("l2") or {}
+    prim = doc.get("prim") or {}
     e1 = [k for k, e in l1.items() if _is_expired(e, now)]
     e2 = [k for k, e in l2.items() if _is_expired(e, now)]
-    return sorted(e1), sorted(e2)
+    ep = [k for k, e in prim.items() if _is_expired(e, now)]
+    return sorted(e1), sorted(e2), sorted(ep)
 
 
-def _plan_refresh(expired_l1: List[str], expired_l2: List[str]) -> Set[str]:
+def _plan_refresh(
+    expired_l1: List[str], expired_l2: List[str], expired_prim: List[str]
+) -> Set[str]:
     """Имена задач: summary, usdt, exchange, cash."""
     need: Set[str] = set()
     for k in expired_l1:
@@ -109,6 +113,8 @@ def _plan_refresh(expired_l1: List[str], expired_l2: List[str]) -> Set[str]:
             need.add("cash")
         # cash:l1:* / cash_thb:l1:cell:* не используем — часто осиротевшие ключи (см. docstring).
         # chatcash:* — снимок userbot; обновление только из userbot, здесь не трогаем.
+    for _k in expired_prim:
+        need.add("summary")
     for k in expired_l2:
         if k.startswith("l2:summary:"):
             need.add("summary")
@@ -138,12 +144,17 @@ def main(argv: List[str] | None = None) -> int:
     path = ucc.DEFAULT_UNIFIED_CACHE_PATH
     doc = ucc.load_unified(path)
     now = time.time()
-    expired_l1, expired_l2 = _collect_expired(doc, now)
-    if not expired_l1 and not expired_l2:
+    expired_l1, expired_l2, expired_prim = _collect_expired(doc, now)
+    if not expired_l1 and not expired_l2 and not expired_prim:
         logger.info("TTL: истёкших записей нет (%s)", path)
         return 0
 
-    logger.info("Истекло L1: %d, L2: %d", len(expired_l1), len(expired_l2))
+    logger.info(
+        "Истекло L1: %d, L2: %d, prim: %d",
+        len(expired_l1),
+        len(expired_l2),
+        len(expired_prim),
+    )
     if len(expired_l1) <= 30:
         for k in expired_l1:
             logger.info("  L1 %s", k)
@@ -186,7 +197,15 @@ def main(argv: List[str] | None = None) -> int:
             orphan_cash_l1,
         )
 
-    tasks = _plan_refresh(expired_l1, expired_l2)
+    if expired_prim and len(expired_prim) <= 20:
+        for k in expired_prim:
+            logger.info("  prim %s", k)
+    elif expired_prim:
+        for k in expired_prim[:10]:
+            logger.info("  prim %s", k)
+        logger.info("  prim … ещё %d ключей", len(expired_prim) - 10)
+
+    tasks = _plan_refresh(expired_l1, expired_l2, expired_prim)
     if not tasks:
         logger.info("Нет задач прогрева (например, только chatcash:*). Выход.")
         return 0
@@ -203,26 +222,29 @@ def main(argv: List[str] | None = None) -> int:
     )
 
     errors = 0
-    # Сначала сводка (обновляет все rs:* для текущего digest), затем остальное.
+    # Сводка / usdt / exchange / cash без глобального --refresh: в сеть только то, что
+    # протухло по TTL в unified (L1/prim в deps L2, см. rates_unified_cache.l2_deps_match)
+    # или отсутствует в L1. После обновления примитива пересчитываются зависимые rs:*.
     order = ("summary", "usdt", "exchange", "cash")
     for name in order:
         if name not in tasks:
             continue
         try:
+            logger.info("Обновление кеша: старт %s", name)
             if name == "summary":
-                get_summary_text(refresh=True, unified_allow_stale=False)
+                get_summary_text(refresh=False, unified_allow_stale=False)
             elif name == "usdt":
-                get_usdt_text(refresh=True, unified_allow_stale=False)
+                get_usdt_text(refresh=False, unified_allow_stale=False)
             elif name == "exchange":
-                get_exchange_text(refresh=True, unified_allow_stale=False, top_n=10, lang="ru")
+                get_exchange_text(refresh=False, unified_allow_stale=False, top_n=10, lang="ru")
             elif name == "cash":
                 get_cash_text(
-                    refresh=True,
+                    refresh=False,
                     unified_allow_stale=False,
                     top_n=20,
                     city_label="",
                 )
-            logger.info("Готово: %s", name)
+            logger.info("Обновление кеша: готово %s", name)
         except Exception:
             logger.exception("Ошибка при обновлении %s", name)
             errors += 1

@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import ssl
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
 from rates_http import urlopen_retriable
+
+logger = logging.getLogger(__name__)
 
 from sources.rbc_bank_title import rbc_short_bank_name
 
@@ -37,10 +41,24 @@ def fetch_cash_rates_json(
         },
     )
     try:
+        logger.info(
+            "rbc_cash http GET start city=%s currency_id=%s timeout=%.1fs",
+            city,
+            currency_id,
+            timeout,
+        )
+        t0 = time.perf_counter()
         with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
             raw = resp.read().decode(
                 resp.headers.get_content_charset() or "utf-8", errors="replace"
             )
+        logger.info(
+            "rbc_cash http GET done city=%s currency_id=%s in %.2fs (%d bytes)",
+            city,
+            currency_id,
+            time.perf_counter() - t0,
+            len(raw.encode("utf-8")),
+        )
         return json.loads(raw)
     except (
         urllib.error.URLError,

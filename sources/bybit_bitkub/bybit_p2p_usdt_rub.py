@@ -272,6 +272,83 @@ def fetch_all_online_items(
     return items
 
 
+def fetch_best_cash_and_bank_transfer_items(
+    *,
+    size: int = 20,
+    verification_filter: int = 0,
+    side: str = "1",
+    max_pages: Optional[int] = None,
+    target_usdt: float = DEFAULT_TARGET_USDT,
+    min_completion: float = 99.0,
+) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """
+    Два «лучших» объявления: сценарий A (18 + completion) и B (14 без 18 + completion).
+
+    При обходе страниц в том же порядке, что :func:`fetch_all_online_items`, берётся
+    **первое** в потоке объявление, прошедшее фильтры USDT и попадающее в A; и первое
+    для B. Это совпадает с глобальным минимумом цены в каждой категории, если выдача
+    API упорядочена по **неубыванию цены** (как при сортировке «цена» в веб-клиенте;
+    в :func:`build_online_body` задаётся ``sortType``). Иначе нужен полный обход
+    (:func:`fetch_all_online_items` или CLI ``--full-scan``).
+    """
+    best_cash: Optional[Dict[str, Any]] = None
+    best_bank: Optional[Dict[str, Any]] = None
+
+    def consider_chunk(chunk: List[Dict[str, Any]]) -> bool:
+        nonlocal best_cash, best_bank
+        for it in chunk:
+            if not item_passes_target_usdt_filters(it, target_usdt=target_usdt):
+                continue
+            p = payment_ids(it)
+            if PAYMENT_CASH_DEPOSIT_BANK in p and completion_ok(it, min_completion):
+                if best_cash is None:
+                    best_cash = it
+            if (
+                PAYMENT_BANK_TRANSFER in p
+                and PAYMENT_CASH_DEPOSIT_BANK not in p
+                and completion_ok(it, min_completion)
+            ):
+                if best_bank is None:
+                    best_bank = it
+            if best_cash is not None and best_bank is not None:
+                return True
+        return False
+
+    first = post_json(
+        ITEM_ONLINE_URL,
+        build_online_body(page=1, size=size, verification_filter=verification_filter, side=side),
+    )
+    if first.get("ret_code") not in (0, "0", None):
+        raise RuntimeError(f"item/online: {first.get('ret_msg')!r}")
+    result = first.get("result") or {}
+    chunk1 = list(result.get("items") or [])
+    if consider_chunk(chunk1):
+        return best_cash, best_bank
+
+    count = int(result.get("count") or 0)
+    if count <= 0:
+        return best_cash, best_bank
+
+    total_pages = max(1, math.ceil(count / size))
+    if max_pages is not None:
+        total_pages = min(total_pages, max_pages)
+
+    for page in range(2, total_pages + 1):
+        nxt = post_json(
+            ITEM_ONLINE_URL,
+            build_online_body(page=page, size=size, verification_filter=verification_filter, side=side),
+        )
+        if nxt.get("ret_code") not in (0, "0", None):
+            raise RuntimeError(f"item/online page {page}: {nxt.get('ret_msg')!r}")
+        chunk = list((nxt.get("result") or {}).get("items") or [])
+        if consider_chunk(chunk):
+            return best_cash, best_bank
+        if not chunk:
+            break
+
+    return best_cash, best_bank
+
+
 def payment_ids(item: Dict[str, Any]) -> List[str]:
     return [str(x) for x in (item.get("payments") or [])]
 
@@ -418,6 +495,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--payments-only", action="store_true", help="Только запрос справочника способов оплаты")
     ap.add_argument("--json", action="store_true", help="Вывод в JSON")
     ap.add_argument("--max-pages", type=int, default=None, help="Ограничить число страниц (отладка)")
+    ap.add_argument(
+        "--full-scan",
+        action="store_true",
+        help="Загрузить все страницы и посчитать matched (медленнее)",
+    )
     return ap
 
 
@@ -440,48 +522,86 @@ def cli_main(argv=None) -> int:
                     print("\n… (усечено, используйте --json)", file=sys.stderr)
             return 0
 
-        items = fetch_all_online_items(
-            size=args.size,
-            verification_filter=args.verification_filter,
-            max_pages=args.max_pages,
-        )
-        total_before = len(items)
-        items = filter_by_target_usdt(items, target_usdt=target_usdt)
-        a_items = filter_cash_deposit_to_bank(items, args.min_completion)
-        b_items = filter_bank_transfer_no_cash(items, args.min_completion)
-        qa = summarize("Cash Deposit to Bank (18)", a_items)
-        qb = summarize("Bank Transfer без Cash Deposit (14, без 18)", b_items)
+        if args.full_scan:
+            items = fetch_all_online_items(
+                size=args.size,
+                verification_filter=args.verification_filter,
+                max_pages=args.max_pages,
+            )
+            total_before = len(items)
+            items = filter_by_target_usdt(items, target_usdt=target_usdt)
+            a_items = filter_cash_deposit_to_bank(items, args.min_completion)
+            b_items = filter_bank_transfer_no_cash(items, args.min_completion)
+            qa = summarize("Cash Deposit to Bank (18)", a_items)
+            qb = summarize("Bank Transfer без Cash Deposit (14, без 18)", b_items)
+        else:
+            items = None
+            total_before = None
+            a_items = b_items = None
+            ia, ib = fetch_best_cash_and_bank_transfer_items(
+                size=args.size,
+                verification_filter=args.verification_filter,
+                side="1",
+                max_pages=args.max_pages,
+                target_usdt=target_usdt,
+                min_completion=args.min_completion,
+            )
+            qa = BestQuote(
+                label="Cash Deposit to Bank (18)",
+                item=ia,
+                min_price=float(ia["price"]) if ia else None,
+                matched_count=0,
+            )
+            qb = BestQuote(
+                label="Bank Transfer без Cash Deposit (14, без 18)",
+                item=ib,
+                min_price=float(ib["price"]) if ib else None,
+                matched_count=0,
+            )
 
         if args.json:
-            out = {
-                "total_items_fetched": total_before,
-                "after_target_usdt_filter": len(items),
+            out: Dict[str, Any] = {
                 "target_usdt": target_usdt,
                 "min_completion": args.min_completion,
                 "verification_filter": args.verification_filter,
                 "cash_deposit_to_bank": {
-                    "matched": qa.matched_count,
                     "min_price": qa.min_price,
                     "best": item_brief(qa.item) if qa.item else None,
                 },
                 "bank_transfer_only": {
-                    "matched": qb.matched_count,
                     "min_price": qb.min_price,
                     "best": item_brief(qb.item) if qb.item else None,
                 },
             }
+            if args.full_scan and items is not None and a_items is not None and b_items is not None:
+                out["total_items_fetched"] = total_before
+                out["after_target_usdt_filter"] = len(items)
+                out["cash_deposit_to_bank"]["matched"] = len(a_items)
+                out["bank_transfer_only"]["matched"] = len(b_items)
+            else:
+                out["scan"] = "best_first_pages"
             print(json.dumps(out, ensure_ascii=False, indent=2))
             return 0
 
-        print(
-            f"Загружено объявлений: {total_before}; после фильтра "
-            f"lastQuantity≥{target_usdt:g} и minAmount≥{target_usdt:g}·price: {len(items)} "
-            f"(completion ≥ {args.min_completion:g} % дальше по сценариям)"
-        )
+        if args.full_scan and total_before is not None and items is not None:
+            print(
+                f"Загружено объявлений: {total_before}; после фильтра "
+                f"lastQuantity≥{target_usdt:g} и minAmount≥{target_usdt:g}·price: {len(items)} "
+                f"(completion ≥ {args.min_completion:g} % дальше по сценариям)"
+            )
+        else:
+            print(
+                f"Ранний обход страниц item/online (порядок как у API), "
+                f"lastQuantity≥{target_usdt:g}, minAmount≥{target_usdt:g}·price, "
+                f"completion≥{args.min_completion:g} %"
+            )
         print()
         for q in (qa, qb):
             print(f"=== {q.label} ===")
-            print(f"  Подошло объявлений: {q.matched_count}")
+            if args.full_scan:
+                print(f"  Подошло объявлений: {q.matched_count}")
+            else:
+                print("  Ранний обход: без полного счёта объявлений (см. --full-scan)")
             if q.item is None:
                 print("  Минимальная цена: —")
             else:

@@ -39,7 +39,8 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     rub_per_usd: Optional[float] = None
     thb_per_usd: Optional[float] = None
 
-    hit = ucc.l1_get_valid(ucc.load_unified(), "chatcash:unired_bkb")
+    doc = ctx.unified_doc if ctx.unified_doc is not None else ucc.load_unified()
+    hit = ucc.l1_get_valid(doc, "chatcash:unired_bkb")
     if hit is not None:
         payload = hit[1]
         if isinstance(payload, list):

@@ -52,7 +52,7 @@ def _cat(raw: str) -> Optional[SourceCategory]:
 def summary(ctx: "FetchContext") -> Optional[List[Any]]:
     from rates_sources import SourceQuote
 
-    doc = ucc.load_unified()
+    doc = ctx.unified_doc if ctx.unified_doc is not None else ucc.load_unified()
     l1 = doc.get("l1") or {}
     if not isinstance(l1, dict):
         return None

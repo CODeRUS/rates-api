@@ -31,7 +31,15 @@ def command(argv: list[str]) -> int:
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     from . import ex24_rub_thb as e24
 
-    rr = e24.try_fetch_real_rate_rub_thb() or e24.DEFAULT_REAL_RATE
+    # Одна загрузка главной на вызов: раньше были try_fetch + load — два полных HTTP подряд
+    # (удвоение таймаутов и ретраев, «висит» дольше всех в пуле сводки).
+    text = e24.load_ex24_main_html()
+    rr = (
+        e24.real_rate_rub_thb_from_html(text)
+        if text
+        else None
+    )
+    rr = rr if rr is not None else e24.DEFAULT_REAL_RATE
     rub_best = float(e24.RUB_MIN_FOR_ZERO_MARKUP)
     r_ex = e24.customer_rate_rub_per_thb(rub_best, rr)
     out: List[SourceQuote] = [
@@ -41,7 +49,6 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
             note=f"от {fmt_money_ru(rub_best)} RUB",
         )
     ]
-    text = e24.load_ex24_main_html()
     if text:
         for fiat in e24.FIAT_CASH_ORDER:
             thb_per = e24.parse_ex24_cash_fiat_thb_per_fiat_unit(text, fiat)

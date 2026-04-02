@@ -39,8 +39,48 @@ def command(argv: list[str]) -> int:
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
+    from rates_primitives import read_bitkub_bid, read_bybit_p2p
+
     from . import bitkub_usdt_thb as bk
     from . import bybit_p2p_usdt_rub as bp
+
+    doc = ctx.unified_doc
+    if doc is not None:
+        thb_usdt, w_bk = read_bitkub_bid(doc)
+        cash_p, tr_p, w_bp = read_bybit_p2p(doc)
+        ctx.warnings.extend(w_bk)
+        ctx.warnings.extend(w_bp)
+        if thb_usdt is not None and thb_usdt > 0:
+            out: List[SourceQuote] = []
+            if cash_p is not None and cash_p > 0:
+                out.append(
+                    SourceQuote(
+                        cash_p / thb_usdt,
+                        "Bybit P2P (cash) → Bitkub",
+                        merge_key="bybit_cash",
+                    )
+                )
+            else:
+                ctx.warnings.append(
+                    "Bybit: нет объявлений Cash Deposit (18) с completion≥99 "
+                    "(100 USDT, minAmount≥100·price)"
+                )
+            if tr_p is not None and tr_p > 0:
+                out.append(
+                    SourceQuote(
+                        tr_p / thb_usdt,
+                        "Bybit P2P (перевод) → Bitkub",
+                        merge_key="bybit_transfer",
+                    )
+                )
+            else:
+                ctx.warnings.append(
+                    "Bybit: нет объявлений только перевод (14, без 18) с completion≥99 "
+                    "(100 USDT, minAmount≥100·price)"
+                )
+            return out or None
+        ctx.warnings.append("Bitkub: нет highestBid для USDT")
+        return None
 
     items = bp.fetch_all_online_items(size=20, verification_filter=0)
     items = bp.filter_by_target_usdt(items, target_usdt=bp.DEFAULT_TARGET_USDT)
@@ -54,7 +94,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         ctx.warnings.append("Bitkub: нет highestBid для USDT")
         return None
 
-    out: List[SourceQuote] = []
+    out = []
     if ia:
         out.append(
             SourceQuote(

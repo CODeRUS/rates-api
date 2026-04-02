@@ -24,16 +24,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import math
 import re
 import ssl
 import sys
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
 from rates_http import urlopen_retriable
 from typing import Dict, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 ASKMONEY_URL = "https://askmoney.pro/"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36"
@@ -63,8 +67,16 @@ def fetch_homepage_html(*, timeout: float = 30.0) -> str:
         ASKMONEY_URL,
         headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*"},
     )
+    logger.info("askmoney http GET start %s timeout=%.1fs", ASKMONEY_URL, timeout)
+    t0 = time.perf_counter()
     with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
-        return r.read().decode(r.headers.get_content_charset() or "utf-8", errors="replace")
+        raw = r.read().decode(r.headers.get_content_charset() or "utf-8", errors="replace")
+    logger.info(
+        "askmoney http GET done in %.2fs (%d bytes)",
+        time.perf_counter() - t0,
+        len(raw.encode("utf-8")),
+    )
+    return raw
 
 
 def _parse_prefill_for_variable(html: str, var: str) -> Optional[float]:

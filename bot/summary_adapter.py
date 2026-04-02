@@ -3,6 +3,7 @@
 import io
 import logging
 import sys
+
 from pathlib import Path
 from typing import List, Optional
 
@@ -19,7 +20,6 @@ from sources.rshb_unionpay.card_fx_calculator import build_rshb_text  # noqa: E4
 
 logger = logging.getLogger(__name__)
 
-
 def get_summary_text(
     *,
     refresh: bool = False,
@@ -27,6 +27,8 @@ def get_summary_text(
     output_filter: str = "",
 ) -> str:
     """Та же текстовая сводка, что у ``rates.py`` без ``--json``."""
+    if refresh:
+        logger.info("summary_adapter: get_summary_text(refresh=True) — сбор сводки и сеть")
     parser = rates_mod.build_arg_parser(add_help=False)
     argv: list[str] = []
     if refresh:
@@ -38,6 +40,11 @@ def get_summary_text(
     if not refresh:
         args.unified_allow_stale = bool(unified_allow_stale)
     rows, baseline, warnings = rates_mod.compute_summary_rows(args)
+    if refresh:
+        logger.info(
+            "summary_adapter: get_summary_text — compute_summary_rows завершён (%d строк)",
+            len(rows),
+        )
     rows = rates_mod._maybe_apply_output_filter(args, rows)
     buf = io.StringIO()
     rates_mod.print_summary_text(rows, baseline, warnings, buf)
@@ -60,6 +67,8 @@ def get_cash_text(
     city_label: str = "",
 ) -> str:
     """Тот же текст, что ``rates.py cash``."""
+    if refresh:
+        logger.info("summary_adapter: get_cash_text(refresh=True)")
     allow = (not refresh) and unified_allow_stale
     text = cash_mod.format_cash_report_with_warnings(
         top_n=top_n,
@@ -92,6 +101,8 @@ def get_exchange_text(
     unified_allow_stale: bool = True,
 ) -> str:
     """Тот же текст, что ``rates.py exchange``."""
+    if refresh:
+        logger.info("summary_adapter: get_exchange_text(refresh=True)")
     allow = (not refresh) and unified_allow_stale
     text = exchange_mod.format_exchange_report_with_warnings(
         top_n=top_n,
@@ -112,6 +123,8 @@ def get_usdt_text(
     *, refresh: bool = False, unified_allow_stale: bool = True
 ) -> str:
     """Текст отчёта USDT (тот же, что ``rates.py usdt``)."""
+    if refresh:
+        logger.info("summary_adapter: get_usdt_text(refresh=True)")
     allow = (not refresh) and unified_allow_stale
     data, warnings = usdt_mod.compute_usdt_report(
         refresh=refresh, unified_allow_stale=allow
