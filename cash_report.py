@@ -16,7 +16,11 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from rates_parallel import map_bounded
-from sources.cash_aggregate import rbc_cash_enabled, unified_top_sell_offers
+from sources.cash_aggregate import (
+    rbc_cash_enabled,
+    unified_top_sell_offers,
+    vbr_cash_enabled,
+)
 import rates_unified_cache as ucc
 
 _CashCellJob = Tuple[str, int, str, str, Optional[int]]
@@ -80,6 +84,7 @@ def _cash_cell_l1_key(
     job: _CashCellJob,
     *,
     use_banki: bool,
+    use_vbr: bool = True,
     chain_thb: bool = False,
     with_tt_implied: bool = False,
 ) -> str:
@@ -88,18 +93,26 @@ def _cash_cell_l1_key(
     rid = "x" if rbc_id is None else str(int(rbc_id))
     core = (
         f"{fiat_code}:{banki_key}:{rid}:{int(cur_id)}:"
-        f"b{1 if use_banki else 0}:ti{1 if with_tt_implied else 0}"
+        f"b{1 if use_banki else 0}:ti{1 if with_tt_implied else 0}:vbr{1 if use_vbr else 0}"
     )
     if chain_thb:
-        return f"cash_thb:l1:cell:v2:{core}"
-    return f"cash:l1:{core}"
+        return f"cash_thb:l1:cell:v3:{core}"
+    return f"cash:l1:v3:{core}"
 
 
-def _cash_l2_key(*, kind: str, top_n: int, use_banki: bool, timeout: float) -> str:
+def _cash_l2_key(
+    *,
+    kind: str,
+    top_n: int,
+    use_banki: bool,
+    use_vbr: bool = True,
+    timeout: float,
+) -> str:
     ident: Dict[str, Any] = {
         "kind": kind,
         "top_n": int(top_n),
         "use_banki": bool(use_banki),
+        "use_vbr": bool(use_vbr),
         "timeout": round(float(timeout), 3),
     }
     # Отдельные L1-ключи ячеек для thb (см. chain_thb); метка сбрасывает старый L2 с телом как у plain cash.
@@ -341,6 +354,7 @@ def _fetch_cash_cell(
     top_n: int,
     timeout: float,
     use_banki: bool,
+    use_vbr: bool = True,
     userbot_offers: Optional[List[Any]] = None,
     thb_map: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[str], List[str]]:
@@ -355,6 +369,7 @@ def _fetch_cash_cell(
         top_n=top_n,
         timeout=timeout,
         use_banki=use_banki,
+        use_vbr=use_vbr,
     )
     if userbot_offers:
         # userbot-курсы всегда показываем, даже если они "вытесняют" часть топ-офферов.
@@ -401,6 +416,7 @@ def _fetch_cash_thb_cell(
     top_n: int,
     timeout: float,
     use_banki: bool,
+    use_vbr: bool = True,
 ) -> Tuple[List[str], List[str]]:
     fiat_code, cur_id, city_label, banki_key, rbc_id = job
     section: List[str] = [f"{fiat_code} {city_label}"]
@@ -414,6 +430,7 @@ def _fetch_cash_thb_cell(
         top_n=top_n,
         timeout=timeout,
         use_banki=use_banki,
+        use_vbr=use_vbr,
     )
     wcell.extend(w)
     if not offers:
@@ -445,6 +462,7 @@ def build_cash_report_text(
     top_n: int = 3,
     timeout: float = 22.0,
     use_banki: bool = True,
+    use_vbr: bool = True,
     parallel_max_workers: Optional[int] = None,
     refresh: bool = False,
     unified_allow_stale: bool = False,
@@ -452,7 +470,7 @@ def build_cash_report_text(
     readonly: bool = False,
 ) -> Tuple[str, List[str]]:
     """
-    Только курсы продажи наличной валюты (РБК + Banki).
+    Только курсы продажи наличной валюты (РБК + Banki + VBR при включении).
     Порядок: валюты USD→EUR→CNY, города как в ``_CASH_LOCATIONS``.
     """
     global _unified_served_stale_l2_plain
@@ -460,7 +478,11 @@ def build_cash_report_text(
     unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
     doc = ucc.load_unified(unified_path)
     l2_key_base = _cash_l2_key(
-        kind="plain_tt", top_n=top_n, use_banki=use_banki, timeout=timeout
+        kind="plain_tt",
+        top_n=top_n,
+        use_banki=use_banki,
+        use_vbr=use_vbr,
+        timeout=timeout,
     )
     l2_key = (
         l2_key_base
@@ -589,10 +611,16 @@ def build_cash_report_text(
                 "--readonly: без сети не собрать отчёт — обновите кеш командой без --readonly."
             ],
         )
+    src_bits: List[str] = []
+    if rbc_cash_enabled():
+        src_bits.append("РБК")
+    if use_banki:
+        src_bits.append("Banki")
+    if use_vbr and vbr_cash_enabled():
+        src_bits.append("VBR")
+    src_label = " + ".join(src_bits) if src_bits else "—"
     cash_header = (
-        "Наличные: РБК + Banki (топ по курсу продажи); RUB/THB после TT Exchange"
-        if rbc_cash_enabled()
-        else "Наличные: Banki (топ по курсу продажи); RUB/THB после TT Exchange"
+        f"Наличные: {src_label} (топ по курсу продажи); RUB/THB после TT Exchange"
     )
     lines: List[str] = [
         cash_header,
@@ -608,7 +636,9 @@ def build_cash_report_text(
         ub_offers = _userbot_cash_offers_for_cell(
             doc, fiat_code=fiat_code, city_label=city_label
         )
-        k = _cash_cell_l1_key(job, use_banki=use_banki, with_tt_implied=True)
+        k = _cash_cell_l1_key(
+            job, use_banki=use_banki, use_vbr=use_vbr, with_tt_implied=True
+        )
         can_use_l1 = (not ub_offers)
         if (not refresh) and can_use_l1:
             hit = ucc.l1_get_valid(doc, k)
@@ -623,6 +653,7 @@ def build_cash_report_text(
             top_n=top_n,
             timeout=timeout,
             use_banki=use_banki,
+            use_vbr=use_vbr,
             userbot_offers=ub_offers,
             thb_map=thb_map,
         )
@@ -647,7 +678,9 @@ def build_cash_report_text(
     full = "\n".join(lines).rstrip() + "\n"
     dep_keys = (
         [
-            _cash_cell_l1_key(j, use_banki=use_banki, with_tt_implied=True)
+            _cash_cell_l1_key(
+                j, use_banki=use_banki, use_vbr=use_vbr, with_tt_implied=True
+            )
             for j in jobs
         ]
         + _chatcash_l1_keys(doc)
@@ -674,6 +707,7 @@ def build_cash_thb_report_text(
     top_n: int = 3,
     timeout: float = 22.0,
     use_banki: bool = True,
+    use_vbr: bool = True,
     parallel_max_workers: Optional[int] = None,
     refresh: bool = False,
     unified_allow_stale: bool = False,
@@ -688,7 +722,11 @@ def build_cash_thb_report_text(
     unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
     doc = ucc.load_unified(unified_path)
     l2_key = _cash_l2_key(
-        kind="thb", top_n=top_n, use_banki=use_banki, timeout=timeout
+        kind="thb",
+        top_n=top_n,
+        use_banki=use_banki,
+        use_vbr=use_vbr,
+        timeout=timeout,
     )
     from_stale_l2 = False
 
@@ -771,7 +809,9 @@ def build_cash_thb_report_text(
     jobs = _cash_cell_jobs(locs)
 
     def _work_thb(job: _CashCellJob) -> Tuple[List[str], List[str]]:
-        k = _cash_cell_l1_key(job, use_banki=use_banki, chain_thb=True)
+        k = _cash_cell_l1_key(
+            job, use_banki=use_banki, use_vbr=use_vbr, chain_thb=True
+        )
         if not refresh:
             hit = ucc.l1_get_valid(doc, k)
             if hit is not None:
@@ -786,6 +826,7 @@ def build_cash_thb_report_text(
             top_n=top_n,
             timeout=timeout,
             use_banki=use_banki,
+            use_vbr=use_vbr,
         )
         ucc.l1_set(
             doc,
@@ -807,7 +848,8 @@ def build_cash_thb_report_text(
 
     full = "\n".join(lines).rstrip() + "\n"
     dep_keys = [tt_l1_key] + [
-        _cash_cell_l1_key(j, use_banki=use_banki, chain_thb=True) for j in jobs
+        _cash_cell_l1_key(j, use_banki=use_banki, use_vbr=use_vbr, chain_thb=True)
+        for j in jobs
     ]
     deps_map = _deps_for_l1_keys(doc, dep_keys)
     ucc.l2_set(
@@ -831,6 +873,7 @@ def format_cash_report_with_warnings(
     top_n: int = 3,
     timeout: float = 22.0,
     use_banki: bool = True,
+    use_vbr: bool = True,
     refresh: bool = False,
     unified_allow_stale: bool = False,
     city_label: Optional[str] = None,
@@ -840,6 +883,7 @@ def format_cash_report_with_warnings(
         top_n=top_n,
         timeout=timeout,
         use_banki=use_banki,
+        use_vbr=use_vbr,
         refresh=refresh,
         unified_allow_stale=unified_allow_stale,
         city_label=city_label,
@@ -858,6 +902,7 @@ def format_cash_thb_report_with_warnings(
     top_n: int = 3,
     timeout: float = 22.0,
     use_banki: bool = True,
+    use_vbr: bool = True,
     refresh: bool = False,
     unified_allow_stale: bool = False,
     readonly: bool = False,
@@ -866,6 +911,7 @@ def format_cash_thb_report_with_warnings(
         top_n=top_n,
         timeout=timeout,
         use_banki=use_banki,
+        use_vbr=use_vbr,
         refresh=refresh,
         unified_allow_stale=unified_allow_stale,
         readonly=readonly,
@@ -882,7 +928,7 @@ def cash_subcommand_help() -> str:
     return (
         "cash — курсы продажи наличной валюты по выбранному городу.\n"
         "  cash                          вывести нумерованный список городов.\n"
-        "  cash N [--top N] [--no-banki] [--refresh]   вывести только город №N.\n"
+        "  cash N [--top N] [--no-banki] [--no-vbr] [--refresh]   вывести только город №N.\n"
         "  Параллельные ячейки валюта×город: RATES_PARALLEL_MAX_WORKERS."
     )
 
@@ -891,7 +937,7 @@ def cash_thb_subcommand_help() -> str:
     return (
         "cash-thb — те же топы по продажи × курс TT Exchange → RUB за 1 THB.\n"
         "Формат строки: продажа (RUB/ед.) | RUB/THB | банк (источник).\n"
-        "  cash-thb [--top N] [--no-banki] [--refresh]   как у cash.\n"
+        "  cash-thb [--top N] [--no-banki] [--no-vbr] [--refresh]   как у cash.\n"
         "  Параллелизм: RATES_PARALLEL_MAX_WORKERS (после одного запроса курсов TT)."
     )
 
@@ -904,6 +950,11 @@ def _parse_cash_argv(argv: List[str]) -> argparse.Namespace:
         "--no-banki",
         action="store_true",
         help="Не запрашивать Banki.ru (только РБК, Москва и СПб)",
+    )
+    p.add_argument(
+        "--no-vbr",
+        action="store_true",
+        help="Не запрашивать Выберу.ру (vbr.ru)",
     )
     p.add_argument("--refresh", action="store_true", help="Зарезервировано")
     p.add_argument(
@@ -938,6 +989,7 @@ def main_cash_cli(argv: List[str]) -> int:
     text = format_cash_report_with_warnings(
         top_n=args.top,
         use_banki=not args.no_banki,
+        use_vbr=not args.no_vbr,
         refresh=bool(args.refresh),
         city_label=city,
         readonly=bool(getattr(args, "readonly", False)),
@@ -957,6 +1009,7 @@ def main_cash_thb_cli(argv: List[str]) -> int:
     text = format_cash_thb_report_with_warnings(
         top_n=args.top,
         use_banki=not args.no_banki,
+        use_vbr=not args.no_vbr,
     )
     sys.stdout.write(text)
     return 0

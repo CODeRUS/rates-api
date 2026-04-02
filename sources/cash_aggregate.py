@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Объединение котировок наличных РБК и Banki.ru: один ряд на банк+курс."""
+"""Объединение котировок наличных РБК, Banki.ru и Выберу.ру (vbr): один ряд на банк+курс."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,6 +13,11 @@ from sources.banki_cash import (
 )
 from sources.rbc_bank_title import canonical_bank_key, rbc_short_bank_name
 from sources.rbc_cash_json import bank_sell_rows, fetch_cash_rates_json
+from sources.vbr_cash import (
+    VBR_ENDPOINTS,
+    fetch_vbr_rates_html,
+    vbr_sell_rows,
+)
 
 # ISO 4217 numeric (как на Banki.ru)
 BANKI_CURRENCY_ID: Dict[str, int] = {
@@ -23,6 +28,7 @@ BANKI_CURRENCY_ID: Dict[str, int] = {
 
 _SRC_RBC = "rbc"
 _SRC_BANKI = "banki"
+_SRC_VBR = "vbr"
 
 
 def rbc_cash_enabled() -> bool:
@@ -31,6 +37,12 @@ def rbc_cash_enabled() -> bool:
     Значения для отключения: 1/true/yes/on (в любом регистре).
     """
     raw = (os.environ.get("RATES_DISABLE_RBC") or "").strip().lower()
+    return raw not in {"1", "true", "yes", "on"}
+
+
+def vbr_cash_enabled() -> bool:
+    """Отключение VBR: ``RATES_DISABLE_VBR`` = 1/true/yes/on."""
+    raw = (os.environ.get("RATES_DISABLE_VBR") or "").strip().lower()
     return raw not in {"1", "true", "yes", "on"}
 
 
@@ -46,6 +58,8 @@ class CashOffer:
             parts.append("РБК")
         if _SRC_BANKI in self.sources:
             parts.append("Banki")
+        if _SRC_VBR in self.sources:
+            parts.append("VBR")
         return ", ".join(parts) if parts else ""
 
 
@@ -95,28 +109,45 @@ def _offers_from_banki_payload(payload: Any) -> List[CashOffer]:
     return _collapse_offers(out)
 
 
+def _offers_from_vbr_html(html: str, fiat_code: str) -> List[CashOffer]:
+    out: List[CashOffer] = []
+    for sell, name in vbr_sell_rows(html, fiat_code):
+        label = (name or "—").strip()
+        out.append(
+            CashOffer(
+                sell=sell,
+                bank_display=label,
+                sources=frozenset({_SRC_VBR}),
+            )
+        )
+    return _collapse_offers(out)
+
+
+def _merge_offer_layers(*layers: List[List[CashOffer]]) -> List[CashOffer]:
+    """Слои слева направо: первый задаёт базу, следующие дополняют ``sources`` при том же ключе."""
+    by_key: Dict[Tuple[float, str], CashOffer] = {}
+    for layer in layers:
+        for o in layer:
+            k = _dedup_key(o.sell, o.bank_display)
+            if k not in by_key:
+                by_key[k] = o
+            else:
+                prev = by_key[k]
+                by_key[k] = CashOffer(
+                    sell=prev.sell,
+                    bank_display=o.bank_display,
+                    sources=prev.sources | o.sources,
+                )
+    return sorted(
+        by_key.values(), key=lambda x: (x.sell, x.bank_display.casefold())
+    )
+
+
 def _merge_rbc_and_banki(
     rbc_offers: List[CashOffer],
     banki_offers: List[CashOffer],
 ) -> List[CashOffer]:
-    by_key: Dict[Tuple[float, str], CashOffer] = {}
-    for o in banki_offers:
-        k = _dedup_key(o.sell, o.bank_display)
-        by_key[k] = o
-    for o in rbc_offers:
-        k = _dedup_key(o.sell, o.bank_display)
-        if k not in by_key:
-            by_key[k] = o
-        else:
-            prev = by_key[k]
-            by_key[k] = CashOffer(
-                sell=prev.sell,
-                bank_display=o.bank_display,
-                sources=prev.sources | o.sources,
-            )
-    return sorted(
-        by_key.values(), key=lambda x: (x.sell, x.bank_display.casefold())
-    )
+    return _merge_offer_layers(banki_offers, rbc_offers)
 
 
 def unified_top_sell_offers(
@@ -128,9 +159,10 @@ def unified_top_sell_offers(
     top_n: int,
     timeout: float = 22.0,
     use_banki: bool = True,
+    use_vbr: bool = True,
 ) -> Tuple[List[CashOffer], List[str]]:
     """
-    Топ ``top_n`` по продаже после объединения РБК (если ``rbc_city_id`` задан) и Banki.ru.
+    Топ ``top_n`` по продаже после объединения РБК (если задан город РБК), Banki.ru и VBR.
 
     ``banki_region_key`` — ключ из :data:`sources.banki_cash.BANKI_REGIONS`.
     """
@@ -169,5 +201,22 @@ def unified_top_sell_offers(
             else:
                 banki_offers = _offers_from_banki_payload(payload)
 
-    merged = _merge_rbc_and_banki(rbc_offers, banki_offers)
+    vbr_offers: List[CashOffer] = []
+    if use_vbr and vbr_cash_enabled():
+        if banki_region_key not in VBR_ENDPOINTS:
+            warnings.append(f"VBR: нет эндпоинта для региона «{banki_region_key}»")
+        elif fiat_code not in BANKI_CURRENCY_ID:
+            warnings.append(f"VBR: валюта {fiat_code} не поддерживается")
+        else:
+            html = fetch_vbr_rates_html(
+                banki_region_key, fiat_code, timeout=timeout
+            )
+            if not html:
+                warnings.append(
+                    f"VBR: пустой ответ {fiat_code} ({banki_region_key})"
+                )
+            else:
+                vbr_offers = _offers_from_vbr_html(html, fiat_code)
+
+    merged = _merge_offer_layers(banki_offers, rbc_offers, vbr_offers)
     return merged[: max(0, top_n)], warnings

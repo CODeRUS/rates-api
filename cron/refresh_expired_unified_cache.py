@@ -68,6 +68,7 @@ L2_CASH_CANONICAL = _cash_l2_key(
     kind=_CRON_CASH_KIND,
     top_n=_CRON_CASH_TOP_N,
     use_banki=_CRON_CASH_USE_BANKI,
+    use_vbr=True,
     timeout=_CRON_CASH_TIMEOUT,
 )
 
