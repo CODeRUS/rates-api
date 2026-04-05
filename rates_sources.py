@@ -325,6 +325,8 @@ def _warn_source(src: RateSource, err: Exception, bucket: List[str]) -> None:
         bucket.append(f"KwikPay: {err}")
     elif src.id == "askmoney":
         bucket.append(f"askmoney: {err}")
+    elif src.id == "payscan":
+        bucket.append(f"Payscan: {err}")
     elif src.id == "ttexchange":
         bucket.append(f"ttexchange: {err}")
     elif src.id == "tbank":

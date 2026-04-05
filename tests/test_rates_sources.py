@@ -45,6 +45,7 @@ class TestRatesSources(unittest.TestCase):
                 "ex24",
                 "kwikpay",
                 "askmoney",
+                "payscan",
                 "ttexchange",
                 "rbc_ttexchange",
                 "tbank",
