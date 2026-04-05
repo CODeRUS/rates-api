@@ -22,6 +22,7 @@ PRIM_HTX_P2P_RUB = "prim:htx:p2p_rub_usdt:v1"
 PRIM_BITKUB_USDT_THB = "prim:bitkub:usdt_thb_highest_bid:v1"
 PRIM_BINANCE_TH_USDT_BID = "prim:binance_th:usdt_thb_bid:v1"
 PRIM_NOVAWALLET_LEDGER = "prim:novawallet:ledger_bundle:v1"
+PRIM_MORETA_EXCHANGE_RATES = "prim:moreta:exchange_rates:v1"
 
 # --- TTL ---
 TTL_PRIM_BYBIT = ucc.TTL_L1_RATE_SOURCE_BYBIT_SEC
@@ -41,6 +42,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 TTL_PRIM_NOVAWALLET = _env_int("RATES_UNIFIED_TTL_PRIM_NOVAWALLET", 3600)
+TTL_PRIM_MORETA = _env_int("RATES_UNIFIED_TTL_PRIM_MORETA", 600)
 
 # Источник -> какие примитивы нужны (порядок не важен)
 PRIMITIVE_KEYS_BY_SOURCE_ID: Dict[str, Tuple[str, ...]] = {
@@ -49,6 +51,7 @@ PRIMITIVE_KEYS_BY_SOURCE_ID: Dict[str, Tuple[str, ...]] = {
     "htx_bitkub": (PRIM_HTX_P2P_RUB, PRIM_BITKUB_USDT_THB),
     "htx_binanceth": (PRIM_HTX_P2P_RUB, PRIM_BINANCE_TH_USDT_BID),
     "bybit_novawallet": (PRIM_BYBIT_P2P_RUB, PRIM_NOVAWALLET_LEDGER),
+    "bybit_moreta": (PRIM_BYBIT_P2P_RUB, PRIM_MORETA_EXCHANGE_RATES),
 }
 
 
@@ -157,12 +160,23 @@ def _fetch_novawallet_payload() -> Dict[str, Any]:
     }
 
 
+def _fetch_moreta_payload() -> Dict[str, Any]:
+    from sources.bybit_moreta.moreta_api import fetch_thb_per_usdt
+
+    w: List[str] = []
+    r_thb, wr = fetch_thb_per_usdt()
+    if wr:
+        w.append(wr)
+    return {"thb_per_usdt": r_thb, "warnings": w}
+
+
 _FETCHERS: Dict[str, Callable[[], Dict[str, Any]]] = {
     PRIM_BYBIT_P2P_RUB: _fetch_bybit_p2p_payload,
     PRIM_HTX_P2P_RUB: _fetch_htx_p2p_payload,
     PRIM_BITKUB_USDT_THB: _fetch_bitkub_payload,
     PRIM_BINANCE_TH_USDT_BID: _fetch_binance_th_payload,
     PRIM_NOVAWALLET_LEDGER: _fetch_novawallet_payload,
+    PRIM_MORETA_EXCHANGE_RATES: _fetch_moreta_payload,
 }
 
 _TTL_FOR_KEY: Dict[str, int] = {
@@ -171,6 +185,7 @@ _TTL_FOR_KEY: Dict[str, int] = {
     PRIM_BITKUB_USDT_THB: TTL_PRIM_BITKUB,
     PRIM_BINANCE_TH_USDT_BID: TTL_PRIM_BINANCE_TH,
     PRIM_NOVAWALLET_LEDGER: TTL_PRIM_NOVAWALLET,
+    PRIM_MORETA_EXCHANGE_RATES: TTL_PRIM_MORETA,
 }
 
 
@@ -311,6 +326,23 @@ def read_binance_th_bid(doc: Optional[Dict[str, Any]]) -> Tuple[Optional[float],
         return None, []
     b = p.get("bid_thb_per_usdt")
     v = float(b) if isinstance(b, (int, float)) and float(b) > 0 else None
+    return v, list(p.get("warnings") or [])
+
+
+def read_moreta_thb_per_usdt(
+    doc: Optional[Dict[str, Any]],
+) -> Tuple[Optional[float], List[str]]:
+    """THB за 1 USDT из примитива Moreta (поле ``rates.USD_THB``)."""
+    if not doc:
+        return None, []
+    hit = ucc.prim_get_valid(doc, PRIM_MORETA_EXCHANGE_RATES)
+    if hit is None:
+        return None, []
+    p = hit[1]
+    if not isinstance(p, dict):
+        return None, []
+    r = p.get("thb_per_usdt")
+    v = float(r) if isinstance(r, (int, float)) and float(r) > 0 else None
     return v, list(p.get("warnings") or [])
 
 

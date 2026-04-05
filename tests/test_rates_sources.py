@@ -39,6 +39,7 @@ class TestRatesSources(unittest.TestCase):
                 "rshb_unionpay",
                 "bybit_bitkub",
                 "bybit_novawallet",
+                "bybit_moreta",
                 "korona",
                 "avosend",
                 "avosend_bkb",
