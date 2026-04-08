@@ -384,9 +384,12 @@ def print_summary_text(rows: List[RateRow], baseline: float, warnings: List[str]
     unionpay_all_ids = {id(r) for r in (*unionpay_forex_rows, *unionpay_up_rows)}
     remaining = [r for r in visible if id(r) not in unionpay_all_ids]
 
-    print("Карты UnionPay РСХБ", file=file)
+    print("Базовый курс валюты Forex", file=file)
     for r in unionpay_forex_rows:
         print(r.format_line(baseline), file=file)
+    print(file=file)
+
+    print("Карты UnionPay РСХБ", file=file)
     for r in sorted(unionpay_up_rows, key=lambda x: x.rate):
         print(r.format_line(baseline), file=file)
 
