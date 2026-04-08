@@ -99,6 +99,14 @@ def _is_timeout_error(exc: BaseException) -> bool:
     return False
 
 
+def _is_missing_online_cny_error(exc: BaseException) -> bool:
+    """True, если rates_online не содержит CNY/RUR на доступных датах."""
+    msg = str(exc)
+    if "Пара CNY/RUR не найдена на rates_online" in msg:
+        return True
+    return False
+
+
 def _save_live_inputs_cache(
     cpt: float,
     moex: float,
@@ -178,9 +186,13 @@ def _fetch_live_inputs_network(
     if not tables_on:
         raise RuntimeError("РСХБ rates_online: нет таблиц курсов на странице")
     rshb_online_on = on
-    if rshb_online_on is None or rshb_online_on not in tables_on:
+    if rshb_online_on is None:
+        # Автовыбор: cny_rur_sell сам проверяет текущую страницу и archive range.
+        online_sell = rshb_online_rates.cny_rur_sell(on=None, html=raw_on)
         rshb_online_on = max(tables_on.keys())
-    online_sell = rshb_online_rates.cny_rur_sell(on=rshb_online_on, html=raw_on)
+    else:
+        # Явная дата: если её нет на текущей странице, cny_rur_sell проверит archive range.
+        online_sell = rshb_online_rates.cny_rur_sell(on=rshb_online_on, html=raw_on)
 
     return cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up
 
@@ -428,7 +440,9 @@ def fetch_live_inputs(
         return cpt, moex, sell, rshb_on, online_sell, rshb_online_on, False, up
     except BaseException as e:
         cached = None
-        if use_cache_on_timeout and _is_timeout_error(e):
+        if use_cache_on_timeout and (
+            _is_timeout_error(e) or _is_missing_online_cny_error(e)
+        ):
             cached = _load_live_inputs_cache()
         if cached is not None:
             cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up = cached
