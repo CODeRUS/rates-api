@@ -39,6 +39,7 @@ from env_loader import load_repo_dotenv
 load_repo_dotenv(_ROOT)
 
 from telethon import TelegramClient, events
+from telethon.extensions import html as tg_html
 
 from bot.rates_tokens import parse_rates_command_tokens
 from bot.calc_args import parse_calc_command_args
@@ -53,8 +54,10 @@ from bot.summary_adapter import (
     get_rshb_text,
     get_summary_text,
     get_usdt_text,
+    looks_like_telegram_html,
     run_background_unified_refresh,
     split_for_telegram,
+    split_for_telegram_html,
 )
 
 logger = logging.getLogger(__name__)
@@ -964,24 +967,77 @@ async def _main_async() -> None:
             if not out:
                 await status.edit("(пустой ответ chat-agent)")
                 return
-            chunks = split_for_telegram(out)
-            send_kw = (
-                {"parse_mode": "html"}
-                if (data.get("reply_parse_mode") or "").strip().lower() == "html"
-                else {}
+            use_html = (data.get("reply_parse_mode") or "").strip().lower() == "html"
+            if not use_html and looks_like_telegram_html(out):
+                use_html = True
+            chunks = (
+                split_for_telegram_html(out) if use_html else split_for_telegram(out)
             )
-            try:
-                await status.edit(chunks[0], **send_kw)
+
+            if use_html:
+                # Новое сообщение с formatting_entities + удаление статуса «Обрабатываю…»:
+                # у ряда клиентов/версий Telethon правка того же сообщения через edit
+                # с entities даёт сырой текст с тегами; send_message/respond — стабильнее.
+                parsed: list[tuple[str, object]] = []
+                for i, raw in enumerate(chunks):
+                    try:
+                        plain, ent_list = tg_html.parse(raw)
+                        parsed.append((plain, ent_list))
+                    except Exception:
+                        logger.warning(
+                            "chat-agent: разбор HTML для chunk %d не удался, сырой текст",
+                            i,
+                            exc_info=True,
+                        )
+                        parsed.append((raw, None))
+
+                for i, (plain, ent) in enumerate(parsed):
+                    if ent is not None:
+                        send_kwargs: dict = {
+                            "parse_mode": None,
+                            "formatting_entities": ent,
+                        }
+                    else:
+                        send_kwargs = {}
+                    try:
+                        await event.respond(plain, **send_kwargs)
+                    except Exception:
+                        logger.warning(
+                            "chat-agent: отправка chunk %d с entities не удалась, повтор сырьём",
+                            i,
+                            exc_info=True,
+                        )
+                        await event.respond(chunks[i])
+
+                try:
+                    await status.delete()
+                except Exception:
+                    logger.warning(
+                        "chat-agent: не удалось удалить статус «Обрабатываю…»",
+                        exc_info=True,
+                    )
+                    try:
+                        await status.edit("(готово)", parse_mode=None)
+                    except Exception:
+                        pass
+            else:
+                try:
+                    await status.edit(chunks[0])
+                except Exception:
+                    logger.warning(
+                        "chat-agent: первая часть не отправилась",
+                        exc_info=True,
+                    )
+                    await status.edit(chunks[0])
                 for chunk in chunks[1:]:
-                    await event.respond(chunk, **send_kw)
-            except Exception:
-                logger.warning(
-                    "chat-agent: отправка с parse_mode не удалась, повтор без разметки",
-                    exc_info=True,
-                )
-                await status.edit(chunks[0])
-                for chunk in chunks[1:]:
-                    await event.respond(chunk)
+                    try:
+                        await event.respond(chunk)
+                    except Exception:
+                        logger.warning(
+                            "chat-agent: продолжение не отправилось",
+                            exc_info=True,
+                        )
+                        await event.respond(chunk)
             return
 
         if not _env("OPENAI_API_KEY") or not _env("OPENAI_API_URL"):

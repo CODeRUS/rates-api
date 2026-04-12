@@ -2,6 +2,7 @@
 
 import io
 import logging
+import re
 import sys
 
 from pathlib import Path
@@ -207,3 +208,49 @@ def split_for_telegram(text: str, limit: int = 4000) -> list[str]:
     if len(text) <= limit:
         return [text]
     return [text[i : i + limit] for i in range(0, len(text), limit)]
+
+
+_TELEGRAM_HTML_TAG_RE = re.compile(
+    r"<(/?)(b|strong|i|em|u|ins|s|strike|del|code|pre|a)\b",
+    re.IGNORECASE,
+)
+
+
+def looks_like_telegram_html(text: str) -> bool:
+    """
+    True, если в тексте есть типичные теги Telegram HTML.
+    Нужен, если chat-agent старой версии и не присылает reply_parse_mode=html.
+    """
+    if not text or "<" not in text:
+        return False
+    return bool(_TELEGRAM_HTML_TAG_RE.search(text))
+
+
+def split_for_telegram_html(text: str, limit: int = 3800) -> list[str]:
+    """
+    Разбить HTML для Telegram по абзацам (\\n\\n), чтобы реже резать посередине тега.
+    Лимит чуть ниже 4096 — запас под служебные данные.
+    """
+    if not text:
+        return [""]
+    if len(text) <= limit:
+        return [text]
+    paras = text.split("\n\n")
+    chunks: list[str] = []
+    cur = ""
+    for p in paras:
+        candidate = f"{cur}\n\n{p}" if cur else p
+        if len(candidate) <= limit:
+            cur = candidate
+            continue
+        if cur:
+            chunks.append(cur)
+        if len(p) <= limit:
+            cur = p
+        else:
+            for i in range(0, len(p), limit):
+                chunks.append(p[i : i + limit])
+            cur = ""
+    if cur:
+        chunks.append(cur)
+    return chunks

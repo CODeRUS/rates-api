@@ -62,9 +62,11 @@ PLANNER_TOOLS_SNIPPET = (
   needs_tool: true. think: false, если город или номер ясен; true если нужен разбор источников или таблицы.
   Уточнения вроде только «доллар» без города: в `arguments` нельзя взять город из прошлых реплик при `CHAT_AGENT_PLANNER_USER_HISTORY_TURNS=0` — либо попроси пользователя повторить город в той же фразе, либо подними лимит истории в настройках.
 
-- `get_exchange_report` — витрина TT Exchange (как `rates.py --readonly exchange`).
-  arguments: `top_n` (optional int, по умолчанию 10), `exchange_fiat` (optional: "USD"|"EUR"|"CNY" — одна колонка и сортировка по этой валюте).
-  needs_tool: true. think: false для «exchange / tt»; true если просят лучший филиал под критерий.
+- `get_exchange_report` — **TT Exchange**: список отделений/филиалов с курсами обмена (как `rates.py --readonly exchange`, кеш витрины).
+  Запросы вида «**в каких отделениях** / **где** самый выгодный **курс обмена долларов** (евро, юаней)», «**лучший курс USD** в обменниках TT», «**TT Exchange** по доллару» → **этот** инструмент, **не** `get_cash_report` (тот — банки/наличные по городам РФ, другой отчёт).
+  arguments: `exchange_fiat` или **`fiat`** (optional: "USD"|"EUR"|"CNY" — колонка и **сортировка по этой валюте**, для «доллар / USD / $» → **`"USD"`**), `top_n` (optional int, по умолчанию 10; для «все отделения / побольше списка» можно 20–50 в пределах лимита).
+  Пример: «в каких отделениях выгоднее всего менять доллары» → `{{"tool":"get_exchange_report","arguments":{{"exchange_fiat":"USD"}}}}` или `{{"fiat":"USD"}}`; `think: false`, если достаточно таблицы из кеша.
+  needs_tool: true. think: false для прямого запроса таблицы exchange по валюте; true если нужен разбор «почему это выгодно» или сравнение с другими каналами.
 
 - `get_calc_comparison` — сравнение каналов RUB→THB через **промежуточную** валюту (как `rates.py --readonly calc <бюджет_руб> usd|eur|cny <курс>`).
   **Обязательны все три поля:** `budget_rub` (int, рубли), `fiat` — **только** строки `"usd"`, `"eur"` или `"cny"` (ни `thb`, ни «руб», ни другие коды), `rub_per_fiat` (number > 0) — **сколько ₽ за 1** USD/EUR/CNY (курс из фразы пользователя).

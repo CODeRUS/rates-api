@@ -144,7 +144,10 @@ def _match_city_name_to_n(name: str, menu: dict[int, str]) -> Optional[int]:
 
 class ExchangeArgs(BaseModel):
     top_n: int = Field(default=10, ge=1, le=50)
-    exchange_fiat: Optional[Literal["USD", "EUR", "CNY"]] = None
+    exchange_fiat: Optional[Literal["USD", "EUR", "CNY"]] = Field(
+        default=None,
+        validation_alias=AliasChoices("exchange_fiat", "fiat"),
+    )
 
     @field_validator("exchange_fiat", mode="before")
     @classmethod
