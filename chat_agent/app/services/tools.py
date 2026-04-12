@@ -41,7 +41,7 @@ class CashArgs(BaseModel):
     city_n: Optional[int] = None
     city_name: Optional[str] = None
     source: Optional[Literal["banki", "vbr", "rbc", "all"]] = None
-    top_n: Optional[int] = Field(default=None, ge=1, le=50)
+    top_n: Optional[int] = Field(default=None, ge=1, le=100)
     #: Только USD / EUR / CNY; вместе с городом → `rates.py cash N … --fiat …`
     #: Алиас `fiat` — на случай если планировщик подставит как у calc.
     cash_fiat: Optional[Literal["USD", "EUR", "CNY"]] = Field(
@@ -143,7 +143,7 @@ def _match_city_name_to_n(name: str, menu: dict[int, str]) -> Optional[int]:
 
 
 class ExchangeArgs(BaseModel):
-    top_n: int = Field(default=10, ge=1, le=50)
+    top_n: int = Field(default=10, ge=1, le=100)
     exchange_fiat: Optional[Literal["USD", "EUR", "CNY"]] = Field(
         default=None,
         validation_alias=AliasChoices("exchange_fiat", "fiat"),

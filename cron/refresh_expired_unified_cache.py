@@ -15,11 +15,12 @@
     --dry-run   только показать, что истекло и что было бы обновлено, без сети.
 
 Почему раньше cash/exchange могли запускаться **каждый раз**: в ``l2`` остаются записи с
-другими параметрами кеша (другой ``top_n``/``timeout``, либо ``l2:cash:…:city:…`` после
+другими параметрами кеша (другой ``timeout``/валюта, либо ``l2:cash:…:city:…`` после
 ``/cash N``). Прогрев из этого скрипта перезаписывает только «канонические'' L2 под те же
 параметры, что и вызовы ниже; старые ключи TTL не обновляют и вечно числятся истёкшими.
-Сейчас для **exchange** по L2 учитывается только канонический ключ (как у прогрева ниже);
-по L1 — любые ``ex:l1:*``.
+Для **exchange** L2 не зависит от ``top_n`` (один снимок на lang/timeout/fiat; в тексте до
+200 филиалов); старые ключи ``l2:exchange:*`` с ``top_n`` в дайджесте со временем протухнут.
+По L1 — любые ``ex:l1:*``.
 
 Для **cash** по L2 — только канонический ключ полного отчёта (без ``:city:``). По L1 **не**
 смотрим ``cash:l1:*`` / ``cash_thb:l1:cell:*``: в файле часто остаются «осиротевшие'' ячейки
@@ -60,7 +61,6 @@ _CRON_CASH_TIMEOUT = 22.0
 _CRON_CASH_KIND = "plain_tt"
 
 L2_EXCHANGE_CANONICAL = _ex_l2_key(
-    top_n=_CRON_EXCHANGE_TOP_N,
     lang=_CRON_EXCHANGE_LANG,
     timeout=_CRON_EXCHANGE_TIMEOUT,
 )
@@ -238,7 +238,12 @@ def main(argv: List[str] | None = None) -> int:
             elif name == "usdt":
                 get_usdt_text(refresh=False, unified_allow_stale=False)
             elif name == "exchange":
-                get_exchange_text(refresh=False, unified_allow_stale=False, top_n=10, lang="ru")
+                get_exchange_text(
+                    refresh=False,
+                    unified_allow_stale=False,
+                    top_n=_CRON_EXCHANGE_TOP_N,
+                    lang=_CRON_EXCHANGE_LANG,
+                )
             elif name == "cash":
                 get_cash_text(
                     refresh=False,

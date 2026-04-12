@@ -67,18 +67,106 @@ _TT_FETCH_ERRORS = (
     TimeoutError,
 )
 
+# Сколько строк филиалов кладём в один L2-снимок (top_n при чтении только обрезает текст).
+_MAX_EXCHANGE_L2_BRANCH_ROWS = 200
 
-def _ex_l2_key(
-    *, top_n: int, lang: str, timeout: float, fiat: Optional[str] = None
-) -> str:
+
+def _ex_l2_key(*, lang: str, timeout: float) -> str:
+    """Ключ L2 без top_n и без fiat: один мультивалютный снимок на (lang, timeout); top и --fiat — при чтении."""
     ident: Dict[str, Any] = {
-        "top_n": int(top_n),
         "lang": str(lang),
         "timeout": round(float(timeout), 3),
     }
-    if fiat:
-        ident["fiat"] = str(fiat)
     return f"l2:exchange:{ucc.stable_digest(ident)}"
+
+
+def _slice_exchange_cached_text(body: str, top_n: int) -> str:
+    """Обрезать сохранённый текст отчёта до первых top_n строк таблицы (после 3 строк заголовка)."""
+    if top_n <= 0:
+        return body
+    s = body.rstrip("\n")
+    if not s:
+        return body
+    lines = s.split("\n")
+    if len(lines) <= 3:
+        return body
+    head, data = lines[:3], lines[3:]
+    if not data:
+        return body
+    out = head + data[:top_n]
+    return "\n".join(out) + "\n"
+
+
+def _exchange_cached_body_is_multicurrency(lines: List[str]) -> bool:
+    if len(lines) < 3:
+        return False
+    h = lines[2]
+    return "USD" in h and "EUR" in h and "CNY" in h and "Филиал" in h
+
+
+def _parse_exchange_multicurrency_row(line: str) -> Optional[Tuple[Optional[float], Optional[float], Optional[float], str]]:
+    """Разбор строки ``_format_table_row`` (7+2+7+2+7+2+name)."""
+    if len(line) < 27:
+        return None
+
+    def cell(s: str) -> Optional[float]:
+        s = s.strip()
+        if not s or s == "—":
+            return None
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
+    u = cell(line[0:7])
+    e = cell(line[9:16])
+    c = cell(line[18:25])
+    name = line[27:].strip()
+    if not name:
+        return None
+    return (u, e, c, name)
+
+
+def _exchange_multicurrency_body_to_fiat(body: str, fiat_code: str, top_n: int) -> str:
+    """Из кешированного мультиколоночного текста — одноколоночный отчёт по USD/EUR/CNY."""
+    col_i = {"USD": 0, "EUR": 1, "CNY": 2}.get(fiat_code)
+    if col_i is None:
+        return _slice_exchange_cached_text(body, top_n)
+    lines = body.rstrip("\n").split("\n")
+    if len(lines) <= 3:
+        return body
+    head3, data = lines[:3], lines[3:]
+    if not _exchange_cached_body_is_multicurrency(head3):
+        return _slice_exchange_cached_text(body, top_n)
+    rows: List[Tuple[float, str]] = []
+    for ln in data:
+        p = _parse_exchange_multicurrency_row(ln)
+        if p is None:
+            continue
+        vals, name = p[:3], p[3]
+        v = vals[col_i]
+        if v is not None:
+            rows.append((v, name))
+    rows.sort(key=lambda t: -t[0])
+    cap = rows[: max(0, top_n)]
+    hdr = [
+        f"Обмен наличные → THB (TT Exchange), только {fiat_code}, THB за 1 {fiat_code}",
+        "",
+        f"{fiat_code:>7}  Филиал",
+    ]
+    if not cap:
+        out = hdr + [f"(нет филиалов с курсом {fiat_code} в кешированной таблице)"]
+    else:
+        out = hdr + [f"{rate:>7.2f}  {label}" for rate, label in cap]
+    return "\n".join(out).rstrip() + "\n"
+
+
+def _exchange_apply_top_n_to_cached_body(
+    body: str, fiat_norm: Optional[str], top_n: int
+) -> str:
+    if fiat_norm:
+        return _exchange_multicurrency_body_to_fiat(body, fiat_norm, top_n)
+    return _slice_exchange_cached_text(body, top_n)
 
 
 def _ex_deps_for_keys(doc: Dict[str, Any], keys: List[str]) -> Dict[str, int]:
@@ -228,8 +316,8 @@ def build_exchange_report_text(
 
     unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
     doc = ucc.load_unified(unified_path)
-    l2_key = _ex_l2_key(top_n=top_n, lang=lang, timeout=timeout, fiat=fiat_norm)
     lang = (lang or "ru").strip() or "ru"
+    l2_key = _ex_l2_key(lang=lang, timeout=timeout)
     from_stale_l2 = False
 
     allow_stale_ex = bool(unified_allow_stale or readonly)
@@ -255,6 +343,7 @@ def build_exchange_report_text(
             deps = ent.get("deps") or {}
             body = str(ent.get("text") or "")
             if body.strip():
+                body = _exchange_apply_top_n_to_cached_body(body, fiat_norm, top_n)
                 w = list((ent.get("payload") or {}).get("warnings") or [])
                 dep_ok = (not deps) or ucc.l2_deps_match(doc, deps)
                 if readonly:
@@ -347,65 +436,77 @@ def build_exchange_report_text(
             continue
         if fiat_norm:
             rate = fiat_buy_thb_per_unit(cur, fiat_norm)
-            if rate is None:
-                continue
-            scored_one.append((label, rate, bid_s))
-            continue
+            if rate is not None:
+                scored_one.append((label, rate, bid_s))
         usd = fiat_buy_thb_per_unit(cur, "USD")
-        if usd is None:
+        if usd is not None:
+            eur = fiat_buy_thb_per_unit(cur, "EUR")
+            cny = fiat_buy_thb_per_unit(cur, "CNY")
+            scored.append((label, usd, eur, cny, bid_s))
+        elif not fiat_norm:
             continue
-        eur = fiat_buy_thb_per_unit(cur, "EUR")
-        cny = fiat_buy_thb_per_unit(cur, "CNY")
-        scored.append((label, usd, eur, cny, bid_s))
 
-    if fiat_norm:
-        scored_one.sort(key=lambda t: -t[1])
-        top_one = scored_one[: max(0, top_n)]
-        lines = [
-            f"Обмен наличные → THB (TT Exchange), только {fiat_norm}, THB за 1 {fiat_norm}",
-            "",
-            f"{fiat_norm:>7}  Филиал",
-        ]
-        if not top_one:
-            lines.append(f"(нет филиалов с курсом {fiat_norm})")
-            warnings.append(
-                f"Ни у одного филиала не найден {fiat_norm} (buy) в курсах TT"
-            )
-        else:
-            for label, rate, _bid in top_one:
-                lines.append(f"{rate:>7.2f}  {label}")
-    else:
-        scored.sort(
-            key=lambda t: (
-                -t[1],
-                -(t[2] if t[2] is not None else -1e9),
-                -(t[3] if t[3] is not None else -1e9),
-            )
-        )
-        top = scored[: max(0, top_n)]
-
-        lines = [
+    def _lines_multi(
+        rows: List[Tuple[str, float, Optional[float], Optional[float], str]],
+    ) -> List[str]:
+        hdr = [
             "Обмен наличные → THB (TT Exchange), THB за 1 ед. валюты",
             "",
             f"{'USD':>7}  {'EUR':>7}  {'CNY':>7}  Филиал",
         ]
+        if not rows:
+            return hdr + ["(нет филиалов с курсом USD)"]
+        return hdr + [
+            _format_table_row(label, u, eur, cny)
+            for label, u, eur, cny, _bid in rows
+        ]
 
-        if not top:
-            lines.append("(нет филиалов с курсом USD)")
-            warnings.append("Ни у одного филиала не найден USD (buy) в курсах TT")
-        else:
-            for label, u, eur, cny, _bid in top:
-                lines.append(_format_table_row(label, u, eur, cny))
+    scored.sort(
+        key=lambda t: (
+            -t[1],
+            -(t[2] if t[2] is not None else -1e9),
+            -(t[3] if t[3] is not None else -1e9),
+        )
+    )
+    cap_mc = min(len(scored), _MAX_EXCHANGE_L2_BRANCH_ROWS)
+    rows_store_mc = scored[: max(0, cap_mc)]
+    full_store = "\n".join(_lines_multi(rows_store_mc)).rstrip() + "\n"
+    if not scored:
+        warnings.append("Ни у одного филиала не найден USD (buy) в курсах TT")
 
-    full = "\n".join(lines).rstrip() + "\n"
+    if fiat_norm:
+        scored_one.sort(key=lambda t: -t[1])
+        rows_show_one = scored_one[: max(0, top_n)]
+
+        def _lines_fiat(rows: List[Tuple[str, float, str]]) -> List[str]:
+            hdr = [
+                f"Обмен наличные → THB (TT Exchange), только {fiat_norm}, THB за 1 {fiat_norm}",
+                "",
+                f"{fiat_norm:>7}  Филиал",
+            ]
+            if not rows:
+                return hdr + [f"(нет филиалов с курсом {fiat_norm})"]
+            return hdr + [f"{rate:>7.2f}  {label}" for label, rate, _bid in rows]
+
+        if not scored_one:
+            warnings.append(
+                f"Ни у одного филиала не найден {fiat_norm} (buy) в курсах TT"
+            )
+        lines_show = _lines_fiat(rows_show_one)
+        full = "\n".join(lines_show).rstrip() + "\n"
+    else:
+        rows_show_mc = scored[: max(0, top_n)]
+        lines_show = _lines_multi(rows_show_mc)
+        full = "\n".join(lines_show).rstrip() + "\n"
+
     deps_map = _ex_deps_for_keys(doc, dep_key_list)
     ucc.l2_set(
         doc,
         l2_key,
         ttl_sec=ucc.TTL_L2_EXCHANGE_SEC,
-        text=full,
+        text=full_store,
         deps=deps_map,
-        payload={"warnings": warnings, "fiat": fiat_norm},
+        payload={"warnings": warnings},
     )
     try:
         ucc.save_unified(doc, unified_path)
