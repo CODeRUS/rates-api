@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from chat_agent.app.services.llm.base import LLMBackend
+from chat_agent.app.services.llm.base import LLMBackend, LLMCompletion, LLMUsage
 
 
 def _sync_gemini_complete(
@@ -12,7 +12,7 @@ def _sync_gemini_complete(
     model: str,
     messages: list[dict[str, str]],
     mode: Literal["text", "json"],
-) -> str:
+) -> LLMCompletion:
     from google import genai
     from google.genai import types
 
@@ -46,7 +46,15 @@ def _sync_gemini_complete(
         config=config,
     )
     text = (resp.text or "").strip()
-    return text
+    usage = LLMUsage()
+    um = getattr(resp, "usage_metadata", None)
+    if um is not None:
+        usage = LLMUsage(
+            prompt_tokens=getattr(um, "prompt_token_count", None),
+            completion_tokens=getattr(um, "candidates_token_count", None),
+            total_tokens=getattr(um, "total_token_count", None),
+        )
+    return LLMCompletion(text=text, usage=usage)
 
 
 class GoogleBackend:
@@ -60,7 +68,7 @@ class GoogleBackend:
         mode: Literal["text", "json"],
         model: str,
         timeout_sec: float,
-    ) -> str:
+    ) -> LLMCompletion:
         import asyncio
 
         # SDK синхронный — не блокируем event loop; общий таймаут запроса.

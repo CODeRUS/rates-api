@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from chat_agent.app.config import Settings
-from chat_agent.app.services.llm.base import LLMBackend
+from chat_agent.app.services.llm.base import LLMBackend, LLMCompletion
 
 
 class LLMClient:
@@ -27,7 +27,7 @@ class LLMClient:
     def responder_model_name(self) -> str:
         return self._responder_model()
 
-    async def plan(self, messages: list[dict[str, str]]) -> str:
+    async def plan(self, messages: list[dict[str, str]]) -> LLMCompletion:
         return await self._b.complete(
             messages,
             mode="json",
@@ -35,7 +35,7 @@ class LLMClient:
             timeout_sec=self._s.llm_timeout_sec,
         )
 
-    async def respond(self, messages: list[dict[str, str]]) -> str:
+    async def respond(self, messages: list[dict[str, str]]) -> LLMCompletion:
         return await self._b.complete(
             messages,
             mode="text",

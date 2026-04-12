@@ -1,7 +1,25 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from typing import Literal, Protocol, runtime_checkable
+from dataclasses import dataclass, field
+from typing import Literal, Optional, Protocol, runtime_checkable
+
+
+@dataclass(frozen=True)
+class LLMUsage:
+    """Статистика токенов одного вызова completion (если провайдер отдал)."""
+
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class LLMCompletion:
+    """Текст ответа модели и usage для логов."""
+
+    text: str
+    usage: LLMUsage = field(default_factory=LLMUsage)
 
 
 @runtime_checkable
@@ -13,4 +31,4 @@ class LLMBackend(Protocol):
         mode: Literal["text", "json"],
         model: str,
         timeout_sec: float,
-    ) -> str: ...
+    ) -> LLMCompletion: ...

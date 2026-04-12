@@ -9,6 +9,7 @@ from typing import Any, Optional
 from chat_agent.app.config import Settings
 from chat_agent.app.prompts.planner_system import build_planner_system, build_responder_system
 from chat_agent.app.schemas.chat import PlannerOutput
+from chat_agent.app.services.llm.base import LLMUsage
 from chat_agent.app.services.llm_client import LLMClient
 from chat_agent.app.services.redis_store import RedisStore
 from chat_agent.app.pipeline_log import clip_text, messages_for_log
@@ -98,6 +99,41 @@ def _planner_user_context(
     return users[-max_turns:]
 
 
+class _LLMTokenAccumulator:
+    """Сумма usage по всем вызовам planner/responder за один HTTP-запрос /chat."""
+
+    __slots__ = ("prompt", "completion", "total", "calls")
+
+    def __init__(self) -> None:
+        self.prompt = 0
+        self.completion = 0
+        self.total = 0
+        self.calls = 0
+
+    def add(self, u: LLMUsage) -> None:
+        if u.prompt_tokens is not None:
+            self.prompt += int(u.prompt_tokens)
+        if u.completion_tokens is not None:
+            self.completion += int(u.completion_tokens)
+        if u.total_tokens is not None:
+            self.total += int(u.total_tokens)
+        self.calls += 1
+
+
+def _log_llm_tokens_for_request(acc: _LLMTokenAccumulator, *, user_id: str) -> None:
+    """Одна строка на запрос /chat; не зависит от CHAT_AGENT_PIPELINE_LOG."""
+    if acc.calls == 0:
+        return
+    logger.info(
+        "[pipeline] 7. LLM токены за запрос user_id=%s: prompt=%d completion=%d total=%d (вызовов_LLM=%d)",
+        user_id,
+        acc.prompt,
+        acc.completion,
+        acc.total,
+        acc.calls,
+    )
+
+
 async def run_chat_turn(
     *,
     settings: Settings,
@@ -123,6 +159,8 @@ async def run_chat_turn(
         limit_per_minute=settings.rate_limit_per_minute,
     ):
         return "", "Слишком много запросов. Подождите минуту.", None
+
+    token_acc = _LLMTokenAccumulator()
 
     history = await store.get_recent_messages(
         user_id, limit=settings.max_history_messages
@@ -171,7 +209,9 @@ async def run_chat_turn(
         messages_for_log(planner_messages, max_total=settings.log_llm_messages_max),
     )
 
-    raw_plan = await llm.plan(planner_messages)
+    plan_comp = await llm.plan(planner_messages)
+    token_acc.add(plan_comp.usage)
+    raw_plan = plan_comp.text
     plan: PlannerOutput
     try:
         plan = _parse_planner_output(raw_plan)
@@ -193,9 +233,10 @@ async def run_chat_turn(
             messages_for_log(fix_messages, max_total=settings.log_llm_messages_max),
         )
         try:
-            raw2 = await llm.plan(fix_messages)
-            plan = _parse_planner_output(raw2)
-            raw_plan = raw2
+            plan_retry = await llm.plan(fix_messages)
+            token_acc.add(plan_retry.usage)
+            raw_plan = plan_retry.text
+            plan = _parse_planner_output(raw_plan)
         except Exception as e2:
             logger.exception("planner retry failed: %s", e2)
             plan = PlannerOutput(tool="none", arguments={}, needs_tool=False, think=False)
@@ -292,6 +333,7 @@ async def run_chat_turn(
             session_ttl_sec=settings.session_ttl_sec,
             max_pairs=max(1, settings.max_history_messages // 2),
         )
+        _log_llm_tokens_for_request(token_acc, user_id=user_id)
         return reply, None, None
 
     multi_tool = len(exec_steps) > 1
@@ -329,9 +371,12 @@ async def run_chat_turn(
     )
 
     try:
-        reply = (await llm.respond(resp_messages)).strip()
+        resp_comp = await llm.respond(resp_messages)
+        token_acc.add(resp_comp.usage)
+        reply = resp_comp.text.strip()
     except Exception as e:
         logger.exception("responder LLM failed: %s", e)
+        _log_llm_tokens_for_request(token_acc, user_id=user_id)
         return "", f"Ошибка модели ответа: {e}", None
 
     _pl(
@@ -354,4 +399,5 @@ async def run_chat_turn(
         max_pairs=max(1, settings.max_history_messages // 2),
     )
 
+    _log_llm_tokens_for_request(token_acc, user_id=user_id)
     return reply or "", None, reply_parse_mode

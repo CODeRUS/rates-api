@@ -5,7 +5,7 @@ from typing import Literal
 
 import httpx
 
-from chat_agent.app.services.llm.base import LLMBackend
+from chat_agent.app.services.llm.base import LLMBackend, LLMCompletion, LLMUsage
 
 
 class OpenAIBackend:
@@ -20,7 +20,7 @@ class OpenAIBackend:
         mode: Literal["text", "json"],
         model: str,
         timeout_sec: float,
-    ) -> str:
+    ) -> LLMCompletion:
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -33,6 +33,13 @@ class OpenAIBackend:
             r.raise_for_status()
             data = r.json()
         try:
-            return (data["choices"][0]["message"]["content"] or "").strip()
+            text = (data["choices"][0]["message"]["content"] or "").strip()
         except (KeyError, IndexError, TypeError) as e:
             raise RuntimeError(f"OpenAI response shape unexpected: {data!r}") from e
+        usage_raw = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+        u = LLMUsage(
+            prompt_tokens=usage_raw.get("prompt_tokens"),
+            completion_tokens=usage_raw.get("completion_tokens"),
+            total_tokens=usage_raw.get("total_tokens"),
+        )
+        return LLMCompletion(text=text, usage=u)
