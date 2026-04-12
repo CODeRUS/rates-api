@@ -15,7 +15,7 @@ Telegram-бот (Telethon): /rates, /usdt, /cash, /exchange, /calc.
 
 Секреты не коммитьте. Файл сессии: ``bot/rates_bot.session`` (в .gitignore).
 Опционально ``BOT_ADMIN_ID``: ``/refresh`` — сброс кеша сводки; ``/refresh usdt`` — сброс кеша отчёта USDT.
-В личке с ботом текст админа **без** ``/`` уходит в OpenAI Chat (нужны ``OPENAI_API_KEY``, ``OPENAI_API_URL``, см. ``openai_gpt``); ``OPENAI_PROMPT`` в запрос не подставляется — только текст сообщения.
+В личке с ботом текст GPT-пользователя **без** ``/``: при ``CHAT_AGENT_URL`` и ``CHAT_AGENT_SHARED_SECRET`` — запрос в сервис ``chat_agent`` (POST ``/chat``); иначе прямой OpenAI Chat (``OPENAI_API_KEY``, ``OPENAI_API_URL``, см. ``openai_gpt``). ``OPENAI_PROMPT`` подмешивается в агент только если ``include_env_system`` (не админ).
 Опционально ``BOT_FETCH_TIMEOUT_SEC`` (по умолчанию 180): таймаут сборки сводки/USDT/cash/exchange в потоке.
 """
 from __future__ import annotations
@@ -910,17 +910,89 @@ async def _main_async() -> None:
 
     @client.on(events.NewMessage(func=_gpt_message))
     async def on_gpt(event: events.NewMessage.Event) -> None:
-        """Личка: обычный текст GPT-пользователя (админ или whitelisted id) → OpenAI Chat."""
+        """Личка: текст GPT-пользователя → chat-agent (2×LLM) или прямой OpenAI."""
+        msg = (event.message.message or "").strip()
+        agent_base = _env("CHAT_AGENT_URL").rstrip("/")
+        agent_secret = _env("CHAT_AGENT_SHARED_SECRET")
+
+        if agent_base and agent_secret:
+            import httpx
+            import openai_gpt
+
+            gpt_http = openai_gpt.http_timeout_sec()
+            chat_timeout = max(fetch_timeout, gpt_http * 2.0 + 60.0, 120.0)
+            status = await event.respond("Обрабатываю…")
+            sender_id = int(event.sender_id or 0)
+            is_admin = admin_id_for_gpt is not None and sender_id == admin_id_for_gpt
+            url = f"{agent_base}/chat"
+            try:
+                async with httpx.AsyncClient(timeout=chat_timeout) as client_http:
+                    r = await client_http.post(
+                        url,
+                        headers={"X-Chat-Agent-Secret": agent_secret},
+                        json={
+                            "user_id": str(event.sender_id),
+                            "message": msg,
+                            "include_env_system": not is_admin,
+                        },
+                    )
+            except httpx.TimeoutException:
+                logger.error("chat-agent request timed out after %.0fs", chat_timeout)
+                await status.edit(
+                    f"Таймаут {chat_timeout:.0f} с при запросе к chat-agent. "
+                    "Проверьте CHAT_AGENT_LLM_TIMEOUT_SEC / сеть."
+                )
+                return
+            except Exception:
+                logger.exception("chat-agent HTTP failed")
+                await status.edit("Не удалось связаться с chat-agent.")
+                return
+            if r.status_code == 401:
+                await status.edit("Chat-agent: неверный секрет (X-Chat-Agent-Secret).")
+                return
+            try:
+                data = r.json()
+            except Exception:
+                await status.edit("Chat-agent: неверный JSON в ответе.")
+                return
+            err = (data.get("error") or "").strip()
+            out = (data.get("reply") or "").strip()
+            if err:
+                tail = err[:3500]
+                await status.edit(f"Chat-agent: {tail}")
+                return
+            if not out:
+                await status.edit("(пустой ответ chat-agent)")
+                return
+            chunks = split_for_telegram(out)
+            send_kw = (
+                {"parse_mode": "html"}
+                if (data.get("reply_parse_mode") or "").strip().lower() == "html"
+                else {}
+            )
+            try:
+                await status.edit(chunks[0], **send_kw)
+                for chunk in chunks[1:]:
+                    await event.respond(chunk, **send_kw)
+            except Exception:
+                logger.warning(
+                    "chat-agent: отправка с parse_mode не удалась, повтор без разметки",
+                    exc_info=True,
+                )
+                await status.edit(chunks[0])
+                for chunk in chunks[1:]:
+                    await event.respond(chunk)
+            return
+
         if not _env("OPENAI_API_KEY") or not _env("OPENAI_API_URL"):
             await event.respond(
-                "GPT: задайте OPENAI_API_KEY и OPENAI_API_URL в окружении бота."
+                "GPT: задайте CHAT_AGENT_URL и CHAT_AGENT_SHARED_SECRET "
+                "или OPENAI_API_KEY и OPENAI_API_URL."
             )
             return
-        msg = (event.message.message or "").strip()
         import openai_gpt
 
         status = await event.respond("Запрос к GPT…")
-        # urllib таймаут + запас, чтобы asyncio не оборвал поток раньше HTTP.
         gpt_http = openai_gpt.http_timeout_sec()
         gpt_timeout = max(fetch_timeout, gpt_http + 30.0)
         try:
@@ -929,6 +1001,7 @@ async def _main_async() -> None:
             )
             sender_id = int(event.sender_id or 0)
             is_admin = admin_id_for_gpt is not None and sender_id == admin_id_for_gpt
+
             async def _stream_and_collect() -> tuple[int, str]:
                 loop = asyncio.get_running_loop()
                 stream_q: asyncio.Queue[str] = asyncio.Queue()

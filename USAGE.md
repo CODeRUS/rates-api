@@ -339,8 +339,9 @@ python3.9 rates.py --readonly rshb
 |----------|----------------|----------|
 | `city_n` | целое, опционально | Номер города из списка. |
 | Позиционно после `city_n` | `banki` / `vbr` / `rbc` / `all` | Явный набор источников (см. ниже). Можно **до** флагов: `cash 1 banki`, `cash 1 vbr 10`. |
-| `--top` | int, `3` | Сколько строк курсов по выбранному городу. |
+| `--top` | int, `10` | Сколько строк курсов по выбранному городу. |
 | `--sources SPEC` | строка | То же, что слово-источник: `all`, `banki`, `vbr`, `rbc` или несколько через запятую (`rbc,banki`, `banki,vbr`, …). **Перекрывает** `--no-banki` и `--no-vbr`. |
+| `--fiat USD` / `EUR` / `CNY` | строка | Только выбранная валюта в отчёте (остальные блоки USD/EUR/CNY не выводятся). **Только вместе с номером города** `N`; без `N` команда печатает список городов — тогда `--fiat` недопустим. |
 | `--no-banki` | флаг | Убрать Banki из режима «все источники» (остаются РБК + VBR, если не отключены). |
 | `--no-vbr` | флаг | Убрать VBR из режима «все источники». |
 | `--refresh` | флаг | Проброс с глобального `rates.py --refresh`. |
@@ -360,6 +361,8 @@ python3.9 rates.py cash 1 banki
 python3.9 rates.py cash 1 vbr 15
 python3.9 rates.py cash 2 --sources rbc,banki
 python3.9 rates.py cash 2 --no-banki
+python3.9 rates.py cash 1 --fiat USD
+python3.9 rates.py cash 1 --fiat eur --top 5
 python3.9 rates.py cash --refresh
 python3.9 rates.py --readonly cash 1
 ```
@@ -389,11 +392,13 @@ python3.9 rates.py --readonly cash 1
 | `--timeout` | `28.0` | Таймаут HTTP на запрос (сек). |
 | `--refresh` | — | Заново запросить TT API / обновить unified. |
 | `--readonly` | — | Только кеш. |
+| `--fiat USD` / `EUR` / `CNY` | — | Только эта валюта в таблице; сортировка по убыванию THB за 1 ед.; филиалы без курса по валюте не показываются. |
 | `-h`, `--help` | — | Краткая справка подкоманды. |
 
 ```bash
 python3.9 rates.py exchange
 python3.9 rates.py exchange --top 5 --lang ru --timeout 28
+python3.9 rates.py exchange --fiat EUR
 python3.9 rates.py exchange --refresh
 python3.9 rates.py --readonly exchange
 ```
@@ -406,6 +411,8 @@ python3.9 rates.py --readonly exchange
     USD       EUR       CNY  Филиал
   32.42     37.35      4.71  …
 ```
+
+С `--fiat EUR` (или USD/CNY) — заголовок «только EUR», одна числовая колонка и сортировка по ней.
 
 ### `calc`
 
@@ -822,8 +829,8 @@ python3.9 bot/main.py
 |---------|-----------|
 | `/rates` | Сводка; можно `filter ta` / `ta` — пресет как в CLI (`parse_rates_command_tokens`). |
 | `/usdt` | Отчёт USDT, кеш. |
-| `/cash` | Без аргументов — список городов (8 шт.). Далее: `/cash N` и при необходимости одно из слов `banki`, `vbr`, `rbc`, `all`, затем при необходимости топ `K` (до 50). Примеры: `/cash 1 banki`, `/cash 2 vbr`, `/cash 1 all 10`. |
-| `/exchange` | Топ TT; опционально `/exchange 5` (число филиалов, до 50). |
+| `/cash` | Без аргументов — список городов (8 шт.). Далее: `/cash N` и при необходимости одно из слов `banki`, `vbr`, `rbc`, `all`, затем при необходимости топ `K` (до 50). Фильтр по одной валюте: в CLI `rates.py cash N --fiat USD` (или EUR/CNY); в chat-agent — аргумент `cash_fiat`. Примеры: `/cash 1 banki`, `/cash 2 vbr`, `/cash 1 all 10`. |
+| `/exchange` | Топ TT; опционально `/exchange 5` (число филиалов, до 50). Одна валюта: CLI `rates.py exchange --fiat USD`; в chat-agent — `exchange_fiat`. |
 | `/rshb` | Как CLI: суммы THB и комиссия ATM. |
 | `/calc` | `RUB usd|eur|cny КУРС` (см. `bot/calc_args.parse_calc_command_args`). |
 
@@ -956,8 +963,8 @@ optional arguments:
   save <файл>          Записать текстовую сводку в файл (те же опции, что и для сводки).
   usdt [--refresh] [--json] [--cache-file ПУТЬ]  Отчёт P2P RUB/USDT и USDT/THB (отдельный кеш).
   rshb [THB …] [ATM_FEE]  Отчёт THB/RUB РСХБ UnionPay; 3+ числа — несколько снятий, последнее — комиссия ATM.
-  cash [N] [banki|vbr|rbc|all] [K] [--sources SPEC] [--no-banki] [--no-vbr] [--refresh]  Без N — список городов; с N — курсы города (K или --top — число строк).
-  exchange [--top N] [--lang ru]   Топ филиалов TT (USD/EUR/CNY→THB).
+  cash [N] [banki|vbr|rbc|all] [K] [--top K] [--sources SPEC] [--fiat USD|EUR|CNY] [--no-banki] [--no-vbr] [--refresh]  Без N — список городов; с N — курсы города (K или --top — число строк). --fiat — только одна валюта в выводе.
+  exchange [--top N] [--lang ru] [--fiat USD|EUR|CNY]   Топ филиалов TT (USD/EUR/CNY→THB); --fiat — одна колонка.
   calc RUB usd|eur|cny КУРС [--atm-fee THB]  Сравнение RUB→THB; КУРС — ₽ за 1 ед. валюты (TT).
   <source_id> summary [--refresh]  Только этот источник (те же --korona-*, --avosend-rub, …).
   <source_id> --refresh          То же, если других аргументов у id нет.

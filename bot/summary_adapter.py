@@ -62,7 +62,7 @@ get_summary_text._needs_background_refresh = False  # type: ignore[attr-defined]
 def get_cash_text(
     *,
     refresh: bool = False,
-    top_n: int = 3,
+    top_n: int = 10,
     unified_allow_stale: bool = True,
     city_label: str = "",
     use_rbc: bool = True,
@@ -107,16 +107,24 @@ def get_exchange_text(
     top_n: int = 10,
     lang: str = "ru",
     unified_allow_stale: bool = True,
+    fiat: str = "",
 ) -> str:
     """Тот же текст, что ``rates.py exchange``."""
     if refresh:
         logger.info("summary_adapter: get_exchange_text(refresh=True)")
     allow = (not refresh) and unified_allow_stale
+    fiat_kw: Optional[str] = None
+    if (fiat or "").strip():
+        try:
+            fiat_kw = cash_mod.normalize_cash_fiat(fiat)
+        except ValueError:
+            logger.warning("get_exchange_text: ignored invalid fiat=%r", fiat)
     text = exchange_mod.format_exchange_report_with_warnings(
         top_n=top_n,
         lang=lang,
         refresh=refresh,
         unified_allow_stale=allow,
+        fiat=fiat_kw,
     )
     get_exchange_text._needs_background_refresh = bool(
         (not refresh) and allow and exchange_mod._unified_served_stale_l2

@@ -499,11 +499,11 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
         "  rshb [THB …] [ATM_FEE]  Отчёт THB/RUB РСХБ UnionPay; 3+ числа — несколько снятий, последнее — комиссия ATM."
     )
     print(
-        "  cash [N] [banki|vbr|rbc|all] [K] [--sources SPEC] [--no-banki] [--no-vbr] [--refresh]  "
+        "  cash [N] [banki|vbr|rbc|all] [K] [--top K] [--sources SPEC] [--fiat USD|EUR|CNY] [--no-banki] [--no-vbr] [--refresh]  "
         "Без N — список городов; с N — курсы города (K или --top — число строк)."
     )
     print(
-        "  exchange [--top N] [--lang ru]   Топ филиалов TT (USD/EUR/CNY→THB)."
+        "  exchange [--top N] [--lang ru] [--fiat USD|EUR|CNY]   Топ филиалов TT (USD/EUR/CNY→THB)."
     )
     print(
         "  calc RUB usd|eur|cny КУРС [--atm-fee THB]  Сравнение RUB→THB; КУРС — ₽ за 1 ед. валюты (TT)."

@@ -1,2 +1,3 @@
 # Telegram-бот /rates (Telethon + Bot API token + api_id/api_hash)
 telethon>=1.36.0
+httpx>=0.27.0

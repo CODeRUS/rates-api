@@ -1,0 +1,8 @@
+{
+  "models": [
+    "google/gemma-4-26b-a4b-it:free",
+    "qwen/qwen3-next-80b-a3b-instruct:free",
+    "openrouter/free"
+  ],
+  "route": "fallback"
+}

@@ -66,6 +66,36 @@ class TestExchangeReport(unittest.TestCase):
         self.assertNotIn("99.00", text)
         api.get_currencies.assert_called_once()
 
+    @patch.object(er, "_ttexchange_api_module")
+    def test_fiat_eur_includes_branch_without_usd_sorted_by_eur(self, mock_tt_mod: object) -> None:
+        api = MagicMock()
+        api.get_stores.return_value = [
+            {"branch_id": "1", "name": "Only Eur"},
+            {"branch_id": "2", "name": "Both"},
+        ]
+
+        def _cur(branch_id: str, **kwargs):
+            if branch_id == "1":
+                return [{"name": "EUR(L)", "current_buy_rate": 40.0}]
+            return [
+                {"name": "USD(L)", "current_buy_rate": 35.0},
+                {"name": "EUR(L)", "current_buy_rate": 36.0},
+            ]
+
+        api.get_currencies.side_effect = _cur
+        mock_tt_mod.return_value = api
+
+        text, w = er.build_exchange_report_text(
+            top_n=10, lang="ru", timeout=5.0, refresh=True, fiat="EUR"
+        )
+        self.assertFalse(w, w)
+        self.assertIn("только EUR", text)
+        self.assertIn("Only Eur", text)
+        self.assertIn("Both", text)
+        only_i = text.index("Only Eur")
+        both_i = text.index("Both")
+        self.assertLess(only_i, both_i)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -57,7 +57,19 @@ _FIAT: Tuple[Tuple[str, int], ...] = (
     ("CNY", 423),
 )
 
+_KNOWN_CASH_FIAT = frozenset({"USD", "EUR", "CNY"})
+
 _KNOWN_CASH_SOURCE_TOKENS = frozenset({"all", "banki", "vbr", "rbc"})
+
+
+def normalize_cash_fiat(s: Optional[str]) -> Optional[str]:
+    """USD | EUR | CNY или None (все валюты)."""
+    if s is None or str(s).strip() == "":
+        return None
+    u = str(s).strip().upper()
+    if u not in _KNOWN_CASH_FIAT:
+        raise ValueError(f"неизвестная валюта для cash: {s!r} (ожидается USD, EUR или CNY)")
+    return u
 
 
 def parse_cash_sources_str(spec: str) -> Tuple[bool, bool, bool]:
@@ -156,6 +168,7 @@ def _cash_l2_key(
     use_banki: bool,
     use_vbr: bool = True,
     timeout: float,
+    fiat: Optional[str] = None,
 ) -> str:
     ident: Dict[str, Any] = {
         "kind": kind,
@@ -165,6 +178,8 @@ def _cash_l2_key(
         "use_vbr": bool(use_vbr),
         "timeout": round(float(timeout), 3),
     }
+    if fiat:
+        ident["fiat"] = str(fiat)
     # Отдельные L1-ключи ячеек для thb (см. chain_thb); метка сбрасывает старый L2 с телом как у plain cash.
     if kind == "thb":
         ident["cell_l1_ns"] = "cash_thb_cell_v2"
@@ -218,6 +233,33 @@ def _extract_city_sections_from_cash_body(
     return out
 
 
+def _extract_city_fiat_section_from_cash_body(
+    body_lines: List[str], city_label: str, fiat: str, top_n: int
+) -> Optional[List[str]]:
+    """Один блок «FIAT Город» (заголовок + до top_n строк курсов)."""
+    want = f"{fiat} {city_label}"
+    start: Optional[int] = None
+    for i, ln in enumerate(body_lines):
+        if ln.strip() == want:
+            start = i
+            break
+    if start is None:
+        return None
+    content: List[str] = []
+    j = start + 1
+    while j < len(body_lines):
+        ln = body_lines[j]
+        if not ln.strip():
+            break
+        if _CASH_SECTION_HEADER_RE.match(ln.strip()):
+            break
+        content.append(ln)
+        j += 1
+    if len(content) > top_n:
+        content = content[:top_n]
+    return [body_lines[start], *content, ""]
+
+
 def _is_plain_cash_l2_ent(ent: Dict[str, Any]) -> bool:
     deps = ent.get("deps") or {}
     if not isinstance(deps, dict) or not deps:
@@ -236,6 +278,7 @@ def _find_best_plain_cash_l2_key_for_city(
     use_rbc: bool,
     use_banki: bool,
     use_vbr: bool,
+    fiat: Optional[str] = None,
 ) -> Optional[str]:
     """
     Запасной L2 «полный отчёт по всем городам» для вырезки одного города.
@@ -245,7 +288,7 @@ def _find_best_plain_cash_l2_key_for_city(
     l2 = doc.get("l2") or {}
     if not isinstance(l2, dict):
         return None
-    usd_hdr = f"USD {city_label}"
+    section_hdr = f"{fiat or 'USD'} {city_label}"
     want_top = int(top_n)
     best_k: Optional[str] = None
     best_sv = -1.0
@@ -260,11 +303,14 @@ def _find_best_plain_cash_l2_key_for_city(
         body = str(ent.get("text") or "")
         if not body.strip():
             continue
-        if not any(ln.strip() == usd_hdr for ln in body.splitlines()):
+        if not any(ln.strip() == section_hdr for ln in body.splitlines()):
             continue
         pl = ent.get("payload") or {}
         if not isinstance(pl, dict):
             pl = {}
+        cached_fiat = pl.get("fiat")
+        if cached_fiat and fiat and str(cached_fiat) != str(fiat):
+            continue
         cached_top = int(pl.get("top_n", 3))
         if cached_top < want_top:
             continue
@@ -537,7 +583,7 @@ def _fetch_cash_thb_cell(
 
 def build_cash_report_text(
     *,
-    top_n: int = 3,
+    top_n: int = 10,
     timeout: float = 22.0,
     use_rbc: bool = True,
     use_banki: bool = True,
@@ -547,12 +593,16 @@ def build_cash_report_text(
     unified_allow_stale: bool = False,
     city_label: Optional[str] = None,
     readonly: bool = False,
+    fiat: Optional[str] = None,
 ) -> Tuple[str, List[str]]:
     """
     Только курсы продажи наличной валюты (РБК + Banki + VBR при включении).
     Порядок: валюты USD→EUR→CNY, города как в ``_CASH_LOCATIONS``.
+    Параметр ``fiat`` — только USD / EUR / CNY (остальные ячейки не строятся).
     """
     global _unified_served_stale_l2_plain
+
+    fiat_norm: Optional[str] = normalize_cash_fiat(fiat) if fiat else None
 
     unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
     doc = ucc.load_unified(unified_path)
@@ -563,6 +613,16 @@ def build_cash_report_text(
         use_banki=use_banki,
         use_vbr=use_vbr,
         timeout=timeout,
+        fiat=fiat_norm,
+    )
+    legacy_l2_base = _cash_l2_key(
+        kind="plain_tt",
+        top_n=top_n,
+        use_rbc=use_rbc,
+        use_banki=use_banki,
+        use_vbr=use_vbr,
+        timeout=timeout,
+        fiat=None,
     )
     l2_key = (
         l2_key_base
@@ -614,23 +674,60 @@ def build_cash_report_text(
         )
 
     allow_stale_l2 = bool(unified_allow_stale or readonly)
+    hit_ck: Optional[str] = None
+    deps: Dict[str, Any] = {}
     if not refresh:
         body = ""
         ent: Optional[Dict[str, Any]] = None
-        slice_from_full = False
-        keys_try: List[str] = [l2_key]
+        keys_try: List[str] = []
+        seen_k: set[str] = set()
+
+        def _add_key(k: str) -> None:
+            if k not in seen_k:
+                seen_k.add(k)
+                keys_try.append(k)
+
+        _add_key(l2_key)
         if city_label and l2_key != l2_key_base:
-            keys_try.append(l2_key_base)
+            _add_key(l2_key_base)
+        if fiat_norm:
+            if city_label:
+                _add_key(f"{legacy_l2_base}:city:{ucc.stable_digest(city_label)}")
+            _add_key(legacy_l2_base)
+
         for ck in keys_try:
             ent, from_stale_l2 = _cash_l2_get_fresh_or_stale(
                 doc, ck, allow_stale_l2=allow_stale_l2
             )
-            if ent is not None and str(ent.get("text") or "").strip():
-                slice_from_full = bool(
-                    city_label and ck == l2_key_base and l2_key != l2_key_base
+            if ent is None or not str(ent.get("text") or "").strip():
+                ent = None
+                continue
+            slice_from_full = bool(
+                city_label and ck == l2_key_base and l2_key != l2_key_base
+            )
+            deps = ent.get("deps") or {}
+            body = str(ent.get("text") or "")
+            hdr, rest = _split_cash_report_header(body)
+            if city_label and fiat_norm:
+                sliced = _extract_city_fiat_section_from_cash_body(
+                    rest, city_label, fiat_norm, top_n
                 )
-                break
-            ent = None
+                if sliced is None:
+                    ent = None
+                    body = ""
+                    continue
+                body = "\n".join(hdr + sliced).rstrip() + "\n"
+            elif city_label and slice_from_full:
+                sliced = _extract_city_sections_from_cash_body(
+                    rest, city_label, top_n
+                )
+                if sliced is None:
+                    ent = None
+                    body = ""
+                    continue
+                body = "\n".join(hdr + sliced).rstrip() + "\n"
+            hit_ck = ck
+            break
 
         if ent is None and readonly and city_label:
             alt_k = _find_best_plain_cash_l2_key_for_city(
@@ -640,37 +737,44 @@ def build_cash_report_text(
                 use_rbc=use_rbc,
                 use_banki=use_banki,
                 use_vbr=use_vbr,
+                fiat=fiat_norm,
             )
             if alt_k is not None:
                 ent, from_stale_l2 = _cash_l2_get_fresh_or_stale(
                     doc, alt_k, allow_stale_l2=allow_stale_l2
                 )
                 if ent is not None and str(ent.get("text") or "").strip():
-                    slice_from_full = True
+                    deps = ent.get("deps") or {}
+                    body = str(ent.get("text") or "")
+                    hdr, rest = _split_cash_report_header(body)
+                    if fiat_norm:
+                        sliced = _extract_city_fiat_section_from_cash_body(
+                            rest, city_label, fiat_norm, top_n
+                        )
+                    else:
+                        sliced = _extract_city_sections_from_cash_body(
+                            rest, city_label, top_n
+                        )
+                    if sliced is None:
+                        ent = None
+                        body = ""
+                    else:
+                        body = "\n".join(hdr + sliced).rstrip() + "\n"
+                        hit_ck = alt_k
                 else:
                     ent = None
 
-        if ent is not None:
-            deps = ent.get("deps") or {}
-            body = str(ent.get("text") or "")
-            if body.strip():
-                if slice_from_full and city_label:
-                    hdr, rest = _split_cash_report_header(body)
-                    sliced = _extract_city_sections_from_cash_body(
-                        rest, city_label, top_n
-                    )
-                    if sliced is None:
-                        ent = None
-                    else:
-                        body = "\n".join(hdr + sliced).rstrip() + "\n"
-            else:
-                ent = None
+        ro_fragment = bool(
+            city_label
+            and hit_ck is not None
+            and ":city:" not in hit_ck
+        )
 
         if ent is not None and body.strip():
             w = list((ent.get("payload") or {}).get("warnings") or [])
             dep_ok = (not deps) or ucc.l2_deps_match(doc, deps)
             if readonly:
-                if slice_from_full:
+                if ro_fragment:
                     w.append(
                         "readonly: фрагмент города из полного L2 cash (cron/бот кешируют без :city:, "
                         "часто с другим --top)."
@@ -706,8 +810,9 @@ def build_cash_report_text(
     if use_vbr and vbr_cash_enabled():
         src_bits.append("VBR")
     src_label = " + ".join(src_bits) if src_bits else "—"
+    fiat_bit = f", только {fiat_norm}" if fiat_norm else ""
     cash_header = (
-        f"Наличные: {src_label} (топ по курсу продажи); RUB/THB после TT Exchange"
+        f"Наличные: {src_label} (топ по курсу продажи){fiat_bit}; RUB/THB после TT Exchange"
     )
     lines: List[str] = [
         cash_header,
@@ -717,6 +822,8 @@ def build_cash_report_text(
     if not locs:
         return "", [f"Неизвестный город: {city_label}"]
     jobs = _cash_cell_jobs(locs)
+    if fiat_norm:
+        jobs = [j for j in jobs if j[0] == fiat_norm]
 
     def _work(job: _CashCellJob) -> Tuple[List[str], List[str]]:
         fiat_code, _cur_id, city_label, _bk, _rid = job
@@ -796,6 +903,7 @@ def build_cash_report_text(
             "use_rbc": bool(use_rbc),
             "use_banki": bool(use_banki),
             "use_vbr": bool(use_vbr),
+            "fiat": fiat_norm,
         },
     )
     try:
@@ -808,7 +916,7 @@ def build_cash_report_text(
 
 def build_cash_thb_report_text(
     *,
-    top_n: int = 3,
+    top_n: int = 10,
     timeout: float = 22.0,
     use_rbc: bool = True,
     use_banki: bool = True,
@@ -989,7 +1097,7 @@ def build_cash_thb_report_text(
 
 def format_cash_report_with_warnings(
     *,
-    top_n: int = 3,
+    top_n: int = 10,
     timeout: float = 22.0,
     use_rbc: bool = True,
     use_banki: bool = True,
@@ -998,6 +1106,7 @@ def format_cash_report_with_warnings(
     unified_allow_stale: bool = False,
     city_label: Optional[str] = None,
     readonly: bool = False,
+    fiat: Optional[str] = None,
 ) -> str:
     body, w = build_cash_report_text(
         top_n=top_n,
@@ -1009,6 +1118,7 @@ def format_cash_report_with_warnings(
         unified_allow_stale=unified_allow_stale,
         city_label=city_label,
         readonly=readonly,
+        fiat=fiat,
     )
     if readonly:
         return body
@@ -1020,7 +1130,7 @@ def format_cash_report_with_warnings(
 
 def format_cash_thb_report_with_warnings(
     *,
-    top_n: int = 3,
+    top_n: int = 10,
     timeout: float = 22.0,
     use_rbc: bool = True,
     use_banki: bool = True,
@@ -1051,7 +1161,8 @@ def cash_subcommand_help() -> str:
     return (
         "cash — курсы продажи наличной валюты по выбранному городу.\n"
         "  cash                          вывести нумерованный список городов.\n"
-        "  cash N [banki|vbr|rbc|all] [число_top] [--top K] [--sources SPEC] …\n"
+        "  cash N [banki|vbr|rbc|all] [число_top] [--top K] [--sources SPEC] [--fiat USD|EUR|CNY] …\n"
+        "  --fiat — только одна валюта (с номером города N).\n"
         "  SPEC: all, banki, vbr, rbc или через запятую (rbc,banki). "
         "Явный источник перекрывает --no-banki / --no-vbr.\n"
         "  Параллельные ячейки: RATES_PARALLEL_MAX_WORKERS."
@@ -1070,7 +1181,7 @@ def cash_thb_subcommand_help() -> str:
 def _parse_cash_argv(argv: List[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument("city_n", nargs="?", type=int, help="Номер города из списка")
-    p.add_argument("--top", type=int, default=3, help="Число строк по городу")
+    p.add_argument("--top", type=int, default=10, help="Число строк по городу")
     p.add_argument(
         "--sources",
         type=str,
@@ -1093,6 +1204,13 @@ def _parse_cash_argv(argv: List[str]) -> argparse.Namespace:
         "--readonly",
         action="store_true",
         help="Только кеш (в т.ч. с истёкшим TTL), без сети",
+    )
+    p.add_argument(
+        "--fiat",
+        type=str,
+        default=None,
+        metavar="USD|EUR|CNY",
+        help="Показать только выбранную валюту (только вместе с номером города)",
     )
     p.add_argument("-h", "--help", action="store_true")
     return p.parse_args(argv)
@@ -1150,6 +1268,12 @@ def main_cash_cli(argv: List[str]) -> int:
         return 2
     cities = [x[0] for x in _CASH_LOCATIONS]
     if args.city_n is None:
+        if getattr(args, "fiat", None):
+            print(
+                "Параметр --fiat используется только вместе с номером города (см. cash без аргументов).",
+                file=sys.stderr,
+            )
+            return 2
         print("Доступные города:")
         for i, c in enumerate(cities, start=1):
             print(f"{i}. {c}")
@@ -1159,6 +1283,13 @@ def main_cash_cli(argv: List[str]) -> int:
         print(f"Номер города должен быть от 1 до {len(cities)}", file=sys.stderr)
         return 2
     city = cities[idx - 1]
+    fiat_kw: Optional[str] = None
+    if getattr(args, "fiat", None):
+        try:
+            fiat_kw = normalize_cash_fiat(args.fiat)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 2
     text = format_cash_report_with_warnings(
         top_n=args.top,
         use_rbc=use_rbc,
@@ -1167,6 +1298,7 @@ def main_cash_cli(argv: List[str]) -> int:
         refresh=bool(args.refresh),
         city_label=city,
         readonly=bool(getattr(args, "readonly", False)),
+        fiat=fiat_kw,
     )
     sys.stdout.write(text)
     return 0
@@ -1191,6 +1323,12 @@ def main_cash_thb_cli(argv: List[str]) -> int:
         )
     except ValueError as e:
         print(str(e), file=sys.stderr)
+        return 2
+    if getattr(args, "fiat", None):
+        print(
+            "Параметр --fiat поддерживается только у команды cash (не cash-thb).",
+            file=sys.stderr,
+        )
         return 2
     text = format_cash_thb_report_with_warnings(
         top_n=args.top,

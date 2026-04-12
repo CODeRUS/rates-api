@@ -110,6 +110,25 @@ class TestFindBestPlainCashL2(unittest.TestCase):
         self.assertEqual(k, "l2:cash:stub")
 
 
+class TestCashFiatHelpers(unittest.TestCase):
+    def test_normalize_cash_fiat(self) -> None:
+        self.assertEqual(cash_report.normalize_cash_fiat("usd"), "USD")
+        self.assertIsNone(cash_report.normalize_cash_fiat(None))
+        self.assertIsNone(cash_report.normalize_cash_fiat(""))
+        with self.assertRaises(ValueError):
+            cash_report.normalize_cash_fiat("GBP")
+
+    def test_extract_city_fiat_section(self) -> None:
+        body_lines = ["USD Москва", "80.0 | — | A", "81.0 | — | B", "", "EUR Москва", "90"]
+        out = cash_report._extract_city_fiat_section_from_cash_body(
+            body_lines, "Москва", "USD", top_n=10
+        )
+        self.assertEqual(
+            out,
+            ["USD Москва", "80.0 | — | A", "81.0 | — | B", ""],
+        )
+
+
 class TestTopSellOffers(unittest.TestCase):
     def test_sorted_by_sell_ascending(self):
         banks = [

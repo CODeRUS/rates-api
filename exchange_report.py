@@ -19,6 +19,7 @@ if str(_ROOT) not in sys.path:
 
 from rates_parallel import map_bounded
 import rates_unified_cache as ucc
+from cash_report import normalize_cash_fiat
 from ttexchange_fiat_rates import (
     fiat_buy_thb_per_unit,
     normalize_ttexchange_branch_label,
@@ -67,12 +68,16 @@ _TT_FETCH_ERRORS = (
 )
 
 
-def _ex_l2_key(*, top_n: int, lang: str, timeout: float) -> str:
+def _ex_l2_key(
+    *, top_n: int, lang: str, timeout: float, fiat: Optional[str] = None
+) -> str:
     ident: Dict[str, Any] = {
         "top_n": int(top_n),
         "lang": str(lang),
         "timeout": round(float(timeout), 3),
     }
+    if fiat:
+        ident["fiat"] = str(fiat)
     return f"l2:exchange:{ucc.stable_digest(ident)}"
 
 
@@ -215,12 +220,15 @@ def build_exchange_report_text(
     refresh: bool = False,
     unified_allow_stale: bool = False,
     readonly: bool = False,
+    fiat: Optional[str] = None,
 ) -> Tuple[str, List[str]]:
     global _unified_served_stale_l2
 
+    fiat_norm: Optional[str] = normalize_cash_fiat(fiat) if fiat else None
+
     unified_path = ucc.DEFAULT_UNIFIED_CACHE_PATH
     doc = ucc.load_unified(unified_path)
-    l2_key = _ex_l2_key(top_n=top_n, lang=lang, timeout=timeout)
+    l2_key = _ex_l2_key(top_n=top_n, lang=lang, timeout=timeout, fiat=fiat_norm)
     lang = (lang or "ru").strip() or "ru"
     from_stale_l2 = False
 
@@ -302,6 +310,7 @@ def build_exchange_report_text(
         jobs.append((label, bid_s))
 
     dep_key_list: List[str] = [stores_key]
+    gate_fiat = fiat_norm or "USD"
 
     def _fetch_currencies(job: Tuple[str, str]) -> Any:
         _lb, bid_s = job
@@ -310,7 +319,7 @@ def build_exchange_report_text(
             hit = ucc.l1_get_valid(doc, cur_key)
             if hit is not None:
                 cur_cached = hit[1]
-                if fiat_buy_thb_per_unit(cur_cached, "USD") is not None:
+                if fiat_buy_thb_per_unit(cur_cached, gate_fiat) is not None:
                     return cur_cached
         cur = ttx.get_currencies(bid_s, is_main=False, timeout=timeout)
         ucc.l1_set(
@@ -322,6 +331,7 @@ def build_exchange_report_text(
         return cur
 
     scored: List[Tuple[str, float, Optional[float], Optional[float], str]] = []
+    scored_one: List[Tuple[str, float, str]] = []
     for (label, bid_s), cur, exc in map_bounded(
         jobs,
         _fetch_currencies,
@@ -335,6 +345,12 @@ def build_exchange_report_text(
             raise exc
         if cur is None:
             continue
+        if fiat_norm:
+            rate = fiat_buy_thb_per_unit(cur, fiat_norm)
+            if rate is None:
+                continue
+            scored_one.append((label, rate, bid_s))
+            continue
         usd = fiat_buy_thb_per_unit(cur, "USD")
         if usd is None:
             continue
@@ -342,27 +358,44 @@ def build_exchange_report_text(
         cny = fiat_buy_thb_per_unit(cur, "CNY")
         scored.append((label, usd, eur, cny, bid_s))
 
-    scored.sort(
-        key=lambda t: (
-            -t[1],
-            -(t[2] if t[2] is not None else -1e9),
-            -(t[3] if t[3] is not None else -1e9),
-        )
-    )
-    top = scored[: max(0, top_n)]
-
-    lines: List[str] = [
-        "Обмен наличные → THB (TT Exchange), THB за 1 ед. валюты",
-        "",
-        f"{'USD':>7}  {'EUR':>7}  {'CNY':>7}  Филиал",
-    ]
-
-    if not top:
-        lines.append("(нет филиалов с курсом USD)")
-        warnings.append("Ни у одного филиала не найден USD (buy) в курсах TT")
+    if fiat_norm:
+        scored_one.sort(key=lambda t: -t[1])
+        top_one = scored_one[: max(0, top_n)]
+        lines = [
+            f"Обмен наличные → THB (TT Exchange), только {fiat_norm}, THB за 1 {fiat_norm}",
+            "",
+            f"{fiat_norm:>7}  Филиал",
+        ]
+        if not top_one:
+            lines.append(f"(нет филиалов с курсом {fiat_norm})")
+            warnings.append(
+                f"Ни у одного филиала не найден {fiat_norm} (buy) в курсах TT"
+            )
+        else:
+            for label, rate, _bid in top_one:
+                lines.append(f"{rate:>7.2f}  {label}")
     else:
-        for label, u, eur, cny, _bid in top:
-            lines.append(_format_table_row(label, u, eur, cny))
+        scored.sort(
+            key=lambda t: (
+                -t[1],
+                -(t[2] if t[2] is not None else -1e9),
+                -(t[3] if t[3] is not None else -1e9),
+            )
+        )
+        top = scored[: max(0, top_n)]
+
+        lines = [
+            "Обмен наличные → THB (TT Exchange), THB за 1 ед. валюты",
+            "",
+            f"{'USD':>7}  {'EUR':>7}  {'CNY':>7}  Филиал",
+        ]
+
+        if not top:
+            lines.append("(нет филиалов с курсом USD)")
+            warnings.append("Ни у одного филиала не найден USD (buy) в курсах TT")
+        else:
+            for label, u, eur, cny, _bid in top:
+                lines.append(_format_table_row(label, u, eur, cny))
 
     full = "\n".join(lines).rstrip() + "\n"
     deps_map = _ex_deps_for_keys(doc, dep_key_list)
@@ -372,7 +405,7 @@ def build_exchange_report_text(
         ttl_sec=ucc.TTL_L2_EXCHANGE_SEC,
         text=full,
         deps=deps_map,
-        payload={"warnings": warnings},
+        payload={"warnings": warnings, "fiat": fiat_norm},
     )
     try:
         ucc.save_unified(doc, unified_path)
@@ -391,6 +424,7 @@ def format_exchange_report_with_warnings(
     refresh: bool = False,
     unified_allow_stale: bool = False,
     readonly: bool = False,
+    fiat: Optional[str] = None,
 ) -> str:
     body, w = build_exchange_report_text(
         top_n=top_n,
@@ -400,6 +434,7 @@ def format_exchange_report_with_warnings(
         refresh=refresh,
         unified_allow_stale=unified_allow_stale,
         readonly=readonly,
+        fiat=fiat,
     )
     if readonly:
         return body
@@ -412,9 +447,10 @@ def format_exchange_report_with_warnings(
 def exchange_subcommand_help() -> str:
     return (
         "exchange — топ филиалов TT Exchange по приёму наличных USD/EUR/CNY→THB "
-        "(THB за 1 ед.; сортировка по USD).\n"
-        "  exchange [--top N] [--lang ru|en] [--timeout СЕК] [--refresh]   "
-        "N по умолчанию 10; --refresh — заново запросить API и обновить unified-кеш.\n"
+        "(THB за 1 ед.; по умолчанию сортировка по USD).\n"
+        "  exchange [--top N] [--lang ru|en] [--timeout СЕК] [--fiat USD|EUR|CNY] [--refresh]   "
+        "N по умолчанию 10; --fiat — одна колонка и сортировка по этой валюте (филиалы без неё пропускаются).\n"
+        "  --refresh — заново запросить API и обновить unified-кеш.\n"
         "  Параллельные запросы курсов TT: переменная RATES_PARALLEL_MAX_WORKERS (по умолчанию 12)."
     )
 
@@ -434,6 +470,13 @@ def _parse_exchange_argv(argv: List[str]) -> argparse.Namespace:
         action="store_true",
         help="Только кеш (в т.ч. с истёкшим TTL), без сети",
     )
+    p.add_argument(
+        "--fiat",
+        type=str,
+        default=None,
+        metavar="USD|EUR|CNY",
+        help="Только выбранная валюта в таблице и в сортировке",
+    )
     p.add_argument("-h", "--help", action="store_true")
     return p.parse_args(argv)
 
@@ -446,12 +489,20 @@ def main_exchange_cli(argv: List[str]) -> int:
     if args.top < 1:
         print("--top должен быть >= 1", file=sys.stderr)
         return 2
+    fiat_kw: Optional[str] = None
+    if getattr(args, "fiat", None):
+        try:
+            fiat_kw = normalize_cash_fiat(args.fiat)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 2
     text = format_exchange_report_with_warnings(
         top_n=args.top,
         lang=(args.lang or "ru").strip() or "ru",
         timeout=max(5.0, float(args.timeout)),
         refresh=bool(args.refresh),
         readonly=bool(getattr(args, "readonly", False)),
+        fiat=fiat_kw,
     )
     sys.stdout.write(text)
     return 0
