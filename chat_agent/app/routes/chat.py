@@ -43,7 +43,11 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
 
     store = request.app.state.redis_store
     llm = request.app.state.llm_client
+    audit = getattr(request.app.state, "audit_store", None)
 
+    reply = ""
+    err: Optional[str] = None
+    reply_parse_mode: Optional[str] = None
     try:
         reply, err, reply_parse_mode = await run_chat_turn(
             settings=settings,
@@ -55,8 +59,17 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
         )
     except Exception:
         logger.exception("run_chat_turn failed")
-        return ChatResponse(
-            reply="", error="Внутренняя ошибка сервиса.", reply_parse_mode=None
+        err = "Внутренняя ошибка сервиса."
+        reply = ""
+        reply_parse_mode = None
+
+    if audit is not None:
+        await audit.append_turn(
+            user_id=body.user_id,
+            user_message=body.message.strip(),
+            assistant_message=reply or "",
+            error=err,
+            reply_parse_mode=reply_parse_mode if not err else None,
         )
 
     if err:

@@ -4,9 +4,21 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Optional
+from urllib.parse import quote
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _build_postgres_dsn(user: str, password: str, host: str, port: int, db: str) -> str:
+    u = quote(user.strip(), safe="")
+    p = quote(password, safe="")
+    h = host.strip()
+    if ":" in h and not h.startswith("["):
+        host_part = f"[{h}]"
+    else:
+        host_part = h
+    return f"postgresql://{u}:{p}@{host_part}:{port}/{quote(db.strip(), safe='')}"
 
 
 def _default_repo_root() -> Path:
@@ -94,9 +106,41 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", validation_alias="CHAT_AGENT_HOST")
     port: int = Field(default=18880, validation_alias="CHAT_AGENT_PORT")
 
+    #: Включить запись аудита в PostgreSQL (0/false — не подключаться к БД).
+    audit_enabled_flag: bool = Field(
+        default=True, validation_alias="CHAT_AGENT_AUDIT_ENABLED"
+    )
+    #: Полный URL переопределяет сборку из CHAT_AGENT_PG_* (SSL, нестандартный DSN).
+    audit_database_url: Optional[str] = Field(
+        default=None, validation_alias="CHAT_AGENT_DATABASE_URL"
+    )
+    pg_user: str = Field(default="rates", validation_alias="CHAT_AGENT_PG_USER")
+    pg_password: str = Field(default="rates", validation_alias="CHAT_AGENT_PG_PASSWORD")
+    pg_host: str = Field(default="127.0.0.1", validation_alias="CHAT_AGENT_PG_HOST")
+    pg_port: int = Field(default=5432, validation_alias="CHAT_AGENT_PG_PORT", ge=1, le=65535)
+    pg_db: str = Field(default="rates_chat", validation_alias="CHAT_AGENT_PG_DB")
+    audit_retention_days: int = Field(
+        default=30, validation_alias="CHAT_AGENT_AUDIT_RETENTION_DAYS", ge=1, le=3650
+    )
+    audit_max_text_chars: int = Field(
+        default=32000, validation_alias="CHAT_AGENT_AUDIT_MAX_TEXT_CHARS", ge=1000, le=500_000
+    )
+
     @field_validator("pipeline_log", mode="before")
     @classmethod
     def coerce_pipeline_log(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        if v is None:
+            return True
+        s = str(v).strip().lower()
+        if s in ("0", "false", "no", "off", ""):
+            return False
+        return True
+
+    @field_validator("audit_enabled_flag", mode="before")
+    @classmethod
+    def coerce_audit_enabled_flag(cls, v: Any) -> bool:
         if isinstance(v, bool):
             return v
         if v is None:
@@ -113,6 +157,25 @@ class Settings(BaseSettings):
             raise ValueError("CHAT_AGENT_SHARED_SECRET must be non-empty")
         return v.strip()
 
+    @model_validator(mode="after")
+    def _resolve_audit_database_url(self) -> Settings:
+        if not self.audit_enabled_flag:
+            object.__setattr__(self, "audit_database_url", None)
+            return self
+        explicit = (self.audit_database_url or "").strip()
+        if explicit:
+            object.__setattr__(self, "audit_database_url", explicit)
+            return self
+        built = _build_postgres_dsn(
+            self.pg_user,
+            self.pg_password,
+            self.pg_host,
+            self.pg_port,
+            self.pg_db,
+        )
+        object.__setattr__(self, "audit_database_url", built)
+        return self
+
     def effective_openai_planner_model(self) -> str:
         return (self.openai_planner_model or self.openai_model).strip()
 
@@ -127,6 +190,9 @@ class Settings(BaseSettings):
 
     def google_key(self) -> Optional[str]:
         return (self.google_api_key or self.gemini_api_key or "").strip() or None
+
+    def audit_enabled(self) -> bool:
+        return self.audit_enabled_flag and bool((self.audit_database_url or "").strip())
 
     def provider_config_ok(self) -> bool:
         if self.llm_provider == "openai":

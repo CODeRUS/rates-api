@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat-agent — аудит диалогов</title>
+  <link rel="stylesheet" href="/admin/static/styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>Аудит диалогов</h1>
+    <p class="hint">Доступ только с localhost. Секрет — тот же, что <code>X-Chat-Agent-Secret</code> у бота.</p>
+  </header>
+
+  <section class="auth card">
+    <label>Секрет <input type="password" id="secret" autocomplete="current-password" /></label>
+    <button type="button" id="saveSecret">Сохранить в сессии</button>
+    <span id="authStatus" class="status"></span>
+  </section>
+
+  <section class="layout">
+    <aside class="card users">
+      <h2>Пользователи</h2>
+      <button type="button" id="reloadUsers">Обновить список</button>
+      <ul id="userList"></ul>
+    </aside>
+    <main class="card chat">
+      <h2>История <span id="activeUser"></span></h2>
+      <div id="chatLog" class="chat-log"></div>
+      <button type="button" id="loadOlder" class="hidden">Загрузить раньше</button>
+    </main>
+  </section>
+
+  <script src="/admin/static/app.js"></script>
+</body>
+</html>
