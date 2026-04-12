@@ -7,7 +7,9 @@ from pydantic import ValidationError
 
 from chat_agent.app.schemas.chat import ChatRequest, PlannerOutput
 from chat_agent.app.services.orchestrator import (
+    _early_fixed_reply_for_plan,
     _execution_steps,
+    _infer_rates_summary_followup,
     _parse_planner_output,
     _strip_json_fence,
 )
@@ -37,7 +39,7 @@ def test_strip_json_fence() -> None:
 
 def test_parse_planner_output() -> None:
     p = _parse_planner_output(
-        '{"tool":"get_usdt_report","arguments":{},"needs_tool":true,"think":false}'
+        '{"tool":"get_usdt_report","arguments":{},"needs_tool":true,"think":false,"out_of_scope":false}'
     )
     assert p.tool == "get_usdt_report"
     assert p.needs_tool is True
@@ -46,7 +48,7 @@ def test_parse_planner_output() -> None:
 
 def test_parse_planner_with_fence() -> None:
     p = _parse_planner_output(
-        '```\n{"tool":"none","arguments":{},"needs_tool":false}\n```'
+        '```\n{"tool":"none","arguments":{},"needs_tool":false,"think":false,"out_of_scope":false}\n```'
     )
     assert p.tool == "none"
     assert p.needs_tool is False
@@ -55,9 +57,80 @@ def test_parse_planner_with_fence() -> None:
 
 def test_parse_planner_think_true() -> None:
     p = _parse_planner_output(
-        '{"tool":"get_calc_comparison","arguments":{"budget_rub":100000,"fiat":"usd","rub_per_fiat":90.5},"needs_tool":true,"think":true}'
+        '{"tool":"get_calc_comparison","arguments":{"budget_rub":100000,"fiat":"usd","rub_per_fiat":90.5},'
+        '"needs_tool":true,"think":true,"out_of_scope":false}'
     )
     assert p.think is True
+
+
+def test_parse_planner_out_of_scope() -> None:
+    p = _parse_planner_output(
+        '{"tool":"none","arguments":{},"needs_tool":false,"think":false,"out_of_scope":true}'
+    )
+    assert p.out_of_scope is True
+
+
+def test_early_fixed_reply_out_of_scope() -> None:
+    p = PlannerOutput(
+        tool="none",
+        arguments={},
+        needs_tool=False,
+        think=False,
+        out_of_scope=True,
+    )
+    assert _early_fixed_reply_for_plan(p, []) is not None
+    assert "только на вопросы" in _early_fixed_reply_for_plan(p, [])
+
+
+def test_early_fixed_reply_none_when_tools_run() -> None:
+    p = PlannerOutput(
+        tool="get_usdt_report",
+        arguments={},
+        needs_tool=True,
+        think=False,
+        out_of_scope=False,
+    )
+    assert _early_fixed_reply_for_plan(p, [("get_usdt_report", {})]) is None
+
+
+def test_infer_rates_summary_followup_positive() -> None:
+    plan = PlannerOutput(
+        tool="none",
+        arguments={},
+        needs_tool=False,
+        think=True,
+        out_of_scope=False,
+    )
+    hist = [
+        {"role": "user", "content": "как получить баты"},
+        {"role": "assistant", "content": "Bybit P2P → Bitkub 2.443 THB за RUB"},
+    ]
+    assert _infer_rates_summary_followup("ответь еще подробнее", hist, plan, [])
+
+
+def test_infer_rates_summary_followup_no_assistant_rates() -> None:
+    plan = PlannerOutput(
+        tool="none",
+        arguments={},
+        needs_tool=False,
+        think=True,
+        out_of_scope=False,
+    )
+    hist = [{"role": "assistant", "content": "Здравствуйте, чем помочь?"}]
+    assert not _infer_rates_summary_followup("ответь подробнее", hist, plan, [])
+
+
+def test_early_fixed_reply_needs_tool_without_steps() -> None:
+    p = PlannerOutput(
+        tool="none",
+        arguments={},
+        needs_tool=True,
+        think=True,
+        out_of_scope=False,
+    )
+    r = _early_fixed_reply_for_plan(p, [])
+    assert r is not None
+    assert "Не удалось сопоставить" in r
 
 
 def test_planner_snippet_includes_cash_cities_from_cash_report() -> None:
@@ -85,7 +158,7 @@ def test_match_city_name_ambiguous_returns_none() -> None:
 
 def test_parse_planner_tool_steps() -> None:
     raw = (
-        '{"tool":"get_cash_report","arguments":{},"needs_tool":true,"think":true,'
+        '{"tool":"get_cash_report","arguments":{},"needs_tool":true,"think":true,"out_of_scope":false,'
         '"tool_steps":[{"tool":"get_cash_report","arguments":{}},'
         '{"tool":"get_cash_report","arguments":{"city_n":1}}]}'
     )
@@ -102,6 +175,7 @@ def test_execution_steps_prefers_tool_steps() -> None:
             "arguments": {},
             "needs_tool": True,
             "think": True,
+            "out_of_scope": False,
             "tool_steps": [
                 {"tool": "get_cash_report", "arguments": {}},
                 {"tool": "get_cash_report", "arguments": {"city_n": 2}},
@@ -134,5 +208,6 @@ def test_planner_tool_steps_too_many() -> None:
             arguments={},
             needs_tool=True,
             think=False,
+            out_of_scope=False,
             tool_steps=steps,
         )

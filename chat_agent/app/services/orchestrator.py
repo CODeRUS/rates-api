@@ -18,6 +18,17 @@ from chat_agent.app.services.tools import execute_tool
 
 logger = logging.getLogger(__name__)
 
+# Сообщения без вызова responder: только тема курсов / обмена из rates.py.
+_MSG_OUT_OF_SCOPE = (
+    "Я отвечаю только на вопросы про курсы и обмен: сводка RUB→THB, наличные в городах России, "
+    "обменники TT Exchange, USDT, карты РСХБ/UnionPay, сравнение через USD/EUR/CNY (calc). "
+    "Ваш запрос к этой теме не относится — переформулируйте, пожалуйста."
+)
+_MSG_UNRECOGNIZED_PLAN = (
+    "Не удалось сопоставить запрос с доступными командами. "
+    "Напишите, что нужно из курсов: сводка, наличные (город), обмен TT, USDT, РСХБ или calc с суммой и курсом."
+)
+
 _JSON_FENCE = re.compile(r"^```(?:json)?\s*", re.IGNORECASE)
 _JSON_FENCE_END = re.compile(r"\s*```\s*$", re.DOTALL)
 
@@ -61,6 +72,81 @@ def _format_tool_results_for_context(
     for (tname, _), out in zip(exec_steps, raw_chunks):
         parts.append(f"Инструмент «{tname}»:\n{out}")
     return "\n\n".join(parts)
+
+
+def _early_fixed_reply_for_plan(
+    plan: PlannerOutput, exec_steps: list[tuple[str, dict[str, Any]]]
+) -> Optional[str]:
+    """
+    Если инструменты не запускаем — готовый текст пользователю (без второго LLM).
+    ``exec_steps`` уже нормализован: не None (ошибка whitelist обрабатывается выше).
+    """
+    if exec_steps:
+        return None
+    if plan.out_of_scope:
+        return _MSG_OUT_OF_SCOPE
+    if plan.needs_tool:
+        return _MSG_UNRECOGNIZED_PLAN
+    return None
+
+
+def _recent_assistant_text(history: list[dict[str, str]], *, max_msgs: int = 6) -> str:
+    tail = history[-max_msgs:] if history else []
+    parts = [str(m.get("content", "")) for m in tail if m.get("role") == "assistant"]
+    return "\n".join(parts).lower()
+
+
+def _infer_rates_summary_followup(
+    message: str,
+    history: list[dict[str, str]],
+    plan: PlannerOutput,
+    exec_steps: list[tuple[str, dict[str, Any]]],
+) -> bool:
+    """
+    Реплики вроде «ответь подробнее» без параметров: planner с CHAT_AGENT_PLANNER_USER_HISTORY_TURNS=0
+    часто возвращает tool=none — тогда responder видит «вызова не было» и ошибочно говорит «нет в кеше».
+    Если в недавней истории уже был ответ с курсами, подставляем get_rates_summary.
+    """
+    if exec_steps or plan.out_of_scope or plan.needs_tool or plan.tool != "none":
+        return False
+    msg = (message or "").strip().lower()
+    if len(msg) > 160:
+        return False
+    triggers = (
+        "подробнее",
+        "подробней",
+        "разверн",
+        "детальнее",
+        "ещё раз",
+        "еще раз",
+        "продолж",
+        "дополн",
+        "уточни",
+        "поясни",
+        "разжуй",
+        "напиши ещё",
+        "напиши еще",
+        "расскажи ещё",
+        "расскажи еще",
+    )
+    if not any(t in msg for t in triggers):
+        return False
+    blob = _recent_assistant_text(history)
+    markers = (
+        "thb",
+        "бат",
+        "rub",
+        "руб",
+        "forex",
+        "bybit",
+        "корон",
+        "unionpay",
+        "рсхб",
+        "tt exchange",
+        "➔",
+        "p2p",
+    )
+    return any(x in blob for x in markers)
 
 
 def _execution_steps(plan: PlannerOutput) -> Optional[list[tuple[str, dict[str, Any]]]]:
@@ -222,7 +308,8 @@ async def run_chat_turn(
             {
                 "role": "user",
                 "content": (
-                    "Исправь ответ: верни только один JSON-объект с ключами tool, arguments, needs_tool, think "
+                    "Исправь ответ: верни только один JSON-объект с ключами tool, arguments, needs_tool, think, "
+                    "out_of_scope (обязательный bool: true если вопрос не про курсы/обмен из каталога, иначе false) "
                     "и опционально tool_steps (массив объектов {tool, arguments} для 2–5 вызовов подряд). "
                     "Без markdown."
                 ),
@@ -239,8 +326,15 @@ async def run_chat_turn(
             plan = _parse_planner_output(raw_plan)
         except Exception as e2:
             logger.exception("planner retry failed: %s", e2)
-            plan = PlannerOutput(tool="none", arguments={}, needs_tool=False, think=False)
-            raw_plan = ""
+            await store.append_exchange(
+                user_id,
+                message,
+                _MSG_UNRECOGNIZED_PLAN,
+                session_ttl_sec=settings.session_ttl_sec,
+                max_pairs=max(1, settings.max_history_messages // 2),
+            )
+            _log_llm_tokens_for_request(token_acc, user_id=user_id)
+            return _MSG_UNRECOGNIZED_PLAN, None, None
 
     _pl(
         "[pipeline] 3. ответ planner (сырой JSON от модели): %s",
@@ -250,11 +344,56 @@ async def run_chat_turn(
     exec_steps = _execution_steps(plan)
     if exec_steps is None:
         _pl(
-            "[pipeline] 3b. tool/tool_steps вне whitelist — сброс на none",
+            "[pipeline] 3b. tool/tool_steps вне whitelist — фиксированный ответ tool=%s",
             plan.tool,
         )
-        plan = PlannerOutput(tool="none", arguments={}, needs_tool=False, think=False)
-        exec_steps = []
+        await store.append_exchange(
+            user_id,
+            message,
+            _MSG_UNRECOGNIZED_PLAN,
+            session_ttl_sec=settings.session_ttl_sec,
+            max_pairs=max(1, settings.max_history_messages // 2),
+        )
+        _log_llm_tokens_for_request(token_acc, user_id=user_id)
+        return _MSG_UNRECOGNIZED_PLAN, None, None
+
+    early_reply = _early_fixed_reply_for_plan(plan, exec_steps)
+    if early_reply is not None:
+        _pl(
+            "[pipeline] 3c. ранний ответ без инструментов и без responder (%s)",
+            "out_of_scope" if plan.out_of_scope else "needs_tool_without_steps",
+        )
+        await store.append_exchange(
+            user_id,
+            message,
+            early_reply,
+            session_ttl_sec=settings.session_ttl_sec,
+            max_pairs=max(1, settings.max_history_messages // 2),
+        )
+        _log_llm_tokens_for_request(token_acc, user_id=user_id)
+        return early_reply, None, None
+
+    if _infer_rates_summary_followup(message, history, plan, exec_steps):
+        plan = PlannerOutput(
+            tool="get_rates_summary",
+            arguments={},
+            needs_tool=True,
+            think=True,
+            out_of_scope=False,
+            tool_steps=plan.tool_steps,
+        )
+        exec_steps = _execution_steps(plan)
+        if exec_steps is None:
+            await store.append_exchange(
+                user_id,
+                message,
+                _MSG_UNRECOGNIZED_PLAN,
+                session_ttl_sec=settings.session_ttl_sec,
+                max_pairs=max(1, settings.max_history_messages // 2),
+            )
+            _log_llm_tokens_for_request(token_acc, user_id=user_id)
+            return _MSG_UNRECOGNIZED_PLAN, None, None
+        _pl("[pipeline] 3d. follow-up «подробнее» без tool — подставлен get_rates_summary по истории")
 
     _pl(
         "[pipeline] 4. выбранное действие (после валидации) tool=%s needs_tool=%s think=%s arguments=%s tool_steps=%s",
@@ -348,7 +487,6 @@ async def run_chat_turn(
     ]
     for m in history[-8:]:
         resp_messages.append(dict(m))
-    resp_messages.append({"role": "user", "content": message})
     if tool_result_trunc:
         if len(exec_steps) == 1:
             hdr = f"Результат инструмента ({exec_steps[0][0]}):"
@@ -359,10 +497,27 @@ async def run_chat_turn(
             )
         else:
             hdr = "Результат инструмента:"
-        tool_line = f"{hdr}\n{tool_result_trunc}"
+        tool_ctx = f"{hdr}\n{tool_result_trunc}"
     else:
-        tool_line = "Инструмент не вызывался."
-    resp_messages.append({"role": "user", "content": tool_line})
+        tool_ctx = (
+            "В **этом** запросе rates.py не вызывали — отдельного блока с выводом скрипта ниже нет. "
+            "Это не значит, что кеш сервера пуст. Если в истории диалога выше уже есть ответ ассистента с курсами — "
+            "разворачивай ответ **только** на основе этих цифр; не говори «данных в кеше нет». "
+            "Не придумывай новые каналы и курсы вне уже показанного."
+        )
+    # Одно user-сообщение: иначе модель воспринимает второй блок как ещё одну реплику пользователя
+    # (в логах это выглядело как три подряд user без assistant).
+    resp_messages.append(
+        {
+            "role": "user",
+            "content": (
+                "Реплика пользователя (отвечай по смыслу только на неё, в рамках системной инструкции):\n"
+                f"{message}\n\n"
+                "Служебный контекст backend (это НЕ текст пользователя):\n"
+                f"{tool_ctx}"
+            ),
+        }
+    )
 
     _pl(
         "[pipeline] 5. контекст для LLM (responder), модель=%s:\n%s",

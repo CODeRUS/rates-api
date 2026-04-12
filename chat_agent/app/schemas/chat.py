@@ -49,6 +49,11 @@ class PlannerOutput(BaseModel):
     think: bool = False
     #: Несколько вызовов подряд (до 5), если одной команды мало; тогда исполняются все шаги до responder.
     tool_steps: Optional[list[PlannerToolStep]] = None
+    #: Обязателен в JSON планировщика: true — вне темы бота; false — в теме (даже если tool=none).
+    out_of_scope: bool = Field(
+        ...,
+        description="true если вопрос не про курсы/обмен из каталога; false если в теме",
+    )
 
     @field_validator("tool_steps", mode="before")
     @classmethod
