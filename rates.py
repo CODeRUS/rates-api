@@ -151,6 +151,12 @@ def build_arg_parser(*, add_help: bool = True) -> argparse.ArgumentParser:
     )
     p.add_argument("--json", action="store_true", help="JSON в stdout")
     p.add_argument("--thb-ref", type=float, default=DEFAULT_THB_REF, help="Нетто THB для сценариев снятия")
+    p.add_argument(
+        "--receiving-thb",
+        type=float,
+        default=None,
+        help="Целевая сумма получения THB для сводки (переопределяет --thb-ref и сценарные суммы источников).",
+    )
     p.add_argument("--atm-fee", type=float, default=DEFAULT_ATM_FEE_THB, help="Комиссия банкомата, THB")
     p.add_argument("--korona-small", type=float, default=DEFAULT_KORONA_SMALL_RUB)
     p.add_argument(
@@ -198,8 +204,42 @@ def _summary_rows_from_l2_payload(payload: Dict[str, Any]) -> Tuple[List[RateRow
     return rows, baseline, warnings
 
 
+def _readonly_fallback_from_any_l2_summary(
+    doc: Dict[str, Any],
+) -> Optional[Tuple[List[RateRow], float, List[str]]]:
+    l2 = doc.get("l2", {})
+    if not isinstance(l2, dict):
+        return None
+    best_ent: Optional[Dict[str, Any]] = None
+    best_saved = -1.0
+    for k, ent in l2.items():
+        if not (isinstance(k, str) and k.startswith("l2:summary:")):
+            continue
+        if not isinstance(ent, dict):
+            continue
+        payload = ent.get("payload") or {}
+        if not isinstance(payload, dict) or payload.get("rows") is None:
+            continue
+        saved = float(ent.get("saved_unix", 0))
+        if saved > best_saved:
+            best_saved = saved
+            best_ent = ent
+    if best_ent is None:
+        return None
+    payload = best_ent.get("payload") or {}
+    if not isinstance(payload, dict):
+        return None
+    rows, baseline, warnings = _summary_rows_from_l2_payload(payload)
+    warnings = list(warnings) + [
+        "--readonly: точного кеша для текущих параметров нет; показан ближайший доступный snapshot summary."
+    ]
+    return rows, baseline, warnings
+
+
 def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float, List[str]]:
+    target_recv_thb = float(args.receiving_thb) if args.receiving_thb is not None else None
     key_params = {
+        "receiving_thb": target_recv_thb,
         "thb_ref": args.thb_ref,
         "atm_fee": args.atm_fee,
         "korona_small": args.korona_small,
@@ -276,6 +316,19 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
                 rows, baseline = rows_from_cached(raw)
                 warnings = list(raw.get("warnings", []))
 
+    if not rows and readonly:
+        any_hit = _readonly_fallback_from_any_l2_summary(doc)
+        if any_hit is not None:
+            rows, baseline, warnings = any_hit
+        else:
+            hit_any = load_stale_cache(args.cache_file)
+            if hit_any is not None:
+                raw_any, _saved_any = hit_any
+                rows, baseline = rows_from_cached(raw_any)
+                warnings = list(raw_any.get("warnings", [])) + [
+                    "--readonly: точного кеша для текущих параметров нет; использован snapshot из legacy-кеша."
+                ]
+
     deps: Dict[str, int] = {}
     if not rows:
         if readonly:
@@ -296,6 +349,7 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
             avosend_rub=args.avosend_rub,
             unionpay_date=args.unionpay_date,
             moex_override=args.moex_override,
+            receiving_thb=target_recv_thb,
             warnings=[],
         )
         rows, baseline, warnings, deps = run_sources_unified(
@@ -436,6 +490,11 @@ def _fetch_context_from_summary_args(args: argparse.Namespace) -> FetchContext:
         avosend_rub=args.avosend_rub,
         unionpay_date=args.unionpay_date,
         moex_override=args.moex_override,
+        receiving_thb=(
+            float(args.receiving_thb)
+            if getattr(args, "receiving_thb", None) is not None
+            else None
+        ),
         warnings=[],
     )
 
@@ -474,7 +533,7 @@ def _print_single_source_summary_usage(stream: TextIO, source_id: str) -> None:
     print(
         f"Использование: rates.py [общие опции] {source_id} summary [--refresh]\n\n"
         "Запрос только этого источника. Учитываются общие параметры сводки: "
-        "--thb-ref, --atm-fee, --korona-small, --korona-large-thb, --avosend-rub, "
+        "--receiving-thb, --thb-ref, --atm-fee, --korona-small, --korona-large-thb, --avosend-rub, "
         "--unionpay-date, --moex-override. Кеш полной сводки (.rates_summary_cache) "
         "не используется; --refresh в хвосте summary допускается для единообразия с CLI.",
         file=stream,
@@ -485,7 +544,7 @@ def print_global_help(parser: argparse.ArgumentParser) -> None:
     parser.print_help()
     print("\nКоманды:")
     print(
-        "  (сводка) Опции: --refresh | --readonly, --json, --filter NAME — пресет постфильтрации строк "
+        "  (сводка) Опции: --refresh | --readonly, --json, --receiving-thb THB, --filter NAME — пресет постфильтрации строк "
         "(неизвестное имя игнорируется). --readonly — без HTTP, только кеш."
     )
     print(

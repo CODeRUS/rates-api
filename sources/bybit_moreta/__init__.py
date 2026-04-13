@@ -84,7 +84,15 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     if r_thb is None or r_thb <= 0:
         return None
 
-    usdt_for_20k = _CASH_THB / r_thb + _TRANSFER_FEE_USD
-    rub_per_thb = (usdt_for_20k * p_min) / _CASH_THB
+    target_thb = (
+        float(ctx.receiving_thb)
+        if (ctx.receiving_thb is not None and ctx.receiving_thb > 0)
+        else _CASH_THB
+    )
+    usdt_for_target = target_thb / r_thb + _TRANSFER_FEE_USD
+    rub_per_thb = (usdt_for_target * p_min) / target_thb
+    label = _LABEL
+    if target_thb != _CASH_THB:
+        label = f"{_LABEL} (≈ {int(target_thb)} THB)"
 
-    return [SourceQuote(rub_per_thb, _LABEL)]
+    return [SourceQuote(rub_per_thb, label)]

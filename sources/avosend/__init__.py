@@ -24,9 +24,49 @@ def command(argv: list[str]) -> int:
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     from . import avosend_commission as av
 
-    amt = ctx.avosend_rub
-    note = f"от {fmt_money_ru(amt)} RUB"
-    avo_label = f"Avosend получение в Big C (от {fmt_money_ru(amt)} RUB)"
+    target_thb = (
+        float(ctx.receiving_thb)
+        if (ctx.receiving_thb is not None and ctx.receiving_thb > 0)
+        else None
+    )
+    amt = float(ctx.avosend_rub)
+
+    def _find_rub_for_target(mode: av.TransferMode, thb_target: float) -> Optional[float]:
+        lo, hi = 1000.0, 1_000_000.0
+        best: Optional[float] = None
+        for _ in range(14):
+            mid = (lo + hi) / 2.0
+            d = av.fetch_commission(mid, mode)
+            to = float(d.get("to") or 0.0)
+            if to <= 0:
+                return None
+            if to >= thb_target:
+                best = mid
+                hi = mid
+            else:
+                lo = mid
+        return best
+
+    if target_thb is not None:
+        try:
+            guessed = _find_rub_for_target(av.TransferMode.CASH, target_thb)
+            if guessed is not None:
+                amt = guessed
+        except Exception:
+            # API Avosend иногда возвращает HTML-заглушку вместо JSON.
+            # Для summary не считаем это ошибкой: просто откатываемся к обычной baseline-сумме.
+            pass
+
+    note = (
+        f"≈ {fmt_money_ru(target_thb)} THB"
+        if target_thb is not None
+        else f"от {fmt_money_ru(amt)} RUB"
+    )
+    avo_label = (
+        f"Avosend получение в Big C (≈ {fmt_money_ru(target_thb)} THB)"
+        if target_thb is not None
+        else f"Avosend получение в Big C (от {fmt_money_ru(amt)} RUB)"
+    )
 
     def rate_mode(mode: av.TransferMode) -> Optional[float]:
         try:

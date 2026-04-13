@@ -40,13 +40,27 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         else None
     )
     rr = rr if rr is not None else e24.DEFAULT_REAL_RATE
+    target_thb = (
+        float(ctx.receiving_thb)
+        if (ctx.receiving_thb is not None and ctx.receiving_thb > 0)
+        else None
+    )
     rub_best = float(e24.RUB_MIN_FOR_ZERO_MARKUP)
+    if target_thb is not None:
+        rub_best = max(1.0, target_thb * rr)
+        # Небольшая фикс-точка: курс зависит от amount через markup, сходится за 2-3 итерации.
+        for _ in range(4):
+            rub_best = max(1.0, target_thb * e24.customer_rate_rub_per_thb(rub_best, rr))
     r_ex = e24.customer_rate_rub_per_thb(rub_best, rr)
     out: List[SourceQuote] = [
         SourceQuote(
             r_ex,
             "Ex24",
-            note=f"от {fmt_money_ru(rub_best)} RUB",
+            note=(
+                f"≈ {fmt_money_ru(target_thb)} THB"
+                if target_thb is not None
+                else f"от {fmt_money_ru(rub_best)} RUB"
+            ),
         )
     ]
     if text:

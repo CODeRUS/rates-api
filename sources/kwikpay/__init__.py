@@ -24,8 +24,17 @@ def command(argv: list[str]) -> int:
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     from . import kwikpay_rates as kw
 
+    target_thb = (
+        float(ctx.receiving_thb)
+        if (ctx.receiving_thb is not None and ctx.receiving_thb > 0)
+        else None
+    )
+    amount_probe = 30_001
+    if target_thb is not None:
+        # Грубая оценка RUB/THB для стартового запроса; точное значение вернёт API.
+        amount_probe = max(1000, int(round(target_thb * 2.55)))
     try:
-        kq = kw.fetch_quotes_for_amounts([30_001])
+        kq = kw.fetch_quotes_for_amounts([amount_probe])
     except RuntimeError as e:
         # KwikPay периодически возвращает пустой snap (currency/fee = None).
         # Не шумим в summary, просто пропускаем источник до восстановления ответа.
@@ -39,6 +48,9 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         return None
     if q.fee_rub != 0:
         ctx.warnings.append(
-            f"KwikPay: при amount=30001 комиссия не 0 ({q.fee_rub:g} RUB), курс всё же выведен"
+            f"KwikPay: при amount={amount_probe} комиссия не 0 ({q.fee_rub:g} RUB), курс всё же выведен"
         )
-    return [SourceQuote(q.rub_per_thb, "KwikPay (от 30001 RUB)")]
+    label_note = (
+        f"≈ {int(target_thb)} THB" if target_thb is not None else "от 30001 RUB"
+    )
+    return [SourceQuote(q.rub_per_thb, f"KwikPay ({label_note})")]

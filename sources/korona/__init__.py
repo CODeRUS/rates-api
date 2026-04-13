@@ -25,7 +25,11 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     from . import koronapay_tariffs as kp
 
     out: List[SourceQuote] = []
-    large = ctx.korona_large_thb
+    large = (
+        float(ctx.receiving_thb)
+        if (ctx.receiving_thb is not None and ctx.receiving_thb > 0)
+        else ctx.korona_large_thb
+    )
     lbl_large = f"Korona (от {fmt_money_ru(large)} THB)"
     try:
         rows_kp = kp.fetch_tariffs(receiving_amount_satang=kp.thb_to_satang(large))

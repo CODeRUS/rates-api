@@ -96,6 +96,7 @@ class FetchContext:
     avosend_rub: float
     unionpay_date: Optional[str]
     moex_override: Optional[float]
+    receiving_thb: Optional[float] = None
     warnings: List[str] = field(default_factory=list)
     #: Ссылка на unified doc (только :func:`run_sources_unified`) — примитивы ``prim:*``.
     unified_doc: Optional[Dict[str, Any]] = None
@@ -607,6 +608,7 @@ def collect_rows(
     avosend_rub: float,
     unionpay_date: Optional[str],
     moex_override: Optional[float],
+    receiving_thb: Optional[float] = None,
     sources: Optional[Sequence[RateSource]] = None,
     parallel_max_workers: Optional[int] = None,
 ) -> Tuple[List[RateRow], float, List[str]]:
@@ -619,6 +621,7 @@ def collect_rows(
         avosend_rub=avosend_rub,
         unionpay_date=unionpay_date,
         moex_override=moex_override,
+        receiving_thb=receiving_thb,
         warnings=[],
     )
     return run_sources(ctx, sources, parallel_max_workers=parallel_max_workers)

@@ -104,10 +104,18 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         f_usd = float(fee_usd)
 
     rub_plain = p_min / r_thb
-    usd_for_20k = _CASH_THB / r_thb + f_usd + _EXTRA_THB / r_thb
-    rub_cash = (usd_for_20k * p_min) / _CASH_THB
+    target_thb = (
+        float(ctx.receiving_thb)
+        if (ctx.receiving_thb is not None and ctx.receiving_thb > 0)
+        else _CASH_THB
+    )
+    usd_for_target = target_thb / r_thb + f_usd + _EXTRA_THB / r_thb
+    rub_cash = (usd_for_target * p_min) / target_thb
+    cash_label = _LABEL_CASH_20K
+    if target_thb != _CASH_THB:
+        cash_label = f"Bybit P2P → NovaWallet cash (≈ {int(target_thb)} THB)"
 
     return [
         SourceQuote(rub_plain, _LABEL_PLAIN),
-        SourceQuote(rub_cash, _LABEL_CASH_20K),
+        SourceQuote(rub_cash, cash_label),
     ]

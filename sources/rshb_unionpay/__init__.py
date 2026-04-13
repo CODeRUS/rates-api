@@ -102,7 +102,8 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     if cpt > 0 and rshb_sell > 0:
         out.append(SourceQuote(cfx.rub_per_thb(cpt, rshb_sell), "РСХБ UP RUB (оплата)"))
 
-    thb_ref, atm_fee = ctx.thb_ref, ctx.atm_fee
+    thb_ref = float(ctx.receiving_thb) if (ctx.receiving_thb and ctx.receiving_thb > 0) else ctx.thb_ref
+    atm_fee = ctx.atm_fee
     if cpt > 0 and broker_cny_rub > 0:
         _rub_atm, rpt = cfx.atm_rub_from_cny_path(
             thb_ref,
