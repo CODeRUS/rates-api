@@ -179,6 +179,46 @@ class CalcArgs(BaseModel):
         return s
 
 
+class AvosendArgs(BaseModel):
+    mode: Literal["cash", "bank", "card"] = Field(default="cash")
+    amount: int = Field(..., ge=1)
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def _norm_mode(cls, v: Any) -> Any:
+        if v is None or v == "":
+            return "cash"
+        return str(v).strip().lower()
+
+
+class KoronapayArgs(BaseModel):
+    sending_rub: Optional[int] = Field(default=None, ge=1)
+    receiving_thb: Optional[int] = Field(default=None, ge=1)
+    payment: Optional[str] = None
+    receiving: Optional[str] = None
+    raw: bool = False
+
+    @model_validator(mode="after")
+    def _one_amount(self) -> KoronapayArgs:
+        if (self.sending_rub is None) == (self.receiving_thb is None):
+            raise ValueError("укажите ровно одно из: sending_rub или receiving_thb")
+        return self
+
+
+class Ex24Args(BaseModel):
+    amount_rub: Optional[int] = Field(default=None, ge=1)
+
+
+class KwikpayArgs(BaseModel):
+    amounts: Optional[list[int]] = None
+    country: Optional[str] = None
+    currency: Optional[str] = None
+
+
+class AskmoneyArgs(BaseModel):
+    rub: Optional[int] = Field(default=None, ge=1)
+
+
 async def _run_rates(
     settings: Settings,
     tail_after_readonly: list[str],
@@ -303,6 +343,56 @@ async def tool_get_calc_comparison(settings: Settings, arguments: dict[str, Any]
     return await _run_rates(settings, tail)
 
 
+async def tool_get_avosend_report(settings: Settings, arguments: dict[str, Any]) -> str:
+    m = AvosendArgs.model_validate(arguments or {})
+    tail = ["avosend", m.mode, str(int(m.amount))]
+    return await _run_rates(settings, tail)
+
+
+async def tool_get_koronapay_report(settings: Settings, arguments: dict[str, Any]) -> str:
+    m = KoronapayArgs.model_validate(arguments or {})
+    tail = ["korona", "query"]
+    if m.sending_rub is not None:
+        tail.extend(["--sending-rub", str(int(m.sending_rub))])
+    if m.receiving_thb is not None:
+        tail.extend(["--receiving-thb", str(int(m.receiving_thb))])
+    if m.payment:
+        tail.extend(["--payment", m.payment.strip()])
+    if m.receiving:
+        tail.extend(["--receiving", m.receiving.strip()])
+    if m.raw:
+        tail.append("--raw")
+    return await _run_rates(settings, tail)
+
+
+async def tool_get_ex24_report(settings: Settings, arguments: dict[str, Any]) -> str:
+    m = Ex24Args.model_validate(arguments or {})
+    tail = ["ex24"]
+    if m.amount_rub is not None:
+        tail.append(str(int(m.amount_rub)))
+    return await _run_rates(settings, tail)
+
+
+async def tool_get_kwikpay_report(settings: Settings, arguments: dict[str, Any]) -> str:
+    m = KwikpayArgs.model_validate(arguments or {})
+    tail = ["kwikpay"]
+    if m.amounts:
+        tail.extend(["--amounts", ",".join(str(int(x)) for x in m.amounts)])
+    if m.country:
+        tail.extend(["--country", m.country.strip()])
+    if m.currency:
+        tail.extend(["--currency", m.currency.strip()])
+    return await _run_rates(settings, tail)
+
+
+async def tool_get_askmoney_report(settings: Settings, arguments: dict[str, Any]) -> str:
+    m = AskmoneyArgs.model_validate(arguments or {})
+    tail = ["askmoney"]
+    if m.rub is not None:
+        tail.append(str(int(m.rub)))
+    return await _run_rates(settings, tail)
+
+
 ToolFn = Callable[[Settings, dict[str, Any]], Coroutine[Any, Any, str]]
 
 TOOL_HANDLERS: Dict[str, ToolFn] = {
@@ -312,6 +402,11 @@ TOOL_HANDLERS: Dict[str, ToolFn] = {
     "get_cash_report": tool_get_cash_report,
     "get_exchange_report": tool_get_exchange_report,
     "get_calc_comparison": tool_get_calc_comparison,
+    "get_avosend_report": tool_get_avosend_report,
+    "get_koronapay_report": tool_get_koronapay_report,
+    "get_ex24_report": tool_get_ex24_report,
+    "get_kwikpay_report": tool_get_kwikpay_report,
+    "get_askmoney_report": tool_get_askmoney_report,
 }
 
 

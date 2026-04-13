@@ -125,6 +125,91 @@ def _infer_rates_summary_generic_query(
     return msg in generic
 
 
+def _infer_avosend_query_override(
+    message: str,
+    plan: PlannerOutput,
+    exec_steps: list[tuple[str, dict[str, Any]]],
+) -> Optional[PlannerOutput]:
+    """
+    Фразы про Avosend должны идти в rates.py avosend, а не в rshb/summary.
+    Пример: «какой курс авосенд при получении в отделении 5000 бат».
+    """
+    if exec_steps or plan.out_of_scope:
+        return None
+    msg = (message or "").strip().lower()
+    if not msg or len(msg) > 220:
+        return None
+    if "авосенд" not in msg and "avosend" not in msg:
+        return None
+    m = re.search(r"(\d[\d\s]{0,8})", msg)
+    if not m:
+        return None
+    amount = int(m.group(1).replace(" ", ""))
+    mode = "cash" if any(x in msg for x in ("отделени", "налич", "cash")) else "bank"
+    return PlannerOutput(
+        tool="get_avosend_report",
+        arguments={"mode": mode, "amount": amount},
+        needs_tool=True,
+        think=True,
+        out_of_scope=False,
+        tool_steps=None,
+    )
+
+
+def _infer_source_query_override(
+    message: str,
+    plan: PlannerOutput,
+    exec_steps: list[tuple[str, dict[str, Any]]],
+) -> Optional[PlannerOutput]:
+    if exec_steps or plan.out_of_scope:
+        return None
+    msg = (message or "").strip().lower()
+    if not msg or len(msg) > 240:
+        return None
+
+    m = re.search(r"(\d[\d\s]{0,8})", msg)
+    amount = int(m.group(1).replace(" ", "")) if m else None
+
+    if "корона" in msg or "korona" in msg or "koronapay" in msg:
+        args: dict[str, Any] = {"sending_rub": amount} if amount else {"receiving_thb": 5000}
+        return PlannerOutput(
+            tool="get_koronapay_report",
+            arguments=args,
+            needs_tool=True,
+            think=True,
+            out_of_scope=False,
+            tool_steps=None,
+        )
+    if "ex24" in msg:
+        return PlannerOutput(
+            tool="get_ex24_report",
+            arguments={"amount_rub": amount} if amount else {},
+            needs_tool=True,
+            think=True,
+            out_of_scope=False,
+            tool_steps=None,
+        )
+    if "kwikpay" in msg or "квикпей" in msg:
+        return PlannerOutput(
+            tool="get_kwikpay_report",
+            arguments={"amounts": [amount]} if amount else {},
+            needs_tool=True,
+            think=True,
+            out_of_scope=False,
+            tool_steps=None,
+        )
+    if "askmoney" in msg or "аскмани" in msg:
+        return PlannerOutput(
+            tool="get_askmoney_report",
+            arguments={"rub": amount} if amount else {},
+            needs_tool=True,
+            think=True,
+            out_of_scope=False,
+            tool_steps=None,
+        )
+    return None
+
+
 def _infer_rates_summary_followup(
     message: str,
     history: list[dict[str, str]],
@@ -446,6 +531,38 @@ async def run_chat_turn(
             _log_llm_tokens_for_request(token_acc, user_id=user_id)
             return _MSG_UNRECOGNIZED_PLAN, None, None
         _pl("[pipeline] 3e. общий запрос про курс без tool — подставлен get_rates_summary")
+
+    avosend_override = _infer_avosend_query_override(message, plan, exec_steps)
+    if avosend_override is not None:
+        plan = avosend_override
+        exec_steps = _execution_steps(plan)
+        if exec_steps is None:
+            await store.append_exchange(
+                user_id,
+                message,
+                _MSG_UNRECOGNIZED_PLAN,
+                session_ttl_sec=settings.session_ttl_sec,
+                max_pairs=max(1, settings.max_history_messages // 2),
+            )
+            _log_llm_tokens_for_request(token_acc, user_id=user_id)
+            return _MSG_UNRECOGNIZED_PLAN, None, None
+        _pl("[pipeline] 3f. запрос про Avosend — подставлен get_avosend_report")
+
+    source_override = _infer_source_query_override(message, plan, exec_steps)
+    if source_override is not None:
+        plan = source_override
+        exec_steps = _execution_steps(plan)
+        if exec_steps is None:
+            await store.append_exchange(
+                user_id,
+                message,
+                _MSG_UNRECOGNIZED_PLAN,
+                session_ttl_sec=settings.session_ttl_sec,
+                max_pairs=max(1, settings.max_history_messages // 2),
+            )
+            _log_llm_tokens_for_request(token_acc, user_id=user_id)
+            return _MSG_UNRECOGNIZED_PLAN, None, None
+        _pl("[pipeline] 3g. запрос по конкретному источнику — подставлен source tool")
 
     _pl(
         "[pipeline] 4. выбранное действие (после валидации) tool=%s needs_tool=%s think=%s arguments=%s tool_steps=%s",

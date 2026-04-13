@@ -19,6 +19,8 @@ def build_planner_system(*, extra_env_system: str) -> str:
 3) `arguments` заполняй только данными из текущей реплики; лишние поля запрещены.
 4) Если нужен сценарий из нескольких команд (`tool_steps`), ставь `needs_tool=true` и `think=true`.
 5) Если вопрос в теме, но без нужных параметров/без необходимости вызывать rates.py — `tool="none"`, `needs_tool=false`, `out_of_scope=false`, `think` по смыслу.
+6) Если в реплике явно упомянут Avosend (авосенд/avosend) и есть сумма для расчёта — выбирай `get_avosend_report`; для «получение в отделении» ставь `mode="cash"` и обычно `think=true`.
+7) Если явно упомянут конкретный источник (`koronapay/корона`, `ex24`, `kwikpay`, `askmoney`) — выбирай одноимённый tool источника, а не общую сводку.
 
 Инструменты и точные правила выбора:
 {PLANNER_TOOLS_SNIPPET}

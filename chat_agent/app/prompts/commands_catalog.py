@@ -58,6 +58,27 @@ PLANNER_TOOLS_SNIPPET = (
   Обязательные поля: `budget_rub` (int), `fiat` строго `"usd"|"eur"|"cny"`, `rub_per_fiat` (>0).
   Если этих трёх параметров нет в текущей реплике, не вызывай calc.
 
+- `get_avosend_report` (`rates.py --readonly avosend <mode> <amount>`):
+  `arguments`: `mode` ("cash"|"bank"|"card"), `amount` (int > 0).
+  Запросы про Avosend, «получение в отделении/наличными», «avosend cash 5000» веди сюда.
+  Для вопросов с «что выгоднее/поясни» ставь `think=true`; для короткого запроса конкретного тарифа обычно тоже `think=true`, чтобы ответ пояснил сумму и курс.
+
+- `get_koronapay_report` (`rates.py --readonly korona query ...`):
+  `arguments`: ровно одно из `sending_rub` или `receiving_thb`; опционально `payment`, `receiving`, `raw`.
+  Запросы про KoronaPay/Корона («по курсу короны», «сколько получу») веди сюда.
+
+- `get_ex24_report` (`rates.py --readonly ex24 [amount_rub]`):
+  `arguments`: `amount_rub?` (int).
+  Запросы про Ex24 и курс/получение по конкретной сумме RUB.
+
+- `get_kwikpay_report` (`rates.py --readonly kwikpay ...`):
+  `arguments`: `amounts?` (list[int]), `country?`, `currency?`.
+  Запросы про KwikPay/квикпей.
+
+- `get_askmoney_report` (`rates.py --readonly askmoney [rub]`):
+  `arguments`: `rub?` (int).
+  Запросы про askmoney/аскмани по конкретной сумме.
+
 Если кеш пустой, это видно в stderr от rates.py; цифры не выдумывай.
 """
 ).strip()
@@ -72,5 +93,10 @@ REGISTERED_TOOL_NAMES = frozenset(
         "get_cash_report",
         "get_exchange_report",
         "get_calc_comparison",
+        "get_avosend_report",
+        "get_koronapay_report",
+        "get_ex24_report",
+        "get_kwikpay_report",
+        "get_askmoney_report",
     }
 )
