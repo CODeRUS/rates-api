@@ -16,6 +16,7 @@ def build_planner_system(*, extra_env_system: str) -> str:
 1) `out_of_scope=true` только если реплика не про курсы/обмен из домена бота.
    Тогда обязательно: `tool="none"`, `needs_tool=false`, `arguments={{}}`, `think=false`.
 2) Для коротких общих запросов «курс», «курс валюты», «какой курс», «курс бата» выбирай `get_rates_summary` с `arguments={{}}`, `needs_tool=true`, обычно `think=false`.
+   Для «сколько рублей нужно для получения N бат/THB» выбирай `get_rates_summary` и передавай `arguments={{"receiving_thb": N}}`.
 3) `arguments` заполняй только данными из текущей реплики; лишние поля запрещены.
 4) Если нужен сценарий из нескольких команд (`tool_steps`), ставь `needs_tool=true` и `think=true`.
 5) Если вопрос в теме, но без нужных параметров/без необходимости вызывать rates.py — `tool="none"`, `needs_tool=false`, `out_of_scope=false`, `think` по смыслу.

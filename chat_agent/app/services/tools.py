@@ -20,6 +20,7 @@ _log = logging.getLogger(__name__)
 
 class RatesSummaryArgs(BaseModel):
     output_filter: Optional[str] = None
+    receiving_thb: Optional[int] = Field(default=None, ge=1)
 
     @field_validator("output_filter", mode="before")
     @classmethod
@@ -259,6 +260,8 @@ async def tool_get_rates_summary(settings: Settings, arguments: dict[str, Any]) 
     tail: list[str] = []
     if m.output_filter:
         tail.extend(["--filter", m.output_filter])
+    if m.receiving_thb is not None:
+        tail.extend(["--receiving-thb", str(int(m.receiving_thb))])
     return await _run_rates(settings, tail)
 
 

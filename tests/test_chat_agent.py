@@ -10,6 +10,7 @@ from chat_agent.app.services.orchestrator import (
     _early_fixed_reply_for_plan,
     _execution_steps,
     _infer_rates_summary_followup,
+    _infer_rates_summary_receiving_thb_override,
     _parse_planner_output,
     _strip_json_fence,
 )
@@ -118,6 +119,40 @@ def test_infer_rates_summary_followup_no_assistant_rates() -> None:
     )
     hist = [{"role": "assistant", "content": "Здравствуйте, чем помочь?"}]
     assert not _infer_rates_summary_followup("ответь подробнее", hist, plan, [])
+
+
+def test_infer_rates_summary_receiving_thb_override_positive() -> None:
+    plan = PlannerOutput(
+        tool="none",
+        arguments={},
+        needs_tool=False,
+        think=False,
+        out_of_scope=False,
+    )
+    got = _infer_rates_summary_receiving_thb_override(
+        "пришли где сколько надо рублей для получения 5000 бат",
+        plan,
+        [],
+    )
+    assert got is not None
+    assert got.tool == "get_rates_summary"
+    assert got.arguments == {"receiving_thb": 5000}
+
+
+def test_infer_rates_summary_receiving_thb_override_skips_specific_source() -> None:
+    plan = PlannerOutput(
+        tool="none",
+        arguments={},
+        needs_tool=False,
+        think=False,
+        out_of_scope=False,
+    )
+    got = _infer_rates_summary_receiving_thb_override(
+        "какой курс avosend для получения 5000 бат",
+        plan,
+        [],
+    )
+    assert got is None
 
 
 def test_early_fixed_reply_needs_tool_without_steps() -> None:

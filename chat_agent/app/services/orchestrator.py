@@ -125,6 +125,40 @@ def _infer_rates_summary_generic_query(
     return msg in generic
 
 
+def _infer_rates_summary_receiving_thb_override(
+    message: str,
+    plan: PlannerOutput,
+    exec_steps: list[tuple[str, dict[str, Any]]],
+) -> Optional[PlannerOutput]:
+    """
+    Запросы вида «сколько рублей нужно для получения 5000 бат»
+    должны идти в get_rates_summary с --receiving-thb.
+    """
+    if plan.out_of_scope or exec_steps:
+        return None
+    msg = (message or "").strip().lower()
+    if not msg or len(msg) > 240:
+        return None
+    if not any(x in msg for x in ("получ", "получени", "получить")):
+        return None
+    m = re.search(r"(\d[\d\s]{0,8})\s*(?:бат|thb)\b", msg)
+    if not m:
+        return None
+    amount = int(m.group(1).replace(" ", ""))
+    if amount <= 0:
+        return None
+    if any(x in msg for x in ("авосенд", "avosend", "корона", "korona", "koronapay", "ex24", "kwikpay", "квикпей", "askmoney", "аскмани")):
+        return None
+    return PlannerOutput(
+        tool="get_rates_summary",
+        arguments={"receiving_thb": amount},
+        needs_tool=True,
+        think=True,
+        out_of_scope=False,
+        tool_steps=None,
+    )
+
+
 def _infer_avosend_query_override(
     message: str,
     plan: PlannerOutput,
@@ -531,6 +565,22 @@ async def run_chat_turn(
             _log_llm_tokens_for_request(token_acc, user_id=user_id)
             return _MSG_UNRECOGNIZED_PLAN, None, None
         _pl("[pipeline] 3e. общий запрос про курс без tool — подставлен get_rates_summary")
+
+    recv_override = _infer_rates_summary_receiving_thb_override(message, plan, exec_steps)
+    if recv_override is not None:
+        plan = recv_override
+        exec_steps = _execution_steps(plan)
+        if exec_steps is None:
+            await store.append_exchange(
+                user_id,
+                message,
+                _MSG_UNRECOGNIZED_PLAN,
+                session_ttl_sec=settings.session_ttl_sec,
+                max_pairs=max(1, settings.max_history_messages // 2),
+            )
+            _log_llm_tokens_for_request(token_acc, user_id=user_id)
+            return _MSG_UNRECOGNIZED_PLAN, None, None
+        _pl("[pipeline] 3ea. запрос на получение N бат — подставлен get_rates_summary(receiving_thb)")
 
     avosend_override = _infer_avosend_query_override(message, plan, exec_steps)
     if avosend_override is not None:
