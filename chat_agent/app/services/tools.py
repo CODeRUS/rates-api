@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Whitelist инструментов: только фиксированные вызовы rates.py --readonly …"""
+"""Whitelist инструментов: фиксированные вызовы rates.py для chat-agent."""
 from __future__ import annotations
 
 import asyncio
@@ -219,15 +219,15 @@ class AskmoneyArgs(BaseModel):
     rub: Optional[int] = Field(default=None, ge=1)
 
 
-async def _run_rates(
-    settings: Settings,
-    tail_after_readonly: list[str],
-) -> str:
+async def _run_rates(settings: Settings, tail: list[str]) -> str:
     repo = settings.repo_root.resolve()
     script = repo / "rates.py"
     if not script.is_file():
         return f"Ошибка: не найден {script}"
-    cmd = [sys.executable, str(script), "--readonly", *tail_after_readonly]
+    cmd = [sys.executable, str(script)]
+    if settings.tools_readonly:
+        cmd.append("--readonly")
+    cmd.extend(tail)
     if settings.pipeline_log:
         _log.info("[pipeline] запуск rates.py: %s", shlex.join(cmd))
     proc = await asyncio.create_subprocess_exec(

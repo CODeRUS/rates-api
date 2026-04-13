@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     tool_timeout_sec: float = Field(
         default=60.0, validation_alias="CHAT_AGENT_TOOL_TIMEOUT_SEC"
     )
+    #: Принудительно добавлять --readonly ко всем вызовам rates.py из tool executor.
+    tools_readonly: bool = Field(
+        default=False, validation_alias="CHAT_AGENT_TOOLS_READONLY"
+    )
     rate_limit_per_minute: int = Field(
         default=45, validation_alias="CHAT_AGENT_RATE_LIMIT_PER_MINUTE"
     )
@@ -133,6 +137,18 @@ class Settings(BaseSettings):
             return v
         if v is None:
             return True
+        s = str(v).strip().lower()
+        if s in ("0", "false", "no", "off", ""):
+            return False
+        return True
+
+    @field_validator("tools_readonly", mode="before")
+    @classmethod
+    def coerce_tools_readonly(cls, v: Any) -> bool:
+        if isinstance(v, bool):
+            return v
+        if v is None:
+            return False
         s = str(v).strip().lower()
         if s in ("0", "false", "no", "off", ""):
             return False

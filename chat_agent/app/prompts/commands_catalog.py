@@ -19,7 +19,6 @@ def _planner_cash_cities_subsnippet() -> str:
     )
 
 
-# Все команды rates.py — только с --readonly (кеш, без сети).
 PLANNER_TOOLS_SNIPPET = (
     """
 Общие правила:
@@ -31,51 +30,51 @@ PLANNER_TOOLS_SNIPPET = (
 Инструменты:
 - `none`: только уточнение в теме курсов (без вызова rates.py). Для нерелевантной темы используй `out_of_scope=true`.
 
-- `get_rates_summary` (`rates.py --readonly`):
+- `get_rates_summary` (`rates.py`):
   `arguments`: `output_filter?` (пусто | "travelask" | "ta").
   Общие запросы «курс», «курс валюты», «какой курс», «курс бата» => именно этот инструмент с `arguments: {{}}`.
 
-- `get_usdt_report` (`rates.py --readonly usdt`):
+- `get_usdt_report` (`rates.py usdt`):
   `arguments`: `{{}}`.
 
-- `get_rshb_report` (`rates.py --readonly rshb`):
+- `get_rshb_report` (`rates.py rshb`):
   `arguments`: `thb_amounts?`, `atm_fee?`.
   «рсхб / курсы рсхб» без чисел в текущей реплике => `arguments: {{}}` (дефолт: 30000, комиссия 250).
 
-- `get_cash_report` (`rates.py --readonly cash ...`):
+- `get_cash_report` (`rates.py cash ...`):
 """
     + _planner_cash_cities_subsnippet()
     + """  `arguments`: `city_n?` (предпочитай), `city_name?` (если `city_n` нельзя определить), `cash_fiat`/`fiat?` ("USD"|"EUR"|"CNY"), `source?` ("banki"|"vbr"|"rbc"|"all"), `top_n?` (<=100).
   Если город однозначен, не делай промежуточный шаг «список -> отчёт» — сразу один вызов.
   Если спрашивают про отделения/филиалы/где выгоднее по наличным, ставь `top_n: 100`.
 
-- `get_exchange_report` (`rates.py --readonly exchange`):
+- `get_exchange_report` (`rates.py exchange`):
   `arguments`: `exchange_fiat`/`fiat?` ("USD"|"EUR"|"CNY"), `top_n?` (<=100).
   Запросы про TT Exchange и «в каких отделениях / где выгоднее менять USD/EUR/CNY» идут сюда (не в `get_cash_report`).
   Для широкого списка отделений ставь `top_n: 100`.
 
-- `get_calc_comparison` (`rates.py --readonly calc <budget_rub> usd|eur|cny <rub_per_fiat>`):
+- `get_calc_comparison` (`rates.py calc <budget_rub> usd|eur|cny <rub_per_fiat>`):
   Обязательные поля: `budget_rub` (int), `fiat` строго `"usd"|"eur"|"cny"`, `rub_per_fiat` (>0).
   Если этих трёх параметров нет в текущей реплике, не вызывай calc.
 
-- `get_avosend_report` (`rates.py --readonly avosend <mode> <amount>`):
+- `get_avosend_report` (`rates.py avosend <mode> <amount>`):
   `arguments`: `mode` ("cash"|"bank"|"card"), `amount` (int > 0).
   Запросы про Avosend, «получение в отделении/наличными», «avosend cash 5000» веди сюда.
   Для вопросов с «что выгоднее/поясни» ставь `think=true`; для короткого запроса конкретного тарифа обычно тоже `think=true`, чтобы ответ пояснил сумму и курс.
 
-- `get_koronapay_report` (`rates.py --readonly korona query ...`):
+- `get_koronapay_report` (`rates.py korona query ...`):
   `arguments`: ровно одно из `sending_rub` или `receiving_thb`; опционально `payment`, `receiving`, `raw`.
   Запросы про KoronaPay/Корона («по курсу короны», «сколько получу») веди сюда.
 
-- `get_ex24_report` (`rates.py --readonly ex24 [amount_rub]`):
+- `get_ex24_report` (`rates.py ex24 [amount_rub]`):
   `arguments`: `amount_rub?` (int).
   Запросы про Ex24 и курс/получение по конкретной сумме RUB.
 
-- `get_kwikpay_report` (`rates.py --readonly kwikpay ...`):
+- `get_kwikpay_report` (`rates.py kwikpay ...`):
   `arguments`: `amounts?` (list[int]), `country?`, `currency?`.
   Запросы про KwikPay/квикпей.
 
-- `get_askmoney_report` (`rates.py --readonly askmoney [rub]`):
+- `get_askmoney_report` (`rates.py askmoney [rub]`):
   `arguments`: `rub?` (int).
   Запросы про askmoney/аскмани по конкретной сумме.
 
