@@ -96,6 +96,34 @@ def _recent_assistant_text(history: list[dict[str, str]], *, max_msgs: int = 6) 
     return "\n".join(parts).lower()
 
 
+def _infer_rates_summary_generic_query(
+    message: str,
+    plan: PlannerOutput,
+    exec_steps: list[tuple[str, dict[str, Any]]],
+) -> bool:
+    """
+    Короткие общие фразы про курс («курс валюты», «какой курс», «курс бата»)
+    должны приводить к get_rates_summary, даже если planner ошибся в tool=none.
+    """
+    if exec_steps or plan.out_of_scope or plan.needs_tool or plan.tool != "none":
+        return False
+    msg = (message or "").strip().lower()
+    if not msg or len(msg) > 80:
+        return False
+    has_currency_hint = any(x in msg for x in ("валют", "бат", "thb", "rub", "руб"))
+    if has_currency_hint and "курс" in msg:
+        return True
+    generic = {
+        "курс",
+        "курсы",
+        "курс валюты",
+        "курс валют",
+        "какой курс",
+        "актуальный курс",
+    }
+    return msg in generic
+
+
 def _infer_rates_summary_followup(
     message: str,
     history: list[dict[str, str]],
@@ -394,6 +422,28 @@ async def run_chat_turn(
             _log_llm_tokens_for_request(token_acc, user_id=user_id)
             return _MSG_UNRECOGNIZED_PLAN, None, None
         _pl("[pipeline] 3d. follow-up «подробнее» без tool — подставлен get_rates_summary по истории")
+
+    if _infer_rates_summary_generic_query(message, plan, exec_steps):
+        plan = PlannerOutput(
+            tool="get_rates_summary",
+            arguments={},
+            needs_tool=True,
+            think=False,
+            out_of_scope=False,
+            tool_steps=plan.tool_steps,
+        )
+        exec_steps = _execution_steps(plan)
+        if exec_steps is None:
+            await store.append_exchange(
+                user_id,
+                message,
+                _MSG_UNRECOGNIZED_PLAN,
+                session_ttl_sec=settings.session_ttl_sec,
+                max_pairs=max(1, settings.max_history_messages // 2),
+            )
+            _log_llm_tokens_for_request(token_acc, user_id=user_id)
+            return _MSG_UNRECOGNIZED_PLAN, None, None
+        _pl("[pipeline] 3e. общий запрос про курс без tool — подставлен get_rates_summary")
 
     _pl(
         "[pipeline] 4. выбранное действие (после валидации) tool=%s needs_tool=%s think=%s arguments=%s tool_steps=%s",
