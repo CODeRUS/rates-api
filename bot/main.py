@@ -128,6 +128,11 @@ def _fetch_timeout_sec() -> float:
     raw = (os.environ.get("BOT_FETCH_TIMEOUT_SEC") or "").strip()
     if not raw:
         return _DEFAULT_FETCH_TIMEOUT_SEC
+    try:
+        v = float(raw)
+        return v if v > 0 else _DEFAULT_FETCH_TIMEOUT_SEC
+    except ValueError:
+        return _DEFAULT_FETCH_TIMEOUT_SEC
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -135,11 +140,6 @@ def _env_bool(name: str, default: bool = False) -> bool:
     if not raw:
         return default
     return raw in ("1", "true", "yes", "on")
-    try:
-        v = float(raw)
-        return v if v > 0 else _DEFAULT_FETCH_TIMEOUT_SEC
-    except ValueError:
-        return _DEFAULT_FETCH_TIMEOUT_SEC
 
 
 def _credentials_ok() -> bool:
@@ -562,6 +562,9 @@ async def _main_async() -> None:
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)\n"
             "/rshb — THB/RUB РСХБ; /rshb THB [ATM_FEE] или несколько сумм, последнее — комиссия ATM\n"
             "/calc — сравнение каналов RUB→THB; /calc RUB usd|eur|cny КУРС (₽ за 1 ед. валюты для TT)\n"
+            "/gpt - запрос доступа к ИИ ассистенту.\n"
+            "\n"
+            "Новости и обновления бота: @PattayaRatesNews"
         )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/cash(?:@\S+)?(?:\s+\S+){0,4}$"))
