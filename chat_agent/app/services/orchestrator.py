@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from typing import Any, Optional
 
 from chat_agent.app.config import Settings
@@ -256,6 +257,7 @@ async def run_chat_turn(
     user_id: str,
     message: str,
     include_env_system: bool,
+    on_responder_chunk: Optional[Callable[[str], Awaitable[None]]] = None,
 ) -> tuple[str, Optional[str], Optional[str]]:
     """
     Возвращает (reply, error, reply_parse_mode).
@@ -576,9 +578,18 @@ async def run_chat_turn(
     )
 
     try:
-        resp_comp = await llm.respond(resp_messages)
-        token_acc.add(resp_comp.usage)
-        reply = resp_comp.text.strip()
+        if on_responder_chunk is not None:
+            parts: list[str] = []
+            async for ch in llm.respond_stream(resp_messages):
+                if not ch:
+                    continue
+                parts.append(ch)
+                await on_responder_chunk(ch)
+            reply = "".join(parts).strip()
+        else:
+            resp_comp = await llm.respond(resp_messages)
+            token_acc.add(resp_comp.usage)
+            reply = resp_comp.text.strip()
     except Exception as e:
         logger.exception("responder LLM failed: %s", e)
         _log_llm_tokens_for_request(token_acc, user_id=user_id)

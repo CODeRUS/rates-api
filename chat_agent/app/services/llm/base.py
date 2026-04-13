@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Protocol, runtime_checkable
+from typing import AsyncIterator, Literal, Optional, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -32,3 +32,11 @@ class LLMBackend(Protocol):
         model: str,
         timeout_sec: float,
     ) -> LLMCompletion: ...
+
+    async def stream_complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str,
+        timeout_sec: float,
+    ) -> AsyncIterator[str]: ...
