@@ -15,14 +15,16 @@ Telegram-бот (Telethon): /rates, /usdt, /cash, /exchange, /calc.
 
 Секреты не коммитьте. Файл сессии: ``bot/rates_bot.session`` (в .gitignore).
 Опционально ``BOT_ADMIN_ID``: ``/refresh`` — сброс кеша сводки; ``/refresh usdt`` — сброс кеша отчёта USDT.
-В личке с ботом текст GPT-пользователя **без** ``/``: при ``CHAT_AGENT_URL`` и ``CHAT_AGENT_SHARED_SECRET`` — запрос в сервис ``chat_agent`` (POST ``/chat``); иначе прямой OpenAI Chat (``OPENAI_API_KEY``, ``OPENAI_API_URL``, см. ``openai_gpt``). ``OPENAI_PROMPT`` подмешивается в агент только если ``include_env_system`` (не админ).
+В личке с ботом текст GPT-пользователя **без** ``/``: при ``CHAT_AGENT_URL`` и ``CHAT_AGENT_SHARED_SECRET`` — запрос в сервис ``chat_agent`` (POST ``/chat``; при ``BOT_CHAT_AGENT_STREAM=1`` — ``/chat/stream`` с промежуточными обновлениями); иначе прямой OpenAI Chat (``OPENAI_API_KEY``, ``OPENAI_API_URL``, см. ``openai_gpt``). ``OPENAI_PROMPT`` подмешивается в агент только если ``include_env_system`` (не админ).
 Опционально ``BOT_FETCH_TIMEOUT_SEC`` (по умолчанию 180): таймаут сборки сводки/USDT/cash/exchange в потоке.
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Set
@@ -126,6 +128,13 @@ def _fetch_timeout_sec() -> float:
     raw = (os.environ.get("BOT_FETCH_TIMEOUT_SEC") or "").strip()
     if not raw:
         return _DEFAULT_FETCH_TIMEOUT_SEC
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = (os.environ.get(name) or "").strip().lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
     try:
         v = float(raw)
         return v if v > 0 else _DEFAULT_FETCH_TIMEOUT_SEC
@@ -927,18 +936,81 @@ async def _main_async() -> None:
             status = await event.respond("Обрабатываю…")
             sender_id = int(event.sender_id or 0)
             is_admin = admin_id_for_gpt is not None and sender_id == admin_id_for_gpt
-            url = f"{agent_base}/chat"
+            use_agent_stream = _env_bool("BOT_CHAT_AGENT_STREAM", False)
+            url = f"{agent_base}/chat/stream" if use_agent_stream else f"{agent_base}/chat"
+            req_payload = {
+                "user_id": str(event.sender_id),
+                "message": msg,
+                "include_env_system": not is_admin,
+            }
+            data: dict[str, object] = {}
+            out_stream = ""
             try:
                 async with httpx.AsyncClient(timeout=chat_timeout) as client_http:
-                    r = await client_http.post(
-                        url,
-                        headers={"X-Chat-Agent-Secret": agent_secret},
-                        json={
-                            "user_id": str(event.sender_id),
-                            "message": msg,
-                            "include_env_system": not is_admin,
-                        },
-                    )
+                    if not use_agent_stream:
+                        r = await client_http.post(
+                            url,
+                            headers={"X-Chat-Agent-Secret": agent_secret},
+                            json=req_payload,
+                        )
+                        if r.status_code == 401:
+                            await status.edit(
+                                "Chat-agent: неверный секрет (X-Chat-Agent-Secret)."
+                            )
+                            return
+                        if r.status_code >= 400:
+                            await status.edit(
+                                f"Chat-agent HTTP {r.status_code}: {(r.text or '').strip()[:1000]}"
+                            )
+                            return
+                        data = r.json()
+                    else:
+                        async with client_http.stream(
+                            "POST",
+                            url,
+                            headers={"X-Chat-Agent-Secret": agent_secret},
+                            json=req_payload,
+                        ) as r:
+                            if r.status_code == 401:
+                                await status.edit(
+                                    "Chat-agent: неверный секрет (X-Chat-Agent-Secret)."
+                                )
+                                return
+                            if r.status_code >= 400:
+                                body = (await r.aread()).decode("utf-8", errors="replace")
+                                await status.edit(
+                                    f"Chat-agent HTTP {r.status_code}: {(body or '').strip()[:1000]}"
+                                )
+                                return
+
+                            last_edit = asyncio.get_running_loop().time()
+                            async for line in r.aiter_lines():
+                                if not line:
+                                    continue
+                                if not line.startswith("data: "):
+                                    continue
+                                payload = line[6:]
+                                try:
+                                    evt = json.loads(payload)
+                                except Exception:
+                                    continue
+                                if isinstance(evt, dict) and "delta" in evt:
+                                    piece = str(evt.get("delta") or "")
+                                    if piece:
+                                        out_stream += piece
+                                        now = asyncio.get_running_loop().time()
+                                        if now - last_edit >= 1.0:
+                                            # Для превью во время стриминга убираем HTML-теги.
+                                            preview_text = re.sub(r"<[^>]+>", "", out_stream)
+                                            preview = split_for_telegram(preview_text)
+                                            if preview and preview[0].strip():
+                                                await status.edit(preview[0])
+                                                last_edit = now
+                                    continue
+                                if isinstance(evt, dict) and (
+                                    "reply" in evt or "error" in evt or "reply_parse_mode" in evt
+                                ):
+                                    data = evt
             except httpx.TimeoutException:
                 logger.error("chat-agent request timed out after %.0fs", chat_timeout)
                 await status.edit(
@@ -950,16 +1022,11 @@ async def _main_async() -> None:
                 logger.exception("chat-agent HTTP failed")
                 await status.edit("Не удалось связаться с chat-agent.")
                 return
-            if r.status_code == 401:
-                await status.edit("Chat-agent: неверный секрет (X-Chat-Agent-Secret).")
-                return
-            try:
-                data = r.json()
-            except Exception:
-                await status.edit("Chat-agent: неверный JSON в ответе.")
-                return
+
+            if not data:
+                data = {"reply": out_stream, "error": None, "reply_parse_mode": None}
             err = (data.get("error") or "").strip()
-            out = (data.get("reply") or "").strip()
+            out = (data.get("reply") or out_stream or "").strip()
             if err:
                 tail = err[:3500]
                 await status.edit(f"Chat-agent: {tail}")
