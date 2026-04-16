@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Literal
+from typing import Callable, Literal, Optional
 
 from chat_agent.app.services.llm.base import LLMBackend, LLMCompletion, LLMUsage
 
@@ -90,6 +90,7 @@ class GoogleBackend:
         *,
         model: str,
         timeout_sec: float,
+        on_usage: Optional[Callable[[LLMUsage], None]] = None,
     ) -> AsyncIterator[str]:
         import asyncio
         from google import genai
@@ -126,7 +127,17 @@ class GoogleBackend:
             ),
             timeout=timeout_sec,
         )
+        last_usage: Optional[LLMUsage] = None
         async for chunk in stream:
+            um = getattr(chunk, "usage_metadata", None)
+            if um is not None:
+                last_usage = LLMUsage(
+                    prompt_tokens=getattr(um, "prompt_token_count", None),
+                    completion_tokens=getattr(um, "candidates_token_count", None),
+                    total_tokens=getattr(um, "total_token_count", None),
+                )
             txt = getattr(chunk, "text", None) or ""
             if txt:
                 yield txt
+        if on_usage is not None and last_usage is not None:
+            on_usage(last_usage)

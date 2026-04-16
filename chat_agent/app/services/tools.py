@@ -19,18 +19,7 @@ _log = logging.getLogger(__name__)
 
 
 class RatesSummaryArgs(BaseModel):
-    output_filter: Optional[str] = None
     receiving_thb: Optional[int] = Field(default=None, ge=1)
-
-    @field_validator("output_filter", mode="before")
-    @classmethod
-    def norm_filter(cls, v: Any) -> Optional[str]:
-        if v is None or v == "":
-            return None
-        s = str(v).strip().lower()
-        if s in ("travelask", "ta"):
-            return s
-        raise ValueError('output_filter must be "travelask", "ta" or omitted')
 
 
 class RshbArgs(BaseModel):
@@ -258,8 +247,6 @@ async def _run_rates(settings: Settings, tail: list[str]) -> str:
 async def tool_get_rates_summary(settings: Settings, arguments: dict[str, Any]) -> str:
     m = RatesSummaryArgs.model_validate(arguments or {})
     tail: list[str] = []
-    if m.output_filter:
-        tail.extend(["--filter", m.output_filter])
     if m.receiving_thb is not None:
         tail.extend(["--receiving-thb", str(int(m.receiving_thb))])
     return await _run_rates(settings, tail)
