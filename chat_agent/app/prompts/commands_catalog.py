@@ -31,7 +31,7 @@ PLANNER_TOOLS_SNIPPET = (
 - `none`: только уточнение в теме курсов (без вызова rates.py). Для нерелевантной темы используй `out_of_scope=true`.
 
 - `get_rates_summary` (`rates.py`):
-  `arguments`: `output_filter?` (пусто | "travelask" | "ta"), `receiving_thb?` (int > 0).
+  `arguments`: `receiving_thb?` (int > 0).
   Общие запросы «курс», «курс валюты», «какой курс», «курс бата» => именно этот инструмент с `arguments: {{}}`.
   Запросы вида «сколько рублей нужно для получения N бат/THB» => `get_rates_summary` с `arguments: {"receiving_thb": N}`.
 
