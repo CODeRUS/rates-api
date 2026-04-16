@@ -139,6 +139,25 @@
       er.textContent = "Ошибка: " + t.error;
       b.appendChild(er);
     }
+    if (
+      t.llm_prompt_tokens != null ||
+      t.llm_completion_tokens != null ||
+      t.llm_total_tokens != null ||
+      t.llm_calls != null
+    ) {
+      const meta = document.createElement("div");
+      meta.className = "usage";
+      meta.textContent =
+        "Токены: prompt=" +
+        String(t.llm_prompt_tokens ?? 0) +
+        ", completion=" +
+        String(t.llm_completion_tokens ?? 0) +
+        ", total=" +
+        String(t.llm_total_tokens ?? 0) +
+        ", calls=" +
+        String(t.llm_calls ?? 0);
+      b.appendChild(meta);
+    }
     wrap.appendChild(b);
     return wrap;
   }

@@ -16,8 +16,20 @@ CREATE TABLE IF NOT EXISTS chat_audit_turn (
     user_message TEXT NOT NULL,
     assistant_message TEXT NOT NULL,
     error TEXT NULL,
-    reply_parse_mode TEXT NULL
+    reply_parse_mode TEXT NULL,
+    llm_prompt_tokens INTEGER NULL,
+    llm_completion_tokens INTEGER NULL,
+    llm_total_tokens INTEGER NULL,
+    llm_calls INTEGER NULL
 );
+ALTER TABLE chat_audit_turn
+    ADD COLUMN IF NOT EXISTS llm_prompt_tokens INTEGER NULL;
+ALTER TABLE chat_audit_turn
+    ADD COLUMN IF NOT EXISTS llm_completion_tokens INTEGER NULL;
+ALTER TABLE chat_audit_turn
+    ADD COLUMN IF NOT EXISTS llm_total_tokens INTEGER NULL;
+ALTER TABLE chat_audit_turn
+    ADD COLUMN IF NOT EXISTS llm_calls INTEGER NULL;
 CREATE INDEX IF NOT EXISTS chat_audit_turn_user_created_idx
     ON chat_audit_turn (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS chat_audit_turn_created_idx

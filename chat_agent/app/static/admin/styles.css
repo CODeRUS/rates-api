@@ -148,6 +148,13 @@ button:hover {
   font-size: 0.8rem;
   color: #f28b82;
 }
+.msg .usage {
+  margin-top: 0.45rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid #414753;
+  font-size: 0.78rem;
+  color: #9aa0a6;
+}
 #loadOlder {
   margin-top: 0.5rem;
 }

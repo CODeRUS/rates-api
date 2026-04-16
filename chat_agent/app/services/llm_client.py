@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Callable, Optional
 
 from chat_agent.app.config import Settings
-from chat_agent.app.services.llm.base import LLMBackend, LLMCompletion
+from chat_agent.app.services.llm.base import LLMBackend, LLMCompletion, LLMUsage
 
 
 class LLMClient:
@@ -46,17 +47,23 @@ class LLMClient:
         )
 
     async def respond_stream(
-        self, messages: list[dict[str, str]]
+        self,
+        messages: list[dict[str, str]],
+        *,
+        on_usage: Optional[Callable[[LLMUsage], None]] = None,
     ) -> AsyncIterator[str]:
         if hasattr(self._b, "stream_complete"):
             async for chunk in self._b.stream_complete(
                 messages,
                 model=self._responder_model(),
                 timeout_sec=self._s.llm_timeout_sec,
+                on_usage=on_usage,
             ):
                 if chunk:
                     yield chunk
             return
         comp = await self.respond(messages)
+        if on_usage is not None:
+            on_usage(comp.usage)
         if comp.text:
             yield comp.text

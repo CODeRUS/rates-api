@@ -62,6 +62,10 @@ class AdminTurnOut(BaseModel):
     assistant_message: str
     error: Optional[str] = None
     reply_parse_mode: Optional[str] = None
+    llm_prompt_tokens: Optional[int] = None
+    llm_completion_tokens: Optional[int] = None
+    llm_total_tokens: Optional[int] = None
+    llm_calls: Optional[int] = None
 
 
 class AdminHistoryResponse(BaseModel):
@@ -111,6 +115,10 @@ async def admin_history(
                 assistant_message=t.assistant_message,
                 error=t.error,
                 reply_parse_mode=t.reply_parse_mode,
+                llm_prompt_tokens=t.llm_prompt_tokens,
+                llm_completion_tokens=t.llm_completion_tokens,
+                llm_total_tokens=t.llm_total_tokens,
+                llm_calls=t.llm_calls,
             )
             for t in turns
         ]

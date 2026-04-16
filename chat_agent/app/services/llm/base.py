@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Literal, Optional, Protocol, runtime_checkable
+from typing import AsyncIterator, Callable, Literal, Optional, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,16 @@ class LLMCompletion:
     usage: LLMUsage = field(default_factory=LLMUsage)
 
 
+@dataclass(frozen=True)
+class LLMRequestUsage:
+    """Суммарная usage по всем вызовам LLM в рамках одного HTTP-запроса."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    calls: int = 0
+
+
 @runtime_checkable
 class LLMBackend(Protocol):
     async def complete(
@@ -39,4 +49,5 @@ class LLMBackend(Protocol):
         *,
         model: str,
         timeout_sec: float,
+        on_usage: Optional[Callable[[LLMUsage], None]] = None,
     ) -> AsyncIterator[str]: ...

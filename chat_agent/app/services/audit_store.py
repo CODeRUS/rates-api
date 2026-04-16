@@ -9,6 +9,8 @@ from typing import List, Optional
 
 import asyncpg
 
+from chat_agent.app.services.llm.base import LLMRequestUsage
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,10 @@ class AuditTurnRow:
     assistant_message: str
     error: Optional[str]
     reply_parse_mode: Optional[str]
+    llm_prompt_tokens: Optional[int]
+    llm_completion_tokens: Optional[int]
+    llm_total_tokens: Optional[int]
+    llm_calls: Optional[int]
 
 
 class AuditStore:
@@ -47,24 +53,40 @@ class AuditStore:
         assistant_message: str,
         error: Optional[str],
         reply_parse_mode: Optional[str],
+        llm_usage: Optional[LLMRequestUsage] = None,
     ) -> None:
         um = _clip(user_message or "", self._max)
         am = _clip(assistant_message or "", self._max)
         err = _clip(error or "", min(self._max, 8000)) if error else None
         mode = (reply_parse_mode or "").strip()[:16] or None
+        usage = llm_usage or LLMRequestUsage()
         try:
             async with self._pool.acquire() as conn:
                 await conn.execute(
                     """
                     INSERT INTO chat_audit_turn
-                        (user_id, user_message, assistant_message, error, reply_parse_mode)
-                    VALUES ($1, $2, $3, $4, $5)
+                        (
+                            user_id,
+                            user_message,
+                            assistant_message,
+                            error,
+                            reply_parse_mode,
+                            llm_prompt_tokens,
+                            llm_completion_tokens,
+                            llm_total_tokens,
+                            llm_calls
+                        )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     """,
                     user_id,
                     um,
                     am,
                     err,
                     mode,
+                    int(usage.prompt_tokens),
+                    int(usage.completion_tokens),
+                    int(usage.total_tokens),
+                    int(usage.calls),
                 )
         except Exception:
             logger.exception("audit: не удалось записать turn user_id=%s", user_id)
@@ -101,7 +123,17 @@ class AuditStore:
             if before_id is None:
                 rows = await conn.fetch(
                     """
-                    SELECT id, created_at, user_message, assistant_message, error, reply_parse_mode
+                    SELECT
+                        id,
+                        created_at,
+                        user_message,
+                        assistant_message,
+                        error,
+                        reply_parse_mode,
+                        llm_prompt_tokens,
+                        llm_completion_tokens,
+                        llm_total_tokens,
+                        llm_calls
                     FROM chat_audit_turn
                     WHERE user_id = $1
                     ORDER BY id DESC
@@ -113,7 +145,17 @@ class AuditStore:
             else:
                 rows = await conn.fetch(
                     """
-                    SELECT id, created_at, user_message, assistant_message, error, reply_parse_mode
+                    SELECT
+                        id,
+                        created_at,
+                        user_message,
+                        assistant_message,
+                        error,
+                        reply_parse_mode,
+                        llm_prompt_tokens,
+                        llm_completion_tokens,
+                        llm_total_tokens,
+                        llm_calls
                     FROM chat_audit_turn
                     WHERE user_id = $1 AND id < $2
                     ORDER BY id DESC
@@ -136,6 +178,10 @@ class AuditStore:
                     assistant_message=str(r["assistant_message"]),
                     error=r["error"],
                     reply_parse_mode=r["reply_parse_mode"],
+                    llm_prompt_tokens=r["llm_prompt_tokens"],
+                    llm_completion_tokens=r["llm_completion_tokens"],
+                    llm_total_tokens=r["llm_total_tokens"],
+                    llm_calls=r["llm_calls"],
                 )
             )
         out.reverse()

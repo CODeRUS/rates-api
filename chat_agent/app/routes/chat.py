@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from chat_agent.app.schemas.chat import ChatRequest, ChatResponse
+from chat_agent.app.services.llm.base import LLMRequestUsage
 from chat_agent.app.services.orchestrator import run_chat_turn
 
 logger = logging.getLogger(__name__)
@@ -51,8 +52,9 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
     reply = ""
     err: Optional[str] = None
     reply_parse_mode: Optional[str] = None
+    llm_usage = LLMRequestUsage()
     try:
-        reply, err, reply_parse_mode = await run_chat_turn(
+        reply, err, reply_parse_mode, llm_usage = await run_chat_turn(
             settings=settings,
             store=store,
             llm=llm,
@@ -73,6 +75,7 @@ async def chat(request: Request, body: ChatRequest) -> ChatResponse:
             assistant_message=reply or "",
             error=err,
             reply_parse_mode=reply_parse_mode if not err else None,
+            llm_usage=llm_usage,
         )
 
     if err:
@@ -100,6 +103,7 @@ async def chat_stream(request: Request, body: ChatRequest) -> StreamingResponse:
         final_reply = ""
         final_err: Optional[str] = None
         final_mode: Optional[str] = None
+        final_usage = LLMRequestUsage()
 
         async def _on_chunk(ch: str) -> None:
             await q.put(ch)
@@ -107,7 +111,7 @@ async def chat_stream(request: Request, body: ChatRequest) -> StreamingResponse:
         async def _produce() -> None:
             nonlocal final_reply, final_err, final_mode
             try:
-                final_reply, final_err, final_mode = await run_chat_turn(
+                final_reply, final_err, final_mode, final_usage = await run_chat_turn(
                     settings=settings,
                     store=store,
                     llm=llm,
@@ -128,6 +132,7 @@ async def chat_stream(request: Request, body: ChatRequest) -> StreamingResponse:
                     assistant_message=final_reply or "",
                     error=final_err,
                     reply_parse_mode=final_mode if not final_err else None,
+                    llm_usage=final_usage,
                 )
             await done.put(end_marker)
 

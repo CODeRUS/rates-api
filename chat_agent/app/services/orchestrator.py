@@ -10,7 +10,7 @@ from typing import Any, Optional
 from chat_agent.app.config import Settings
 from chat_agent.app.prompts.planner_system import build_planner_system, build_responder_system
 from chat_agent.app.schemas.chat import PlannerOutput
-from chat_agent.app.services.llm.base import LLMUsage
+from chat_agent.app.services.llm.base import LLMRequestUsage, LLMUsage
 from chat_agent.app.services.llm_client import LLMClient
 from chat_agent.app.services.redis_store import RedisStore
 from chat_agent.app.pipeline_log import clip_text, messages_for_log
@@ -368,6 +368,15 @@ def _log_llm_tokens_for_request(acc: _LLMTokenAccumulator, *, user_id: str) -> N
     )
 
 
+def _request_usage_from_acc(acc: _LLMTokenAccumulator) -> LLMRequestUsage:
+    return LLMRequestUsage(
+        prompt_tokens=acc.prompt,
+        completion_tokens=acc.completion,
+        total_tokens=acc.total,
+        calls=acc.calls,
+    )
+
+
 async def run_chat_turn(
     *,
     settings: Settings,
@@ -377,9 +386,9 @@ async def run_chat_turn(
     message: str,
     include_env_system: bool,
     on_responder_chunk: Optional[Callable[[str], Awaitable[None]]] = None,
-) -> tuple[str, Optional[str], Optional[str]]:
+) -> tuple[str, Optional[str], Optional[str], LLMRequestUsage]:
     """
-    Возвращает (reply, error, reply_parse_mode).
+    Возвращает (reply, error, reply_parse_mode, llm_request_usage).
     ``reply_parse_mode`` — ``\"html\"``, если ответ от модели-ответчика оформлен под Telegram HTML; иначе ``None`` (plain).
     error установлен при сбое, reply может быть пустым.
     """
@@ -393,7 +402,7 @@ async def run_chat_turn(
         user_id,
         limit_per_minute=settings.rate_limit_per_minute,
     ):
-        return "", "Слишком много запросов. Подождите минуту.", None
+        return "", "Слишком много запросов. Подождите минуту.", None, LLMRequestUsage()
 
     token_acc = _LLMTokenAccumulator()
 
@@ -483,7 +492,7 @@ async def run_chat_turn(
                 max_pairs=max(1, settings.max_history_messages // 2),
             )
             _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None
+            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
 
     _pl(
         "[pipeline] 3. ответ planner (сырой JSON от модели): %s",
@@ -504,7 +513,7 @@ async def run_chat_turn(
             max_pairs=max(1, settings.max_history_messages // 2),
         )
         _log_llm_tokens_for_request(token_acc, user_id=user_id)
-        return _MSG_UNRECOGNIZED_PLAN, None, None
+        return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
 
     early_reply = _early_fixed_reply_for_plan(plan, exec_steps)
     if early_reply is not None:
@@ -520,7 +529,7 @@ async def run_chat_turn(
             max_pairs=max(1, settings.max_history_messages // 2),
         )
         _log_llm_tokens_for_request(token_acc, user_id=user_id)
-        return early_reply, None, None
+        return early_reply, None, None, _request_usage_from_acc(token_acc)
 
     if _infer_rates_summary_followup(message, history, plan, exec_steps):
         plan = PlannerOutput(
@@ -541,7 +550,7 @@ async def run_chat_turn(
                 max_pairs=max(1, settings.max_history_messages // 2),
             )
             _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None
+            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
         _pl("[pipeline] 3d. follow-up «подробнее» без tool — подставлен get_rates_summary по истории")
 
     if _infer_rates_summary_generic_query(message, plan, exec_steps):
@@ -563,7 +572,7 @@ async def run_chat_turn(
                 max_pairs=max(1, settings.max_history_messages // 2),
             )
             _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None
+            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
         _pl("[pipeline] 3e. общий запрос про курс без tool — подставлен get_rates_summary")
 
     recv_override = _infer_rates_summary_receiving_thb_override(message, plan, exec_steps)
@@ -579,7 +588,7 @@ async def run_chat_turn(
                 max_pairs=max(1, settings.max_history_messages // 2),
             )
             _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None
+            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
         _pl("[pipeline] 3ea. запрос на получение N бат — подставлен get_rates_summary(receiving_thb)")
 
     avosend_override = _infer_avosend_query_override(message, plan, exec_steps)
@@ -595,7 +604,7 @@ async def run_chat_turn(
                 max_pairs=max(1, settings.max_history_messages // 2),
             )
             _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None
+            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
         _pl("[pipeline] 3f. запрос про Avosend — подставлен get_avosend_report")
 
     source_override = _infer_source_query_override(message, plan, exec_steps)
@@ -611,7 +620,7 @@ async def run_chat_turn(
                 max_pairs=max(1, settings.max_history_messages // 2),
             )
             _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None
+            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
         _pl("[pipeline] 3g. запрос по конкретному источнику — подставлен source tool")
 
     _pl(
@@ -692,7 +701,7 @@ async def run_chat_turn(
             max_pairs=max(1, settings.max_history_messages // 2),
         )
         _log_llm_tokens_for_request(token_acc, user_id=user_id)
-        return reply, None, None
+        return reply, None, None, _request_usage_from_acc(token_acc)
 
     multi_tool = len(exec_steps) > 1
     effective_think = plan.think or multi_tool
@@ -747,7 +756,7 @@ async def run_chat_turn(
     try:
         if on_responder_chunk is not None:
             parts: list[str] = []
-            async for ch in llm.respond_stream(resp_messages):
+            async for ch in llm.respond_stream(resp_messages, on_usage=token_acc.add):
                 if not ch:
                     continue
                 parts.append(ch)
@@ -760,7 +769,7 @@ async def run_chat_turn(
     except Exception as e:
         logger.exception("responder LLM failed: %s", e)
         _log_llm_tokens_for_request(token_acc, user_id=user_id)
-        return "", f"Ошибка модели ответа: {e}", None
+        return "", f"Ошибка модели ответа: {e}", None, _request_usage_from_acc(token_acc)
 
     _pl(
         "[pipeline] 6. ответ пользователю (responder): %s",
@@ -783,4 +792,4 @@ async def run_chat_turn(
     )
 
     _log_llm_tokens_for_request(token_acc, user_id=user_id)
-    return reply or "", None, reply_parse_mode
+    return reply or "", None, reply_parse_mode, _request_usage_from_acc(token_acc)
