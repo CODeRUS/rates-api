@@ -91,212 +91,6 @@ def _early_fixed_reply_for_plan(
     return None
 
 
-def _recent_assistant_text(history: list[dict[str, str]], *, max_msgs: int = 6) -> str:
-    tail = history[-max_msgs:] if history else []
-    parts = [str(m.get("content", "")) for m in tail if m.get("role") == "assistant"]
-    return "\n".join(parts).lower()
-
-
-def _infer_rates_summary_generic_query(
-    message: str,
-    plan: PlannerOutput,
-    exec_steps: list[tuple[str, dict[str, Any]]],
-) -> bool:
-    """
-    Короткие общие фразы про курс («курс валюты», «какой курс», «курс бата»)
-    должны приводить к get_rates_summary, даже если planner ошибся в tool=none.
-    """
-    if exec_steps or plan.out_of_scope or plan.needs_tool or plan.tool != "none":
-        return False
-    msg = (message or "").strip().lower()
-    if not msg or len(msg) > 80:
-        return False
-    has_currency_hint = any(x in msg for x in ("валют", "бат", "thb", "rub", "руб"))
-    if has_currency_hint and "курс" in msg:
-        return True
-    generic = {
-        "курс",
-        "курсы",
-        "курс валюты",
-        "курс валют",
-        "какой курс",
-        "актуальный курс",
-    }
-    return msg in generic
-
-
-def _infer_rates_summary_receiving_thb_override(
-    message: str,
-    plan: PlannerOutput,
-    exec_steps: list[tuple[str, dict[str, Any]]],
-) -> Optional[PlannerOutput]:
-    """
-    Запросы вида «сколько рублей нужно для получения 5000 бат»
-    должны идти в get_rates_summary с --receiving-thb.
-    """
-    if plan.out_of_scope or exec_steps:
-        return None
-    msg = (message or "").strip().lower()
-    if not msg or len(msg) > 240:
-        return None
-    if not any(x in msg for x in ("получ", "получени", "получить")):
-        return None
-    m = re.search(r"(\d[\d\s]{0,8})\s*(?:бат|thb)\b", msg)
-    if not m:
-        return None
-    amount = int(m.group(1).replace(" ", ""))
-    if amount <= 0:
-        return None
-    if any(x in msg for x in ("авосенд", "avosend", "корона", "korona", "koronapay", "ex24", "kwikpay", "квикпей", "askmoney", "аскмани")):
-        return None
-    return PlannerOutput(
-        tool="get_rates_summary",
-        arguments={"receiving_thb": amount},
-        needs_tool=True,
-        think=True,
-        out_of_scope=False,
-        tool_steps=None,
-    )
-
-
-def _infer_avosend_query_override(
-    message: str,
-    plan: PlannerOutput,
-    exec_steps: list[tuple[str, dict[str, Any]]],
-) -> Optional[PlannerOutput]:
-    """
-    Фразы про Avosend должны идти в rates.py avosend, а не в rshb/summary.
-    Пример: «какой курс авосенд при получении в отделении 5000 бат».
-    """
-    if exec_steps or plan.out_of_scope:
-        return None
-    msg = (message or "").strip().lower()
-    if not msg or len(msg) > 220:
-        return None
-    if "авосенд" not in msg and "avosend" not in msg:
-        return None
-    m = re.search(r"(\d[\d\s]{0,8})", msg)
-    if not m:
-        return None
-    amount = int(m.group(1).replace(" ", ""))
-    mode = "cash" if any(x in msg for x in ("отделени", "налич", "cash")) else "bank"
-    return PlannerOutput(
-        tool="get_avosend_report",
-        arguments={"mode": mode, "amount": amount},
-        needs_tool=True,
-        think=True,
-        out_of_scope=False,
-        tool_steps=None,
-    )
-
-
-def _infer_source_query_override(
-    message: str,
-    plan: PlannerOutput,
-    exec_steps: list[tuple[str, dict[str, Any]]],
-) -> Optional[PlannerOutput]:
-    if exec_steps or plan.out_of_scope:
-        return None
-    msg = (message or "").strip().lower()
-    if not msg or len(msg) > 240:
-        return None
-
-    m = re.search(r"(\d[\d\s]{0,8})", msg)
-    amount = int(m.group(1).replace(" ", "")) if m else None
-
-    if "корона" in msg or "korona" in msg or "koronapay" in msg:
-        args: dict[str, Any] = {"sending_rub": amount} if amount else {"receiving_thb": 5000}
-        return PlannerOutput(
-            tool="get_koronapay_report",
-            arguments=args,
-            needs_tool=True,
-            think=True,
-            out_of_scope=False,
-            tool_steps=None,
-        )
-    if "ex24" in msg:
-        return PlannerOutput(
-            tool="get_ex24_report",
-            arguments={"amount_rub": amount} if amount else {},
-            needs_tool=True,
-            think=True,
-            out_of_scope=False,
-            tool_steps=None,
-        )
-    if "kwikpay" in msg or "квикпей" in msg:
-        return PlannerOutput(
-            tool="get_kwikpay_report",
-            arguments={"amounts": [amount]} if amount else {},
-            needs_tool=True,
-            think=True,
-            out_of_scope=False,
-            tool_steps=None,
-        )
-    if "askmoney" in msg or "аскмани" in msg:
-        return PlannerOutput(
-            tool="get_askmoney_report",
-            arguments={"rub": amount} if amount else {},
-            needs_tool=True,
-            think=True,
-            out_of_scope=False,
-            tool_steps=None,
-        )
-    return None
-
-
-def _infer_rates_summary_followup(
-    message: str,
-    history: list[dict[str, str]],
-    plan: PlannerOutput,
-    exec_steps: list[tuple[str, dict[str, Any]]],
-) -> bool:
-    """
-    Реплики вроде «ответь подробнее» без параметров: planner с CHAT_AGENT_PLANNER_USER_HISTORY_TURNS=0
-    часто возвращает tool=none — тогда responder видит «вызова не было» и ошибочно говорит «нет в кеше».
-    Если в недавней истории уже был ответ с курсами, подставляем get_rates_summary.
-    """
-    if exec_steps or plan.out_of_scope or plan.needs_tool or plan.tool != "none":
-        return False
-    msg = (message or "").strip().lower()
-    if len(msg) > 160:
-        return False
-    triggers = (
-        "подробнее",
-        "подробней",
-        "разверн",
-        "детальнее",
-        "ещё раз",
-        "еще раз",
-        "продолж",
-        "дополн",
-        "уточни",
-        "поясни",
-        "разжуй",
-        "напиши ещё",
-        "напиши еще",
-        "расскажи ещё",
-        "расскажи еще",
-    )
-    if not any(t in msg for t in triggers):
-        return False
-    blob = _recent_assistant_text(history)
-    markers = (
-        "thb",
-        "бат",
-        "rub",
-        "руб",
-        "forex",
-        "bybit",
-        "корон",
-        "unionpay",
-        "рсхб",
-        "tt exchange",
-        "➔",
-        "p2p",
-    )
-    return any(x in blob for x in markers)
-
-
 def _execution_steps(plan: PlannerOutput) -> Optional[list[tuple[str, dict[str, Any]]]]:
     """
     None — в плане недопустимое имя инструмента.
@@ -318,19 +112,43 @@ def _execution_steps(plan: PlannerOutput) -> Optional[list[tuple[str, dict[str, 
     return []
 
 
-def _history_for_planner(history: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Только прошлые реплики пользователя (без assistant)."""
-    return [dict(m) for m in history if m.get("role") == "user"]
-
-
-def _planner_user_context(
-    history: list[dict[str, str]], *, max_turns: int
+def _planner_history_suffix(
+    history: list[dict[str, str]], *, max_user_turns: int
 ) -> list[dict[str, str]]:
-    """Последние N user-сообщений из истории для planner; max_turns=0 → пусто."""
-    users = _history_for_planner(history)
-    if max_turns <= 0:
+    """
+    Непрерывный хвост истории (старые → новые), охватывающий последние ``max_user_turns`` user-сообщений.
+    Включает ответы assistant между ними. ``max_user_turns`` 0 → пусто.
+    """
+    if max_user_turns <= 0 or not history:
         return []
-    return users[-max_turns:]
+    n_users = 0
+    start = len(history)
+    for i in range(len(history) - 1, -1, -1):
+        if history[i].get("role") == "user":
+            n_users += 1
+            start = i
+            if n_users >= max_user_turns:
+                break
+    return [dict(m) for m in history[start:]]
+
+
+def _compress_planner_chat_messages(
+    messages: list[dict[str, str]], *, max_chars: int
+) -> list[dict[str, str]]:
+    """Укорачивает content каждого сообщения для экономии токенов (0 = без усечения)."""
+    out: list[dict[str, str]] = []
+    for m in messages:
+        role = str(m.get("role", "user"))
+        if role not in ("user", "assistant"):
+            role = "user"
+        content = str(m.get("content", ""))
+        if max_chars > 0 and len(content) > max_chars:
+            content = (
+                content[: max(0, max_chars - 40)].rstrip()
+                + "\n… [усечено для planner]"
+            )
+        out.append({"role": role, "content": content})
+    return out
 
 
 class _LLMTokenAccumulator:
@@ -435,17 +253,25 @@ async def run_chat_turn(
 
     planner_system = build_planner_system(extra_env_system=extra)
     planner_messages: list[dict[str, str]] = [{"role": "system", "content": planner_system}]
-    planner_ctx = _planner_user_context(
-        history, max_turns=settings.planner_user_history_turns
+    hist_suffix = _planner_history_suffix(
+        history, max_user_turns=settings.planner_user_history_turns
+    )
+    hist_compressed = _compress_planner_chat_messages(
+        hist_suffix, max_chars=settings.planner_history_message_max_chars
     )
     _pl(
-        "[pipeline] 1d. в planner передано прошлых user-сообщений: %d (лимит CHAT_AGENT_PLANNER_USER_HISTORY_TURNS=%d)",
-        len(planner_ctx),
+        "[pipeline] 1d. в planner передано сообщений сжатой истории: %d (суффикс под %d user-реплик, CHAT_AGENT_PLANNER_HISTORY_MSG_MAX=%d)",
+        len(hist_compressed),
         settings.planner_user_history_turns,
+        settings.planner_history_message_max_chars,
     )
-    for m in planner_ctx:
-        planner_messages.append(dict(m))
-    planner_messages.append({"role": "user", "content": message})
+    planner_messages.extend(hist_compressed)
+    final_user = (message or "").strip()
+    if hist_compressed:
+        final_user = (
+            "Текущая реплика пользователя (только под неё строй JSON-план):\n" + final_user
+        )
+    planner_messages.append({"role": "user", "content": final_user})
 
     _pl(
         "[pipeline] 2. контекст для LLM (planner), модель=%s:\n%s",
@@ -530,98 +356,6 @@ async def run_chat_turn(
         )
         _log_llm_tokens_for_request(token_acc, user_id=user_id)
         return early_reply, None, None, _request_usage_from_acc(token_acc)
-
-    if _infer_rates_summary_followup(message, history, plan, exec_steps):
-        plan = PlannerOutput(
-            tool="get_rates_summary",
-            arguments={},
-            needs_tool=True,
-            think=True,
-            out_of_scope=False,
-            tool_steps=plan.tool_steps,
-        )
-        exec_steps = _execution_steps(plan)
-        if exec_steps is None:
-            await store.append_exchange(
-                user_id,
-                message,
-                _MSG_UNRECOGNIZED_PLAN,
-                session_ttl_sec=settings.session_ttl_sec,
-                max_pairs=max(1, settings.max_history_messages // 2),
-            )
-            _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
-        _pl("[pipeline] 3d. follow-up «подробнее» без tool — подставлен get_rates_summary по истории")
-
-    if _infer_rates_summary_generic_query(message, plan, exec_steps):
-        plan = PlannerOutput(
-            tool="get_rates_summary",
-            arguments={},
-            needs_tool=True,
-            think=False,
-            out_of_scope=False,
-            tool_steps=plan.tool_steps,
-        )
-        exec_steps = _execution_steps(plan)
-        if exec_steps is None:
-            await store.append_exchange(
-                user_id,
-                message,
-                _MSG_UNRECOGNIZED_PLAN,
-                session_ttl_sec=settings.session_ttl_sec,
-                max_pairs=max(1, settings.max_history_messages // 2),
-            )
-            _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
-        _pl("[pipeline] 3e. общий запрос про курс без tool — подставлен get_rates_summary")
-
-    recv_override = _infer_rates_summary_receiving_thb_override(message, plan, exec_steps)
-    if recv_override is not None:
-        plan = recv_override
-        exec_steps = _execution_steps(plan)
-        if exec_steps is None:
-            await store.append_exchange(
-                user_id,
-                message,
-                _MSG_UNRECOGNIZED_PLAN,
-                session_ttl_sec=settings.session_ttl_sec,
-                max_pairs=max(1, settings.max_history_messages // 2),
-            )
-            _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
-        _pl("[pipeline] 3ea. запрос на получение N бат — подставлен get_rates_summary(receiving_thb)")
-
-    avosend_override = _infer_avosend_query_override(message, plan, exec_steps)
-    if avosend_override is not None:
-        plan = avosend_override
-        exec_steps = _execution_steps(plan)
-        if exec_steps is None:
-            await store.append_exchange(
-                user_id,
-                message,
-                _MSG_UNRECOGNIZED_PLAN,
-                session_ttl_sec=settings.session_ttl_sec,
-                max_pairs=max(1, settings.max_history_messages // 2),
-            )
-            _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
-        _pl("[pipeline] 3f. запрос про Avosend — подставлен get_avosend_report")
-
-    source_override = _infer_source_query_override(message, plan, exec_steps)
-    if source_override is not None:
-        plan = source_override
-        exec_steps = _execution_steps(plan)
-        if exec_steps is None:
-            await store.append_exchange(
-                user_id,
-                message,
-                _MSG_UNRECOGNIZED_PLAN,
-                session_ttl_sec=settings.session_ttl_sec,
-                max_pairs=max(1, settings.max_history_messages // 2),
-            )
-            _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
-        _pl("[pipeline] 3g. запрос по конкретному источнику — подставлен source tool")
 
     _pl(
         "[pipeline] 4. выбранное действие (после валидации) tool=%s needs_tool=%s think=%s arguments=%s tool_steps=%s",
@@ -713,7 +447,7 @@ async def run_chat_turn(
     resp_messages: list[dict[str, str]] = [
         {"role": "system", "content": responder_system},
     ]
-    for m in history[-8:]:
+    for m in history[-settings.responder_history_messages :]:
         resp_messages.append(dict(m))
     if tool_result_trunc:
         if len(exec_steps) == 1:

@@ -74,11 +74,25 @@ class Settings(BaseSettings):
     log_llm_messages_max: int = Field(
         default=120_000, validation_alias="CHAT_AGENT_LOG_LLM_MESSAGES_MAX"
     )
-    #: Сколько прошлых реплик пользователя передать в planner (0 = только текущее сообщение).
-    #: Старые user-сообщения с суммами/параметрами заставляли модель повторять arguments и кеш инструмента.
+    #: Сколько последних user-реплик из Redis учитывать в **суффиксе** истории для planner (0 = без истории, только текущее сообщение).
+    #: В промпт идут пары user/assistant из этого суффикса (сжатые по длине), затем отдельно текущая user-реплика.
     planner_user_history_turns: int = Field(
         default=0,
         validation_alias="CHAT_AGENT_PLANNER_USER_HISTORY_TURNS",
+        ge=0,
+        le=50,
+    )
+    #: Макс. символов текста одного сообщения в истории planner (0 = не усечь). Длинные ответы assistant укорачиваются.
+    planner_history_message_max_chars: int = Field(
+        default=1600,
+        validation_alias="CHAT_AGENT_PLANNER_HISTORY_MSG_MAX",
+        ge=0,
+        le=8000,
+    )
+    #: Сколько последних сообщений из Redis передавать responder (0 = без истории).
+    responder_history_messages: int = Field(
+        default=8,
+        validation_alias="CHAT_AGENT_RESPONDER_HISTORY_MESSAGES",
         ge=0,
         le=50,
     )
