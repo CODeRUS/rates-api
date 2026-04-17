@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     tool_timeout_sec: float = Field(
         default=60.0, validation_alias="CHAT_AGENT_TOOL_TIMEOUT_SEC"
     )
+    #: Цена input токенов LLM в USD за 1M токенов (для расчёта стоимости запроса).
+    llm_price_input_per_1m_usd: float = Field(
+        default=0.0, validation_alias="CHAT_AGENT_LLM_PRICE_INPUT_PER_1M_USD", ge=0.0
+    )
+    #: Цена output токенов LLM в USD за 1M токенов (для расчёта стоимости запроса).
+    llm_price_output_per_1m_usd: float = Field(
+        default=0.0, validation_alias="CHAT_AGENT_LLM_PRICE_OUTPUT_PER_1M_USD", ge=0.0
+    )
     #: Принудительно добавлять --readonly ко всем вызовам rates.py из tool executor.
     tools_readonly: bool = Field(
         default=False, validation_alias="CHAT_AGENT_TOOLS_READONLY"

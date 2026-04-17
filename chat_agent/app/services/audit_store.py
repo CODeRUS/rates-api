@@ -38,6 +38,15 @@ class AuditTurnRow:
     llm_completion_tokens: Optional[int]
     llm_total_tokens: Optional[int]
     llm_calls: Optional[int]
+    llm_cost_usd: Optional[float]
+
+
+@dataclass
+class AuditUsageTotals:
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    cost_usd: float
 
 
 class AuditStore:
@@ -74,9 +83,10 @@ class AuditStore:
                             llm_prompt_tokens,
                             llm_completion_tokens,
                             llm_total_tokens,
-                            llm_calls
+                            llm_calls,
+                            llm_cost_usd
                         )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                     """,
                     user_id,
                     um,
@@ -87,6 +97,7 @@ class AuditStore:
                     int(usage.completion_tokens),
                     int(usage.total_tokens),
                     int(usage.calls),
+                    float(usage.cost_usd),
                 )
         except Exception:
             logger.exception("audit: не удалось записать turn user_id=%s", user_id)
@@ -133,7 +144,8 @@ class AuditStore:
                         llm_prompt_tokens,
                         llm_completion_tokens,
                         llm_total_tokens,
-                        llm_calls
+                        llm_calls,
+                        llm_cost_usd
                     FROM chat_audit_turn
                     WHERE user_id = $1
                     ORDER BY id DESC
@@ -155,7 +167,8 @@ class AuditStore:
                         llm_prompt_tokens,
                         llm_completion_tokens,
                         llm_total_tokens,
-                        llm_calls
+                        llm_calls,
+                        llm_cost_usd
                     FROM chat_audit_turn
                     WHERE user_id = $1 AND id < $2
                     ORDER BY id DESC
@@ -182,10 +195,40 @@ class AuditStore:
                     llm_completion_tokens=r["llm_completion_tokens"],
                     llm_total_tokens=r["llm_total_tokens"],
                     llm_calls=r["llm_calls"],
+                    llm_cost_usd=r["llm_cost_usd"],
                 )
             )
         out.reverse()
         return out
+
+    async def total_cost_usd(self, *, user_id: str) -> float:
+        async with self._pool.acquire() as conn:
+            val = await conn.fetchval(
+                "SELECT COALESCE(SUM(llm_cost_usd), 0) FROM chat_audit_turn WHERE user_id = $1",
+                user_id,
+            )
+        return float(val or 0.0)
+
+    async def usage_totals(self, *, user_id: str) -> AuditUsageTotals:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT
+                    COALESCE(SUM(llm_prompt_tokens), 0) AS prompt_tokens,
+                    COALESCE(SUM(llm_completion_tokens), 0) AS completion_tokens,
+                    COALESCE(SUM(llm_total_tokens), 0) AS total_tokens,
+                    COALESCE(SUM(llm_cost_usd), 0) AS cost_usd
+                FROM chat_audit_turn
+                WHERE user_id = $1
+                """,
+                user_id,
+            )
+        return AuditUsageTotals(
+            prompt_tokens=int(row["prompt_tokens"] or 0),
+            completion_tokens=int(row["completion_tokens"] or 0),
+            total_tokens=int(row["total_tokens"] or 0),
+            cost_usd=float(row["cost_usd"] or 0.0),
+        )
 
     async def purge_older_than_days(self, days: int) -> int:
         d = int(days)

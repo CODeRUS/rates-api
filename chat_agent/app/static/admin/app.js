@@ -48,6 +48,8 @@
 
   const userList = document.getElementById("userList");
   const chatLog = document.getElementById("chatLog");
+  const dialogCost = document.getElementById("dialogCost");
+  const dialogTokens = document.getElementById("dialogTokens");
   const activeUserEl = document.getElementById("activeUser");
   const loadOlder = document.getElementById("loadOlder");
   let selectedUser = null;
@@ -81,6 +83,10 @@
     oldestId = null;
     activeUserEl.textContent = uid ? "— " + uid : "";
     chatLog.innerHTML = "";
+    dialogCost.classList.add("hidden");
+    dialogCost.textContent = "";
+    dialogTokens.classList.add("hidden");
+    dialogTokens.textContent = "";
     loadOlder.classList.add("hidden");
     userList.querySelectorAll("li").forEach((x) => x.classList.remove("active"));
     if (li) li.classList.add("active");
@@ -96,6 +102,21 @@
     if (beforeId != null) path += "&before_id=" + beforeId;
     const data = await api(path);
     const turns = data.turns || [];
+    const totalCost = Number(data.total_cost_usd || 0);
+    const totalPrompt = Number(data.total_prompt_tokens || 0);
+    const totalCompletion = Number(data.total_completion_tokens || 0);
+    const totalTokens = Number(data.total_tokens || 0);
+    dialogCost.textContent =
+      "Суммарная стоимость диалога: $" + totalCost.toFixed(6);
+    dialogCost.classList.remove("hidden");
+    dialogTokens.textContent =
+      "Суммарные токены: prompt=" +
+      String(totalPrompt) +
+      ", completion=" +
+      String(totalCompletion) +
+      ", total=" +
+      String(totalTokens);
+    dialogTokens.classList.remove("hidden");
     if (!turns.length && beforeId == null) {
       chatLog.innerHTML = "<p class=\"hint\">Нет записей.</p>";
       return;
@@ -143,7 +164,8 @@
       t.llm_prompt_tokens != null ||
       t.llm_completion_tokens != null ||
       t.llm_total_tokens != null ||
-      t.llm_calls != null
+      t.llm_calls != null ||
+      t.llm_cost_usd != null
     ) {
       const meta = document.createElement("div");
       meta.className = "usage";
@@ -155,7 +177,9 @@
         ", total=" +
         String(t.llm_total_tokens ?? 0) +
         ", calls=" +
-        String(t.llm_calls ?? 0);
+        String(t.llm_calls ?? 0) +
+        ", cost_usd=" +
+        String((t.llm_cost_usd ?? 0).toFixed ? (t.llm_cost_usd ?? 0).toFixed(6) : t.llm_cost_usd ?? 0);
       b.appendChild(meta);
     }
     wrap.appendChild(b);

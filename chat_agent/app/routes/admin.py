@@ -66,10 +66,15 @@ class AdminTurnOut(BaseModel):
     llm_completion_tokens: Optional[int] = None
     llm_total_tokens: Optional[int] = None
     llm_calls: Optional[int] = None
+    llm_cost_usd: Optional[float] = None
 
 
 class AdminHistoryResponse(BaseModel):
     turns: List[AdminTurnOut]
+    total_cost_usd: float = 0.0
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 @router.get("/admin/api/users", response_model=AdminUsersResponse)
@@ -106,6 +111,7 @@ async def admin_history(
     if not uid or len(uid) > 32:
         raise HTTPException(status_code=400, detail="Некорректный user_id")
     turns = await audit.list_turns(user_id=uid, before_id=before_id, limit=limit)
+    totals = await audit.usage_totals(user_id=uid)
     return AdminHistoryResponse(
         turns=[
             AdminTurnOut(
@@ -119,9 +125,14 @@ async def admin_history(
                 llm_completion_tokens=t.llm_completion_tokens,
                 llm_total_tokens=t.llm_total_tokens,
                 llm_calls=t.llm_calls,
+                llm_cost_usd=t.llm_cost_usd,
             )
             for t in turns
-        ]
+        ],
+        total_cost_usd=totals.cost_usd,
+        total_prompt_tokens=totals.prompt_tokens,
+        total_completion_tokens=totals.completion_tokens,
+        total_tokens=totals.total_tokens,
     )
 
 

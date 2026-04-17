@@ -46,6 +46,8 @@ def _parse_planner_output(raw: str) -> PlannerOutput:
     data = json.loads(cleaned)
     if not isinstance(data, dict):
         raise ValueError("planner JSON must be an object")
+    if "out_of_scope" not in data:
+        data["out_of_scope"] = False
     return PlannerOutput.model_validate(data)
 
 
@@ -105,6 +107,12 @@ def _execution_steps(plan: PlannerOutput) -> Optional[list[tuple[str, dict[str, 
                 return None
             out.append((t, dict(s.arguments or {})))
         return out
+    # Защита от несогласованного planner-JSON: если выбран конкретный tool,
+    # но needs_tool=false, всё равно исполняем этот tool.
+    if plan.tool != "none":
+        if plan.tool not in REGISTERED_TOOL_NAMES:
+            return None
+        return [(plan.tool, dict(plan.arguments or {}))]
     if plan.needs_tool and plan.tool != "none":
         if plan.tool not in REGISTERED_TOOL_NAMES:
             return None
@@ -196,12 +204,19 @@ def _log_llm_tokens_for_request(acc: _LLMTokenAccumulator, *, user_id: str) -> N
     )
 
 
-def _request_usage_from_acc(acc: _LLMTokenAccumulator) -> LLMRequestUsage:
+def _request_usage_from_acc(
+    acc: _LLMTokenAccumulator, *, input_price_per_1m_usd: float, output_price_per_1m_usd: float
+) -> LLMRequestUsage:
+    cost_usd = (
+        (acc.prompt / 1_000_000.0) * float(input_price_per_1m_usd)
+        + (acc.completion / 1_000_000.0) * float(output_price_per_1m_usd)
+    )
     return LLMRequestUsage(
         prompt_tokens=acc.prompt,
         completion_tokens=acc.completion,
         total_tokens=acc.total,
         calls=acc.calls,
+        cost_usd=cost_usd,
     )
 
 
@@ -329,7 +344,11 @@ async def run_chat_turn(
                 max_pairs=max(1, settings.max_history_messages // 2),
             )
             _log_llm_tokens_for_request(token_acc, user_id=user_id)
-            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
+            return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(
+                token_acc,
+                input_price_per_1m_usd=settings.llm_price_input_per_1m_usd,
+                output_price_per_1m_usd=settings.llm_price_output_per_1m_usd,
+            )
 
     _pl(
         "[pipeline] 3. ответ planner (сырой JSON от модели): %s",
@@ -350,7 +369,11 @@ async def run_chat_turn(
             max_pairs=max(1, settings.max_history_messages // 2),
         )
         _log_llm_tokens_for_request(token_acc, user_id=user_id)
-        return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(token_acc)
+        return _MSG_UNRECOGNIZED_PLAN, None, None, _request_usage_from_acc(
+            token_acc,
+            input_price_per_1m_usd=settings.llm_price_input_per_1m_usd,
+            output_price_per_1m_usd=settings.llm_price_output_per_1m_usd,
+        )
 
     early_reply = _early_fixed_reply_for_plan(plan, exec_steps)
     if early_reply is not None:
@@ -366,7 +389,11 @@ async def run_chat_turn(
             max_pairs=max(1, settings.max_history_messages // 2),
         )
         _log_llm_tokens_for_request(token_acc, user_id=user_id)
-        return early_reply, None, None, _request_usage_from_acc(token_acc)
+        return early_reply, None, None, _request_usage_from_acc(
+            token_acc,
+            input_price_per_1m_usd=settings.llm_price_input_per_1m_usd,
+            output_price_per_1m_usd=settings.llm_price_output_per_1m_usd,
+        )
 
     _pl(
         "[pipeline] 4. выбранное действие (после валидации) tool=%s needs_tool=%s think=%s arguments=%s tool_steps=%s",
@@ -446,7 +473,11 @@ async def run_chat_turn(
             max_pairs=max(1, settings.max_history_messages // 2),
         )
         _log_llm_tokens_for_request(token_acc, user_id=user_id)
-        return reply, None, None, _request_usage_from_acc(token_acc)
+        return reply, None, None, _request_usage_from_acc(
+            token_acc,
+            input_price_per_1m_usd=settings.llm_price_input_per_1m_usd,
+            output_price_per_1m_usd=settings.llm_price_output_per_1m_usd,
+        )
 
     multi_tool = len(exec_steps) > 1
     effective_think = plan.think or multi_tool
@@ -517,7 +548,11 @@ async def run_chat_turn(
     except Exception as e:
         logger.exception("responder LLM failed: %s", e)
         _log_llm_tokens_for_request(token_acc, user_id=user_id)
-        return "", f"Ошибка модели ответа: {e}", None, _request_usage_from_acc(token_acc)
+        return "", f"Ошибка модели ответа: {e}", None, _request_usage_from_acc(
+            token_acc,
+            input_price_per_1m_usd=settings.llm_price_input_per_1m_usd,
+            output_price_per_1m_usd=settings.llm_price_output_per_1m_usd,
+        )
 
     _pl(
         "[pipeline] 6. ответ пользователю (responder): %s",
@@ -540,4 +575,8 @@ async def run_chat_turn(
     )
 
     _log_llm_tokens_for_request(token_acc, user_id=user_id)
-    return reply or "", None, reply_parse_mode, _request_usage_from_acc(token_acc)
+    return reply or "", None, reply_parse_mode, _request_usage_from_acc(
+        token_acc,
+        input_price_per_1m_usd=settings.llm_price_input_per_1m_usd,
+        output_price_per_1m_usd=settings.llm_price_output_per_1m_usd,
+    )
