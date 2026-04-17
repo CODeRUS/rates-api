@@ -151,6 +151,16 @@ def _compress_planner_chat_messages(
     return out
 
 
+def _drop_trailing_user(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Удаляет последний user-хвост, чтобы текущая реплика не дублировалась подряд."""
+    if not messages:
+        return []
+    out = [dict(m) for m in messages]
+    if str(out[-1].get("role", "")) == "user":
+        out.pop()
+    return out
+
+
 class _LLMTokenAccumulator:
     """Сумма usage по всем вызовам planner/responder за один HTTP-запрос /chat."""
 
@@ -256,6 +266,7 @@ async def run_chat_turn(
     hist_suffix = _planner_history_suffix(
         history, max_user_turns=settings.planner_user_history_turns
     )
+    hist_suffix = _drop_trailing_user(hist_suffix)
     hist_compressed = _compress_planner_chat_messages(
         hist_suffix, max_chars=settings.planner_history_message_max_chars
     )
@@ -447,7 +458,10 @@ async def run_chat_turn(
     resp_messages: list[dict[str, str]] = [
         {"role": "system", "content": responder_system},
     ]
-    for m in history[-settings.responder_history_messages :]:
+    responder_history = _drop_trailing_user(
+        history[-settings.responder_history_messages :]
+    )
+    for m in responder_history:
         resp_messages.append(dict(m))
     if tool_result_trunc:
         if len(exec_steps) == 1:

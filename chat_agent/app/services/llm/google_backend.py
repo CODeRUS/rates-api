@@ -3,8 +3,19 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from typing import Callable, Literal, Optional
+import logging
 
 from chat_agent.app.services.llm.base import LLMBackend, LLMCompletion, LLMUsage
+
+logger = logging.getLogger(__name__)
+
+
+def _is_retryable_503(exc: Exception) -> bool:
+    status_code = getattr(exc, "status_code", None)
+    if status_code == 503:
+        return True
+    s = str(exc).upper()
+    return "503" in s and "UNAVAILABLE" in s
 
 
 def _sync_gemini_complete(
@@ -71,18 +82,35 @@ class GoogleBackend:
         timeout_sec: float,
     ) -> LLMCompletion:
         import asyncio
+        from google.genai import errors as genai_errors
 
         # SDK синхронный — не блокируем event loop; общий таймаут запроса.
-        return await asyncio.wait_for(
-            asyncio.to_thread(
-                _sync_gemini_complete,
-                api_key=self._api_key,
-                model=model,
-                messages=messages,
-                mode=mode,
-            ),
-            timeout=timeout_sec,
-        )
+        # На 503 делаем короткие повторы с backoff.
+        max_attempts = 3
+        backoff_sec = (0.8, 1.6)
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return await asyncio.wait_for(
+                    asyncio.to_thread(
+                        _sync_gemini_complete,
+                        api_key=self._api_key,
+                        model=model,
+                        messages=messages,
+                        mode=mode,
+                    ),
+                    timeout=timeout_sec,
+                )
+            except genai_errors.ServerError as e:
+                if not _is_retryable_503(e) or attempt >= max_attempts:
+                    raise
+                wait_sec = backoff_sec[attempt - 1]
+                logger.warning(
+                    "Gemini 503 on complete (attempt %d/%d), retry in %.1fs",
+                    attempt,
+                    max_attempts,
+                    wait_sec,
+                )
+                await asyncio.sleep(wait_sec)
 
     async def stream_complete(
         self,
@@ -94,6 +122,7 @@ class GoogleBackend:
     ) -> AsyncIterator[str]:
         import asyncio
         from google import genai
+        from google.genai import errors as genai_errors
         from google.genai import types
 
         client = genai.Client(api_key=self._api_key)
@@ -119,14 +148,33 @@ class GoogleBackend:
             cfg_kw["system_instruction"] = system_instruction
         config = types.GenerateContentConfig(**cfg_kw) if cfg_kw else None
 
-        stream = await asyncio.wait_for(
-            client.aio.models.generate_content_stream(
-                model=model,
-                contents=contents,
-                config=config,
-            ),
-            timeout=timeout_sec,
-        )
+        max_attempts = 3
+        backoff_sec = (0.8, 1.6)
+        stream = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                stream = await asyncio.wait_for(
+                    client.aio.models.generate_content_stream(
+                        model=model,
+                        contents=contents,
+                        config=config,
+                    ),
+                    timeout=timeout_sec,
+                )
+                break
+            except genai_errors.ServerError as e:
+                if not _is_retryable_503(e) or attempt >= max_attempts:
+                    raise
+                wait_sec = backoff_sec[attempt - 1]
+                logger.warning(
+                    "Gemini 503 on stream start (attempt %d/%d), retry in %.1fs",
+                    attempt,
+                    max_attempts,
+                    wait_sec,
+                )
+                await asyncio.sleep(wait_sec)
+        if stream is None:
+            raise RuntimeError("Gemini stream not initialized")
         last_usage: Optional[LLMUsage] = None
         async for chunk in stream:
             um = getattr(chunk, "usage_metadata", None)
