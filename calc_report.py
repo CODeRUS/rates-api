@@ -140,6 +140,7 @@ def build_calc_report_text(
     readonly: bool = False,
 ) -> Tuple[str, List[str]]:
     from exchange_report import best_fiat_buy_thb_across_branches
+    from sources.avosend import avosend_commission as av
     from sources.rshb_unionpay.card_fx_calculator import (
         _msk_now_str,
         fetch_live_inputs,
@@ -218,6 +219,16 @@ def build_calc_report_text(
             rows.append(_CalcRowOut("AskMoney", am_thb, budget_rub / am_thb))
     except Exception as e:
         warnings.append(f"AskMoney: {e}")
+
+    try:
+        avo = av.fetch_commission(float(budget_rub), av.TransferMode.CASH)
+        avo_thb = float(avo.get("to") or 0.0)
+        if avo_thb > 0:
+            rows.append(
+                _CalcRowOut("Avosend получение в Big C", avo_thb, budget_rub / avo_thb)
+            )
+    except Exception as e:
+        warnings.append(f"Avosend Big C: {e}")
 
     best_tt, tt_warn = best_fiat_buy_thb_across_branches(
         fiat_code=fiat_tt,
