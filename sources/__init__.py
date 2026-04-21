@@ -12,6 +12,7 @@ PLUGIN_ORDER = (
     "bybit_moreta",
     "korona",
     "avosend",
+    "multitransfer",
     "avosend_bkb",
     "ex24",
     "kwikpay",
@@ -42,6 +43,7 @@ def _mods() -> Dict[str, object]:
         from . import htx_bitkub
         from . import korona
         from . import kwikpay
+        from . import multitransfer
         from . import payscan
         from . import rbc_ttexchange
         from . import rshb_unionpay
@@ -62,6 +64,7 @@ def _mods() -> Dict[str, object]:
                 "htx_binanceth": htx_binanceth,
                 "korona": korona,
                 "avosend": avosend,
+                "multitransfer": multitransfer,
                 "avosend_bkb": avosend_bkb,
                 "ex24": ex24,
                 "kwikpay": kwikpay,
