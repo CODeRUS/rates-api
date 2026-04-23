@@ -146,7 +146,7 @@
 
 - `BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY` - доступ к Bangkok Bank API;
 - `BANGKOKBANK_HTTP_TIMEOUT_SEC`, `BANGKOKBANK_HTTP_MAX_ATTEMPTS`, `BANGKOKBANK_HTTP_BACKOFF_BASE`;
-- `RATES_DISABLE_RBC`, `RATES_DISABLE_VBR` - отключение отдельных источников cash-отчета.
+- `RATES_DISABLE_RBC`, `RATES_DISABLE_BANKI`, `RATES_DISABLE_VBR` - отключение отдельных источников cash-отчета.
 
 ## Минимальный пример `.env`
 

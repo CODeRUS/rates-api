@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
-from sources.banki_cash import BANKI_REGIONS, banki_sell_rows, fetch_banki_banks_or_exchanges
 from sources.rbc_cash_json import fetch_cash_rates_json, min_sell_rub_per_unit
+from sources.vbr_cash import VBR_ENDPOINTS, fetch_vbr_rates_html, vbr_sell_rows
 
 SOURCE_ID = "rbc_ttexchange"
 EMOJI = "•"
@@ -41,7 +41,7 @@ _CASH_RUB_SEQ_SPB = (200, 201, 202)
 
 def help_text() -> str:
     return (
-        "РБК/Banki cash (Москва, СПб) min sell × TT Exchange THB/USD|EUR|CNY → implied RUB/THB. "
+        "РБК/VBR cash (Москва, СПб) min sell × TT Exchange THB/USD|EUR|CNY → implied RUB/THB. "
         "См. rbc_ttexchange (без отдельного CLI)."
     )
 
@@ -109,6 +109,12 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         "yes",
         "on",
     }
+    vbr_disabled = (os.environ.get("RATES_DISABLE_VBR") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     thb_map, tt_notes, _branch = _ttex_thb_per_fiat()
     if not thb_map:
         ctx.warnings.append(
@@ -127,31 +133,10 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
             if thb_per is None or thb_per <= 0:
                 continue
             bank_name = ""
-            source_tag = "РБК"
-            if rbc_disabled:
-                cfg = BANKI_REGIONS.get(banki_key)
-                cur_id_banki = {"USD": 840, "EUR": 978, "CNY": 156}.get(fiat_code)
-                if cfg is None or cur_id_banki is None:
-                    ctx.warnings.append(
-                        f"rbc_ttexchange: нет конфига Banki {fiat_code} для {city_label}"
-                    )
-                    continue
-                payload = fetch_banki_banks_or_exchanges(
-                    region_url=str(cfg["regionUrl"]),
-                    region_id=int(cfg["regionId"]),
-                    currency_id=int(cur_id_banki),
-                    sort_attribute=str(cfg.get("sortAttribute") or "recommend"),
-                    order=str(cfg.get("order") or "desc"),
-                )
-                rows = banki_sell_rows(payload) if payload is not None else []
-                if not rows:
-                    ctx.warnings.append(
-                        f"rbc_ttexchange: нет min sell {fiat_code} для {city_label} (Banki)"
-                    )
-                    continue
-                rub_per, bank_name = rows[0]
-                source_tag = "Banki"
-            else:
+            source_tag = ""
+            rub_per: Optional[float] = None
+
+            if not rbc_disabled:
                 logger.info(
                     "rbc_ttexchange: РБК JSON city_id=%s %s currency_id=%s (см. rbc_cash http)",
                     city_id,
@@ -166,11 +151,34 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
                     continue
                 banks = data.get("banks")
                 rub_per, bank_name = min_sell_rub_per_unit(banks)
+                if rub_per is not None and rub_per > 0:
+                    source_tag = "РБК"
+
             if rub_per is None or rub_per <= 0:
-                ctx.warnings.append(
-                    f"rbc_ttexchange: нет min sell {fiat_code} для {city_label} ({source_tag})"
+                if vbr_disabled:
+                    ctx.warnings.append(
+                        f"rbc_ttexchange: нет min sell {fiat_code} для {city_label} (РБК), VBR отключен"
+                    )
+                    continue
+                if banki_key not in VBR_ENDPOINTS:
+                    ctx.warnings.append(
+                        f"rbc_ttexchange: нет VBR endpoint {fiat_code} для {city_label}"
+                    )
+                    continue
+                html = fetch_vbr_rates_html(
+                    banki_key,
+                    fiat_code,
+                    timeout=15.0,
                 )
-                continue
+                rows = vbr_sell_rows(html or "", fiat_code) if html else []
+                if not rows:
+                    ctx.warnings.append(
+                        f"rbc_ttexchange: нет min sell {fiat_code} для {city_label} (VBR)"
+                    )
+                    continue
+                rub_per, bank_name = rows[0]
+                source_tag = "VBR"
+
             implied = rub_per / thb_per
             if implied <= 0:
                 continue

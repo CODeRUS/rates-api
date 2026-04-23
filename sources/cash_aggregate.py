@@ -46,6 +46,12 @@ def vbr_cash_enabled() -> bool:
     return raw not in {"1", "true", "yes", "on"}
 
 
+def banki_cash_enabled() -> bool:
+    """Отключение Banki: ``RATES_DISABLE_BANKI`` = 1/true/yes/on."""
+    raw = (os.environ.get("RATES_DISABLE_BANKI") or "").strip().lower()
+    return raw not in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class CashOffer:
     sell: float
@@ -183,7 +189,7 @@ def unified_top_sell_offers(
             warnings.append(f"РБК JSON: {fiat_code} (city {rbc_city_id})")
 
     banki_offers: List[CashOffer] = []
-    if use_banki:
+    if use_banki and banki_cash_enabled():
         cfg = BANKI_REGIONS.get(banki_region_key)
         cur_id = BANKI_CURRENCY_ID.get(fiat_code)
         if cfg is None or cur_id is None:
