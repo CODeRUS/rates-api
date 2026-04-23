@@ -17,8 +17,8 @@ CATEGORY = SourceCategory.TRANSFER
 _API_URL = "https://api.multitransfer.ru/anonymous/multi/multitransfer-fee-calc/v3/commissions"
 _CLIENT_ID = "multitransfer-web-id"
 _DEFAULT_X_REQUEST_ID = "894aa54e-a7bf-4701-a511-4ff8b59560eb"
-_DEFAULT_FHP_SESSION_ID = "05774ea8-a331-4fb2-a720-8561dda4d0ba"
-_DEFAULT_FHP_REQUEST_ID = "4e025c8e-9246-492d-9682-c266b52a3d95"
+_DEFAULT_FHP_SESSION_ID = "e2c657da-a35b-4bb3-abcc-be6288602aba"
+_DEFAULT_FHP_REQUEST_ID = "aba4f640-3eed-49ed-89ac-9ba1d9d383c1"
 
 
 def help_text() -> str:
