@@ -27,6 +27,7 @@ RSHB_ONLINE_URL = "https://old.rshb.ru/natural/cards/rates/rates_online/"
 RSHB_ONLINE_ARCHIVE_URL = (
     "https://old.rshb.ru/natural/cards/rates/rates_online/?date_from={date_from}&date_to={date_to}"
 )
+_USD_CROSS_PREMIUM = Decimal("0.03")
 
 
 def _fmt_ru_date(d: date) -> str:
@@ -78,11 +79,34 @@ def cny_rur_sell(*, on: Optional[date] = None, html: Optional[str] = None) -> De
     if not tables:
         raise ValueError("Не удалось распарсить таблицы rates_online")
 
-    def _pick(rows: List[_off.PairQuote]) -> Optional[Decimal]:
+    def _pick_direct(rows: List[_off.PairQuote]) -> Optional[Decimal]:
         for q in rows:
             if q.pair.replace(" ", "").upper() in ("CNY/RUR", "CNY/RUB"):
                 return q.sell
         return None
+
+    def _pick_via_usd(rows: List[_off.PairQuote]) -> Optional[Decimal]:
+        """
+        Fallback при отсутствии CNY/RUR:
+        CNY/RUR = (USD/RUR sell) / (USD/CNY sell), затем наценка 3%.
+        """
+        usd_rur: Optional[Decimal] = None
+        usd_cny: Optional[Decimal] = None
+        for q in rows:
+            key = q.pair.replace(" ", "").upper()
+            if key in ("USD/RUR", "USD/RUB"):
+                usd_rur = q.sell
+            elif key == "USD/CNY":
+                usd_cny = q.sell
+        if usd_rur is None or usd_cny is None or usd_cny <= 0:
+            return None
+        return (usd_rur / usd_cny) * (Decimal("1") + _USD_CROSS_PREMIUM)
+
+    def _pick_best(rows: List[_off.PairQuote]) -> Optional[Decimal]:
+        direct = _pick_direct(rows)
+        if direct is not None:
+            return direct
+        return _pick_via_usd(rows)
 
     if on is not None:
         rows = tables.get(on)
@@ -90,14 +114,17 @@ def cny_rur_sell(*, on: Optional[date] = None, html: Optional[str] = None) -> De
             raise KeyError(
                 f"Нет данных на {on.isoformat()} (есть: {sorted(tables.keys(), reverse=True)[:5]}…)"
             )
-        got = _pick(rows)
+        got = _pick_best(rows)
         if got is not None:
             return got
-        raise KeyError(f"Пара CNY/RUR не найдена на rates_online за {on.isoformat()}")
+        raise KeyError(
+            f"Пара CNY/RUR не найдена на rates_online за {on.isoformat()} "
+            "(и не удалось посчитать через USD с наценкой 3%)"
+        )
 
     def _find_latest_with_pair(tabs: Dict[date, List[_off.PairQuote]]) -> Optional[Decimal]:
         for d in sorted(tabs.keys(), reverse=True):
-            got = _pick(tabs[d])
+            got = _pick_best(tabs[d])
             if got is not None:
                 return got
         return None
@@ -119,14 +146,20 @@ def cny_rur_sell(*, on: Optional[date] = None, html: Optional[str] = None) -> De
     if on is not None:
         rows_arch = tabs_arch.get(on)
         if rows_arch is not None:
-            got_on = _pick(rows_arch)
+            got_on = _pick_best(rows_arch)
             if got_on is not None:
                 return got_on
-        raise KeyError(f"Пара CNY/RUR не найдена на rates_online за {on.isoformat()}")
+        raise KeyError(
+            f"Пара CNY/RUR не найдена на rates_online за {on.isoformat()} "
+            "(и не удалось посчитать через USD с наценкой 3%)"
+        )
     got_arch = _find_latest_with_pair(tabs_arch)
     if got_arch is not None:
         return got_arch
-    raise KeyError("Пара CNY/RUR не найдена на rates_online (ни на одной доступной дате)")
+    raise KeyError(
+        "Пара CNY/RUR не найдена на rates_online "
+        "(и не удалось посчитать через USD с наценкой 3% ни на одной доступной дате)"
+    )
 
 
 def cli_main(argv=None) -> int:
