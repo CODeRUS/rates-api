@@ -11,7 +11,7 @@ from rates_http import urlopen_retriable
 from rates_sources import FetchContext, SourceCategory, SourceQuote, fmt_money_ru
 
 SOURCE_ID = "bereza"
-EMOJI = "💱"
+EMOJI = "🤑"
 IS_BASELINE = False
 CATEGORY = SourceCategory.TRANSFER
 
