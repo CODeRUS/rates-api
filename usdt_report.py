@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import ssl
 import sys
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
 
@@ -21,6 +24,7 @@ if str(_SCRIPT_DIR) not in sys.path:
 
 from rates_parallel import map_bounded
 import rates_unified_cache as ucc
+from rates_http import urlopen_retriable
 
 USDT_CACHE_VERSION = 1
 
@@ -62,7 +66,19 @@ def _usdt_cache_valid(raw: Dict[str, Any], saved: float, key: Dict[str, Any]) ->
 
 _UsdtParallelBranch = Tuple[Dict[str, Optional[float]], Dict[str, Optional[float]], List[str]]
 
-_USDT_BRANCH_KEYS: Tuple[str, ...] = ("bybit", "htx", "bitkub", "binance", "fly", "it_obmen")
+_USDT_BRANCH_KEYS: Tuple[str, ...] = (
+    "bybit",
+    "htx",
+    "bitkub",
+    "binance",
+    "fly",
+    "it_obmen",
+    "bereza_usdt",
+)
+
+_BEREZA_TG_URL = "https://t.me/bereza_exchange/1631"
+_BEREZA_TG_URL_FALLBACK = "https://t.me/s/bereza_exchange/1631"
+_BEREZA_TG_UA = "rates-api/bereza-usdt/1.0 (python)"
 
 
 def _usdt_fetch_bybit_branch() -> _UsdtParallelBranch:
@@ -230,6 +246,73 @@ def _usdt_fetch_it_obmen_branch() -> _UsdtParallelBranch:
     return {}, thb, w
 
 
+def _parse_bereza_usdt_from_text(text: str) -> Optional[float]:
+    """
+    Вытаскивает USDT→THB из строки вида:
+    ``USDT (₮) -➡️ THB (฿) = 31.33``.
+    """
+    if not text:
+        return None
+    m = re.search(
+        r"USDT[^\n\r=]{0,120}=\s*([0-9]+(?:[.,][0-9]+)?)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if not m:
+        return None
+    try:
+        v = float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+    return v if v > 0 else None
+
+
+def _fetch_bereza_telegram_text(*, timeout: float = 20.0) -> str:
+    urls = (_BEREZA_TG_URL, _BEREZA_TG_URL_FALLBACK)
+    last_err: Optional[Exception] = None
+    for url in urls:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": _BEREZA_TG_UA,
+                "Accept": "text/html,application/xhtml+xml",
+            },
+        )
+        try:
+            with urlopen_retriable(req, timeout=timeout, context=ssl.create_default_context()) as resp:
+                raw = resp.read().decode(
+                    resp.headers.get_content_charset() or "utf-8",
+                    errors="replace",
+                )
+            if raw.strip():
+                return raw
+        except Exception as e:
+            last_err = e
+            continue
+    if last_err is not None:
+        raise RuntimeError(f"Bereza TG: {last_err}")
+    raise RuntimeError("Bereza TG: пустой ответ")
+
+
+def _usdt_fetch_bereza_usdt_branch() -> _UsdtParallelBranch:
+    """
+    USDT/THB из telegram @bereza_exchange, пост 1631 (редактируется).
+    """
+    thb: Dict[str, Optional[float]] = {"bereza_bid": None}
+    w: List[str] = []
+    try:
+        text = _fetch_bereza_telegram_text()
+    except Exception as e:
+        w.append(f"Bereza USDT: {e}")
+        return {}, thb, w
+    v = _parse_bereza_usdt_from_text(text)
+    if v is None:
+        w.append("Bereza USDT: не найдена строка 'USDT ... = <rate>' в посте @bereza_exchange/1631")
+        return {}, thb, w
+    thb["bereza_bid"] = v
+    return {}, thb, w
+
+
 def _usdt_l1_pack(pack: _UsdtParallelBranch) -> Dict[str, Any]:
     rpart, tpart, wpart = pack
     return {"rub": rpart, "thb": tpart, "warnings": wpart}
@@ -258,6 +341,8 @@ def _usdt_parallel_worker(branch: str) -> _UsdtParallelBranch:
         return _usdt_fetch_fly_branch()
     if branch == "it_obmen":
         return _usdt_fetch_it_obmen_branch()
+    if branch == "bereza_usdt":
+        return _usdt_fetch_bereza_usdt_branch()
     raise ValueError(branch)
 
 
@@ -281,6 +366,7 @@ def fetch_usdt_payload(
         "binance_bid": None,
         "fly_bid": None,
         "it_obmen_bid": None,
+        "bereza_bid": None,
     }
 
     def _work(branch: str) -> _UsdtParallelBranch:
@@ -339,6 +425,7 @@ def _empty_usdt_data() -> Dict[str, Any]:
             "binance_bid": None,
             "fly_bid": None,
             "it_obmen_bid": None,
+            "bereza_bid": None,
         },
     }
 
@@ -498,6 +585,7 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     bn = thb.get("binance_bid")
     fly = thb.get("fly_bid")
     it_obmen = thb.get("it_obmen_bid")
+    bereza = thb.get("bereza_bid")
 
     rub_rows: List[Tuple[str, Optional[float]]] = [
         ("Bybit (наличные)", float(rub["bybit_cash"]) if isinstance(rub.get("bybit_cash"), (int, float)) else None),
@@ -510,6 +598,7 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
         ("Binance TH (bid)", float(bn) if isinstance(bn, (int, float)) and bn and bn > 0 else None),
         ("Fly Currency (минимальная сумма)", float(fly) if isinstance(fly, (int, float)) and fly and fly > 0 else None),
         ("IT Обмен (до 1000 USDT)", float(it_obmen) if isinstance(it_obmen, (int, float)) and it_obmen and it_obmen > 0 else None),
+        ("Bereza Exchange (Telegram)", float(bereza) if isinstance(bereza, (int, float)) and bereza and bereza > 0 else None),
     ]
 
     lines: List[str] = [
