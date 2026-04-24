@@ -102,7 +102,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         out.append(
             SourceQuote(
                 tr,
-                "Bereza Transfer",
+                "Bereza СБП",
                 note=f"≈ {fmt_money_ru(transfer_rub)} RUB",
                 category=SourceCategory.TRANSFER,
                 emoji=EMOJI,
@@ -115,7 +115,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         out.append(
             SourceQuote(
                 cash,
-                "Bereza Cash",
+                "Bereza Наличные",
                 note=f"≈ {fmt_money_ru(cash_rub)} RUB",
                 category=SourceCategory.CASH_RUB,
                 emoji="•",
