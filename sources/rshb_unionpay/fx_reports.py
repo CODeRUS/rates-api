@@ -41,9 +41,9 @@ class ReportContext:
     atb_rub: float = 12.247
     flat_cny: float = 17.0
     flat_rub: float = 199.0
-    issuer_atm_cny_pct: float = 0.03
-    # Комиссия при снятии рублёвой картой: доля от базы в RUB после CNY→RUB (типично 1%).
-    rub_card_atm_pct: float = 0.01
+    issuer_atm_cny_pct: float = cfx.ISSUER_CNY_ATM_PCT
+    # Комиссия при снятии рублёвой картой: доля от базы в RUB после CNY→RUB (см. RATES_RUB_CARD_ATM_PCT).
+    rub_card_atm_pct: float = cfx.RUB_CARD_ATM_PCT
     # True, если входные курсы взяты из файла-кеша после таймаута сети.
     live_inputs_stale: bool = False
 
@@ -89,13 +89,14 @@ def section2(ctx: ReportContext, atm_fee: float) -> None:
         ctx.flat_cny, ctx.issuer_atm_cny_pct, ctx.cny_per_thb, atm_fee
     )
     t_rub = cfx.min_thb_for_rub_percent_fee(
-        ctx.flat_rub, 0.01, ctx.cny_per_thb, ctx.rshb_cny_rur_sell, atm_fee
+        ctx.flat_rub, ctx.rub_card_atm_pct, ctx.cny_per_thb, ctx.rshb_cny_rur_sell, atm_fee
     )
     rub_cny = (t_cny + atm_fee) * ctx.cny_per_thb * (1 + ctx.issuer_atm_cny_pct) * ctx.broker_cny_rub
     rub_rub = (t_rub + atm_fee) * ctx.cny_per_thb * ctx.rshb_cny_rur_sell
     print(
         "Минимальное количество валюты для снятия в банкомате, при котором "
-        "достигается «лучший» курс РСХБ (3% CNY / 1% RUB к базе после UnionPay)"
+        "достигается «лучший» курс РСХБ "
+        f"({ctx.issuer_atm_cny_pct * 100:g}% CNY / {ctx.rub_card_atm_pct * 100:g}% RUB к базе после UnionPay)"
     )
     print(f"(с учётом комиссии банкомата {atm_fee:g} THB)\n")
     print(f"- Юаневая карта (CNY) (Тариф Своя+): {t_cny:.0f} THB ({rub_cny:,.2f} RUB по MOEX)")
@@ -111,7 +112,7 @@ def section3(ctx: ReportContext) -> None:
     print("Курс CNY/RUB\n")
     print(f"• 1 CNY | Мосбиржа (MOEX, CNY/RUB) = {ctx.moex_cny_rub:.3f} RUB")
     print(
-        f"• 1 CNY | РСХБ банк (приложение, rates_online) = {ctx.rshb_app_cny_rub:.3f} RUB"
+        f"• 1 CNY | РСХБ банк (приложение, API v1/rates) = {ctx.rshb_app_cny_rub:.3f} RUB"
     )
     print(f"• 1 CNY | АТБ CNY = {ctx.atb_cny:.3f} RUB")
     print(f"• 1 CNY | АТБ RUB конвертация рублевых карт = {ctx.atb_rub:.3f} RUB")
@@ -122,7 +123,7 @@ def section3(ctx: ReportContext) -> None:
     ud = ctx.query_date.isoformat() if ctx.query_date else "сегодня (файл UnionPay)"
     print(
         f"\nДата файла UnionPay: {ud} | РСХБ rates_offline: {ctx.rshb_table_date} | "
-        f"rates_online: {ctx.rshb_online_table_date}"
+        f"API v1/rates (снимок): {ctx.rshb_online_table_date}"
     )
     if ctx.live_inputs_stale:
         print(
@@ -187,7 +188,7 @@ def section5(ctx: ReportContext, thb: float, atm_fee: float) -> None:
     print(f"• {tot_cny:,.2f} CNY (комиссия: {fee_cny:,.2f} CNY) | РСХБ CNY (UnionPay CNY→THB)")
     print(
         f"• {base_cny:,.2f} CNY (комиссия: 0.00 CNY) | РСХБ RUB ({ctx.rshb_table_date.isoformat()}) "
-        f"(счёт в CNY без +3% эмитента; списание в RUB см. ниже)"
+        f"(счёт в CNY без +{ctx.issuer_atm_cny_pct * 100:g}% эмитента; списание в RUB см. ниже)"
     )
 
     for label, cny_rub in [
@@ -212,7 +213,7 @@ def section5(ctx: ReportContext, thb: float, atm_fee: float) -> None:
     )
     print(
         f"• {rub_rc:,.2f} RUB (комиссия: {comm_rub_pct:,.2f} RUB, "
-        f"{ctx.rub_card_atm_pct * 100:.0f}% от базы в RUB) | "
+        f"{ctx.rub_card_atm_pct * 100:g}% от базы в RUB) | "
         f"РСХБ RUB ({ctx.rshb_table_date.isoformat()})"
     )
 

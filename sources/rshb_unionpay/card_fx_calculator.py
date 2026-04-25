@@ -6,13 +6,17 @@
 Это **модель** по наблюдаемым формулам из ваших расчётов; курсы АТБ и др. задаются
 параметрами, если не подставлены из внешних источников.
 
+Доли комиссий при снятии (юаневая / рублёвая карта) задаются переменными окружения
+``RATES_ISSUER_CNY_ATM_PCT`` и ``RATES_RUB_CARD_ATM_PCT`` (см. модульные константы
+``ISSUER_CNY_ATM_PCT``, ``RUB_CARD_ATM_PCT``).
+
 ## Откуда данные
 
 * **UnionPay** — дневной файл ``YYYYMMDD.json`` (см. :mod:`unionpay_rates`).
 * **MOEX** — CNYRUB_TOM (см. :mod:`moex_fx`).
 * **РСХБ offline** — HTML ``rates_offline``, CNY/RUR **продажа** для рублёвой карты
   (курс продажи CNY за RUB; см. :mod:`rshb_offline_rates`).
-* **РСХБ online** — HTML ``rates_online``, CNY/RUR **продажа** для операций в сети банка
+* **РСХБ online** — JSON ``/api/v1/rates``, CNY/RUR **продажа** для операций в сети банка
   («приложение», юаневая карта; см. :mod:`rshb_online_rates`).
 
 ## Ключевые формулы (проверены на ваших числах)
@@ -22,7 +26,7 @@
 2. **1 THB в RUB через юань** (юаневая карта, без комиссии банка-эмитента):
    ``rub_per_thb = cny_per_thb * cny_rub_effective``,
    где ``cny_rub_effective`` — выбранный канал (MOEX, **ПРОДАЖА CNY/RUR**
-   с ``rates_online`` (продажа CNY) для «приложения», **продажа CNY/RUR** с
+   с ``/api/v1/rates`` (продажа CNY) для «приложения», **продажа CNY/RUR** с
    ``rates_offline`` для рублёвой карты и т.д.).
 
 3. **Оплата** на сумму ``thb``: ``rub = thb * cny_per_thb * cny_rub_effective``.
@@ -30,27 +34,28 @@
 4. **Снятие** (нетто ``thb_net``, комиссия банкомата ``atm_fee_thb``):
    база в батах к конвертации UnionPay: ``thb_gross = thb_net + atm_fee_thb``.
    База в CNY: ``base_cny = thb_gross * cny_per_thb``.
-   Для юаневой карты РСХБ в примере сверху начисляется **3%** от этой базы в CNY:
-   ``cny_debit = base_cny * 1.03`` (3% = 190.96 при base_cny ≈ 6365.27).
+   Для юаневой карты РСХБ сверху начисляется доля (по умолчанию **4%**, см. env
+   ``RATES_ISSUER_CNY_ATM_PCT``) от этой базы в CNY: ``cny_debit = base_cny * (1 + pct)``.
    Итог в RUB: ``rub = cny_debit * cny_rub_effective``.
    **Курс «за 1 THB»** в ваших таблицах для снятия — чаще ``rub / thb_net`` (делитель —
    нетто 30 000, а не gross).
 
-5. **Рублёвая карта, снятие**: ``base_rub = base_cny * cny_rub_offline_sell`` (без +3% к CNY),
-   плюс **комиссия банка в RUB** — в модели по умолчанию **1%** от ``base_rub``
-   (``extra_rub_pct_of_base=0.01``); опционально добавляется фикс ``extra_rub_fee``.
+5. **Рублёвая карта, снятие**: ``base_rub = base_cny * cny_rub_offline_sell`` (без надбавки к CNY),
+   плюс **комиссия банка в RUB** — по умолчанию **1.5%** от ``base_rub`` (env
+   ``RATES_RUB_CARD_ATM_PCT``); опционально добавляется фикс ``extra_rub_fee``.
 
-6. **Порог «лучшего курса»** (процент вместо фикса):
+6. **Порог «лучшего курса»** (процент вместо фикса; доли из env, см. выше):
    * юаневая карта: ``(T + atm_fee) * cny_per_thb * pct = flat_cny``
-     → ``T_min = flat_cny / (pct * cny_per_thb) - atm_fee`` (у вас 17 CNY, 3%, 250 THB → ≈2443).
+     → ``T_min = flat_cny / (pct * cny_per_thb) - atm_fee``.
    * рублевая: ``(T + atm_fee) * cny_per_thb * cny_rub_sell * pct_rub = flat_rub``
-     → ``T_min = flat_rub / (pct_rub * cny_per_thb * cny_rub_sell) - atm_fee`` (199 RUB, 1% → ≈6893).
+     → ``T_min = flat_rub / (pct_rub * cny_per_thb * cny_rub_sell) - atm_fee``.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
 import sys
 import time
@@ -70,6 +75,21 @@ from . import moex_fx
 from . import rshb_offline_rates
 from . import rshb_online_rates
 from . import unionpay_rates
+
+
+def _pct_from_env(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return float(str(raw).strip())
+    except ValueError:
+        return default
+
+
+# Единый источник долей комиссий при снятии (переопределение через env).
+ISSUER_CNY_ATM_PCT = _pct_from_env("RATES_ISSUER_CNY_ATM_PCT", 0.04)
+RUB_CARD_ATM_PCT = _pct_from_env("RATES_RUB_CARD_ATM_PCT", 0.015)
 
 # Корень репозитория: sources/rshb_unionpay/this_file -> parents[2]
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -100,9 +120,13 @@ def _is_timeout_error(exc: BaseException) -> bool:
 
 
 def _is_missing_online_cny_error(exc: BaseException) -> bool:
-    """True, если rates_online не содержит CNY/RUR на доступных датах."""
+    """True, если ответ API online не содержит CNY/RUR или дата недоступна."""
     msg = str(exc)
     if "Пара CNY/RUR не найдена на rates_online" in msg:
+        return True
+    if "Пара CNY/RUR не найдена в ответе API v1/rates" in msg:
+        return True
+    if "Нет снимка API на" in msg and "исторические даты endpoint не поддерживает" in msg:
         return True
     return False
 
@@ -181,18 +205,16 @@ def _fetch_live_inputs_network(
         rshb_on = max(tables.keys())
     sell = rshb_offline_rates.cny_rur_sell(on=rshb_on, html=raw)
 
-    raw_on = rshb_online_rates.fetch_online_page()
-    tables_on = rshb_online_rates.parse_online_html(raw_on)
+    raw_on = rshb_online_rates.fetch_rates_json()
+    tables_on = rshb_online_rates.parse_rates_json(raw_on)
     if not tables_on:
-        raise RuntimeError("РСХБ rates_online: нет таблиц курсов на странице")
-    rshb_online_on = on
-    if rshb_online_on is None:
-        # Автовыбор: cny_rur_sell сам проверяет текущую страницу и archive range.
-        online_sell = rshb_online_rates.cny_rur_sell(on=None, html=raw_on)
+        raise RuntimeError("РСХБ API v1/rates: нет котировок в ответе")
+    if on is None:
         rshb_online_on = max(tables_on.keys())
+        online_sell = rshb_online_rates.cny_rur_sell(on=None, html=raw_on)
     else:
-        # Явная дата: если её нет на текущей странице, cny_rur_sell проверит archive range.
-        online_sell = rshb_online_rates.cny_rur_sell(on=rshb_online_on, html=raw_on)
+        rshb_online_on = on
+        online_sell = rshb_online_rates.cny_rur_sell(on=on, html=raw_on)
 
     return cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up
 
@@ -216,7 +238,7 @@ def default_channels(
     Набор каналов по умолчанию (цифры как в вашем примере от 23.03.2026).
 
     ``moex_cny_rub`` — референс с биржи (MOEX CNYRUB_TOM).
-    ``rshb_app_cny_rub`` — CNY/RUR **продажа** с ``rates_online`` (операции в сети банка).
+    ``rshb_app_cny_rub`` — CNY/RUR **продажа** с ``/api/v1/rates`` (операции в сети банка).
     """
     return [
         ChannelRates("MOEX (CNY/RUB)", moex_cny_rub),
@@ -239,11 +261,11 @@ def atm_cny_debit_rshb(
     thb_net: float,
     atm_fee_thb: float,
     cny_per_thb: float,
-    issuer_fee_on_cny_base: float = 0.03,
+    issuer_fee_on_cny_base: float = ISSUER_CNY_ATM_PCT,
 ) -> tuple[float, float, float]:
     """
     Юаневая карта: возвращает (base_cny, issuer_fee_cny, total_cny).
-    ``issuer_fee_on_cny_base`` — доля сверх базы (0.03 = 3%).
+    ``issuer_fee_on_cny_base`` — доля сверх базы (по умолчанию :data:`ISSUER_CNY_ATM_PCT`).
     """
     gross_thb = thb_net + atm_fee_thb
     base = gross_thb * cny_per_thb
@@ -256,7 +278,7 @@ def atm_rub_from_cny_path(
     atm_fee_thb: float,
     cny_per_thb: float,
     cny_rub: float,
-    issuer_fee_on_cny_base: float = 0.03,
+    issuer_fee_on_cny_base: float = ISSUER_CNY_ATM_PCT,
     extra_rub_fee: float = 0.0,
     extra_rub_pct_of_base: float = 0.0,
 ) -> tuple[float, float]:
@@ -264,7 +286,7 @@ def atm_rub_from_cny_path(
     Итог RUB и отображаемый rub_per_thb (деление на thb_net).
 
     ``extra_rub_pct_of_base`` — доля сверх рублёвой базы ``cny_tot * cny_rub``
-    (для рублёвой карты при снятии обычно **0.01** = 1%).
+    (для рублёвой карты при снятии по умолчанию :data:`RUB_CARD_ATM_PCT`).
     """
     _, _, cny_tot = atm_cny_debit_rshb(
         thb_net, atm_fee_thb, cny_per_thb, issuer_fee_on_cny_base
@@ -283,8 +305,8 @@ def atm_rub_total_for_net(
     cny_per_thb: float,
     cny_rub: float,
     rub_card: bool,
-    issuer_cny_atm_pct: float = 0.03,
-    rub_card_atm_pct: float = 0.01,
+    issuer_cny_atm_pct: float = ISSUER_CNY_ATM_PCT,
+    rub_card_atm_pct: float = RUB_CARD_ATM_PCT,
 ) -> float:
     """Сколько RUB спишут при снятии ``thb_net`` THB (нетто) с комиссией ATM."""
     rub, _ = (
@@ -316,8 +338,8 @@ def max_thb_net_for_atm_rub_budget(
     atm_fee_thb: float,
     cny_rub: float,
     rub_card: bool,
-    issuer_cny_atm_pct: float = 0.03,
-    rub_card_atm_pct: float = 0.01,
+    issuer_cny_atm_pct: float = ISSUER_CNY_ATM_PCT,
+    rub_card_atm_pct: float = RUB_CARD_ATM_PCT,
 ) -> float:
     """
     Максимальное нетто THB, если списание RUB при одном снятии не превышает ``budget_rub``.
@@ -410,7 +432,7 @@ def fetch_live_inputs(
       rshb_online_sell, rshb_online_date, used_stale_cache, unionpay_payload)``.
 
     ``rshb_offline_*`` — ``rates_offline``, рублёвая карта: CNY/RUR **продажа**.
-    ``rshb_online_*`` — ``rates_online``, юаневая карта (приложение): CNY/RUR **продажа**.
+    ``rshb_online_*`` — ``/api/v1/rates``, юаневая карта (приложение): CNY/RUR **продажа**.
 
     При **таймауте** сети и ``use_cache_on_timeout=True`` подставляются значения из
     ``.card_fx_live_inputs_cache.json`` (последний успешный запуск), флаг
@@ -554,8 +576,8 @@ def build_rshb_text(
     atm_fee_thb: float = 250.0,
     on: Optional[date] = None,
     moex_override: Optional[float] = None,
-    rub_card_atm_pct: float = 0.01,
-    issuer_cny_atm_pct: float = 0.03,
+    rub_card_atm_pct: float = RUB_CARD_ATM_PCT,
+    issuer_cny_atm_pct: float = ISSUER_CNY_ATM_PCT,
     readonly: bool = False,
 ) -> str:
     """
@@ -635,8 +657,8 @@ def report_example1(
     atm_fee_thb: float = 250.0,
     on: Optional[date] = None,
     moex_override: Optional[float] = None,
-    rub_card_atm_pct: float = 0.01,
-    issuer_cny_atm_pct: float = 0.03,
+    rub_card_atm_pct: float = RUB_CARD_ATM_PCT,
+    issuer_cny_atm_pct: float = ISSUER_CNY_ATM_PCT,
 ) -> None:
     """
     Вывод в стиле вашего пункта 1): оплата и снятие.
@@ -693,34 +715,50 @@ def demo_report(
     print()
 
     print(f"=== Снятие {thb:g} THB, комиссия банкомата {atm_fee:g} THB ===")
-    print("(юаневая карта: +3% к базе в CNY; курс в строке = RUB / нетто THB)")
+    print(
+        f"(юаневая карта: +{ISSUER_CNY_ATM_PCT * 100:.2f}% к базе в CNY; "
+        "курс в строке = RUB / нетто THB)"
+    )
     for c in chans[:3]:
         rub, per = atm_rub_from_cny_path(
-            thb, atm_fee, cny_per_thb, c.cny_rub, issuer_fee_on_cny_base=0.03
+            thb,
+            atm_fee,
+            cny_per_thb,
+            c.cny_rub,
+            issuer_fee_on_cny_base=ISSUER_CNY_ATM_PCT,
         )
         print(f"  {per:.3f} RUB/THB | {rub:,.2f} RUB | {c.name}")
-    # Рублёвая карта: без +3% к базе в CNY; только CNY→RUB по продаже + комиссия эмитента в RUB.
+    # Рублёвая карта: без надбавки к базе в CNY; CNY→RUB по продаже + комиссия эмитента в RUB.
     rub_rubcard, per_rc = atm_rub_from_cny_path(
         thb,
         atm_fee,
         cny_per_thb,
         chans[-1].cny_rub,
         issuer_fee_on_cny_base=0.0,
-        extra_rub_pct_of_base=0.01,
+        extra_rub_pct_of_base=RUB_CARD_ATM_PCT,
     )
     print(
         f"  {per_rc:.3f} RUB/THB | {rub_rubcard:,.2f} RUB | "
-        f"РСХБ RUB (без 3% на CNY) + 1% к базе в RUB"
+        f"РСХБ RUB (без +{ISSUER_CNY_ATM_PCT * 100:.2f}% на CNY) + "
+        f"{RUB_CARD_ATM_PCT * 100:.2f}% к базе в RUB"
     )
     print()
 
     print("=== Пороги THB (комиссия % вместо фикса) ===")
-    t_cny = min_thb_for_cny_percent_fee(17.0, 0.03, cny_per_thb, atm_fee)
-    rub_at = (t_cny + atm_fee) * cny_per_thb * (1.03) * chans[0].cny_rub
-    print(f"  Юаневая (3% CNY vs 17 CNY): min нетто THB ≈ {t_cny:.0f} (~{rub_at:,.2f} RUB по MOEX)")
-    t_rub = min_thb_for_rub_percent_fee(199.0, 0.01, cny_per_thb, rshb_sell, atm_fee)
+    t_cny = min_thb_for_cny_percent_fee(17.0, ISSUER_CNY_ATM_PCT, cny_per_thb, atm_fee)
+    rub_at = (t_cny + atm_fee) * cny_per_thb * (1.0 + ISSUER_CNY_ATM_PCT) * chans[0].cny_rub
+    print(
+        f"  Юаневая ({ISSUER_CNY_ATM_PCT * 100:.2f}% CNY vs 17 CNY): min нетто THB ≈ {t_cny:.0f} "
+        f"(~{rub_at:,.2f} RUB по MOEX)"
+    )
+    t_rub = min_thb_for_rub_percent_fee(
+        199.0, RUB_CARD_ATM_PCT, cny_per_thb, rshb_sell, atm_fee
+    )
     rub_at_r = (t_rub + atm_fee) * cny_per_thb * rshb_sell
-    print(f"  Рублевая (1% RUB vs 199 RUB): min нетто THB ≈ {t_rub:.0f} (~{rub_at_r:,.2f} RUB база до %)")
+    print(
+        f"  Рублевая ({RUB_CARD_ATM_PCT * 100:.2f}% RUB vs 199 RUB): min нетто THB ≈ {t_rub:.0f} "
+        f"(~{rub_at_r:,.2f} RUB база до %)"
+    )
 
     print()
     print("=== 30 000 THB в RUB через CNY (MOEX, приложение, АТБ CNY) ===")

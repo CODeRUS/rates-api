@@ -977,7 +977,7 @@ optional arguments:
   forex
       Курс THB→RUB для сводки — XE midmarket. CLI: подкоманда «xe» — клиент Xe.com; «er» — ExchangeRate-API (open.er-api.com). Полные опции: forex xe --help   и   forex er --help
   rshb_unionpay
-      РСХБ / UnionPay / MOEX: сводка через card_fx_calculator. Подкоманды CLI (полные опции: rshb_unionpay <подкоманда> --help):   cardfx       Калькулятор THB/RUB/CNY (бывший card_fx_calculator.py)   unionpay     UnionPay daily JSON (unionpay_rates.py)   moex         CNY/RUB с MOEX одной строкой (moex_fx.py)   rshb-offline РСХБ offline HTML (rshb_offline_rates.py)   rshb-online  РСХБ online HTML (rshb_online_rates.py)   reports      Отчёты разделы 1–5 (fx_reports.py)
+      РСХБ / UnionPay / MOEX: сводка через card_fx_calculator. Подкоманды CLI (полные опции: rshb_unionpay <подкоманда> --help):   cardfx       Калькулятор THB/RUB/CNY (бывший card_fx_calculator.py)   unionpay     UnionPay daily JSON (unionpay_rates.py)   moex         CNY/RUB с MOEX одной строкой (moex_fx.py)   rshb-offline РСХБ offline HTML (rshb_offline_rates.py)   rshb-online  РСХБ online JSON /api/v1/rates (rshb_online_rates.py)   reports      Отчёты разделы 1–5 (fx_reports.py)
   bybit_bitkub
       Bybit P2P USDT/RUB + Bitkub THB/USDT.   bitkub …  — тикер Bitkub (подкоманда, см. bybit_bitkub bitkub --help)   иначе     — аргументы передаются в Bybit P2P CLI (bybit_p2p_usdt_rub)
   bybit_novawallet

@@ -9,18 +9,21 @@ IS_BASELINE = False
 
 import sys
 from datetime import date
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
-from rates_sources import FetchContext, SourceCategory, SourceQuote
+from rates_categories import SourceCategory
 
 CATEGORY = SourceCategory.TRANSFER
+
+if TYPE_CHECKING:
+    from rates_sources import FetchContext, SourceQuote
 
 _SUBCOMMANDS = (
     ("cardfx", "Калькулятор THB/RUB/CNY (бывший card_fx_calculator.py)"),
     ("unionpay", "UnionPay daily JSON (unionpay_rates.py)"),
     ("moex", "CNY/RUB с MOEX одной строкой (moex_fx.py)"),
     ("rshb-offline", "РСХБ offline HTML (rshb_offline_rates.py)"),
-    ("rshb-online", "РСХБ online HTML (rshb_online_rates.py)"),
+    ("rshb-online", "РСХБ online JSON /api/v1/rates (rshb_online_rates.py)"),
     ("reports", "Отчёты разделы 1–5 (fx_reports.py)"),
 )
 
@@ -73,6 +76,8 @@ def command(argv: list[str]) -> int:
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
+    from rates_sources import SourceQuote
+
     from . import card_fx_calculator as cfx
 
     on = date.fromisoformat(ctx.unionpay_date) if ctx.unionpay_date else None
@@ -110,7 +115,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
             atm_fee,
             cpt,
             broker_cny_rub,
-            issuer_fee_on_cny_base=0.03,
+            issuer_fee_on_cny_base=cfx.ISSUER_CNY_ATM_PCT,
         )
         out.append(
             SourceQuote(
@@ -125,7 +130,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
                 atm_fee,
                 cpt,
                 rshb_app,
-                issuer_fee_on_cny_base=0.03,
+                issuer_fee_on_cny_base=cfx.ISSUER_CNY_ATM_PCT,
             )
             out.append(
                 SourceQuote(
@@ -141,7 +146,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
             cpt,
             rshb_sell,
             issuer_fee_on_cny_base=0.0,
-            extra_rub_pct_of_base=0.01,
+            extra_rub_pct_of_base=cfx.RUB_CARD_ATM_PCT,
         )
         out.append(
             SourceQuote(
