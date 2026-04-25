@@ -35,7 +35,7 @@ import urllib.request
 from dataclasses import dataclass
 
 from rates_http import urlopen_retriable
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,7 @@ class AskMoneyParams:
     f2: float
     h2: float
     b4: float
+    ladder: Tuple[Tuple[float, float], ...] = ()
 
     @property
     def threshold_rub(self) -> float:
@@ -100,15 +101,124 @@ def _parse_prefill_for_variable(html: str, var: str) -> Optional[float]:
     return None
 
 
+def _extract_transfer_sheet_url(html: str) -> str:
+    m = re.search(r'var\s+TRANSFER_SHEET_URL\s*=\s*"([^"]+)"', html)
+    if not m:
+        raise ValueError("TRANSFER_SHEET_URL not found in page HTML")
+    return m.group(1)
+
+
+def _parse_gviz_response(raw_text: str) -> dict:
+    m = re.search(r"setResponse\((\{.*\})\);?\s*$", raw_text, flags=re.S)
+    if not m:
+        raise ValueError("Cannot parse gviz response body")
+    return json.loads(m.group(1))
+
+
+def load_transfer_table(url: str, *, timeout: float = 20.0) -> dict:
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": USER_AGENT, "Accept": "text/plain,*/*"},
+    )
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
+        text = r.read().decode(r.headers.get_content_charset() or "utf-8", errors="replace")
+    return _parse_gviz_response(text)["table"]
+
+
+def _to_float(v: object) -> Optional[float]:
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace(" ", "").replace(",", ".")
+    if not s:
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _params_from_transfer_sheet(html: str) -> Optional[AskMoneyParams]:
+    try:
+        transfer_sheet_url = _extract_transfer_sheet_url(html)
+        table = load_transfer_table(transfer_sheet_url, timeout=12.0)
+    except Exception:
+        return None
+
+    rows = table.get("rows", [])
+    transfer_row = rows[1]["c"] if len(rows) > 1 and rows[1].get("c") else []
+    rub_rate = _to_float(transfer_row[5]["v"]) if len(transfer_row) > 5 and transfer_row[5] else None
+    if not (rub_rate and rub_rate > 0):
+        return None
+    b2 = rub_rate
+    ladder: List[Tuple[float, float]] = []
+    for row in rows:
+        cells = row.get("c") or []
+        rub_amount = _to_float(cells[13]["v"]) if len(cells) > 13 and cells[13] else None
+        raw_thb = _to_float(cells[16]["v"]) if len(cells) > 16 and cells[16] else None
+        if rub_amount and rub_amount > 0 and raw_thb and raw_thb > 0:
+            ladder.append((rub_amount, raw_thb))
+    ladder.sort(key=lambda x: x[0])
+    return AskMoneyParams(
+        b2=b2,
+        f2=float(DEFAULT_PARAMS["f2"]),
+        h2=float(DEFAULT_PARAMS["h2"]),
+        b4=float(DEFAULT_PARAMS["b4"]),
+        ladder=tuple(ladder),
+    )
+
+
+def _params_from_embedded_formulas(html: str) -> Optional[AskMoneyParams]:
+    m = re.search(
+        r'RUB:\s*\{\s*code:\s*"RUB",\s*rate:\s*([0-9.]+).*?USD:\s*\{\s*code:\s*"USD",\s*rate:\s*([0-9.]+)',
+        html,
+        flags=re.S,
+    )
+    if not m:
+        return None
+    rub_rate = _to_float(m.group(1))
+    if not rub_rate or rub_rate <= 0:
+        return None
+    return AskMoneyParams(
+        b2=rub_rate,
+        f2=float(DEFAULT_PARAMS["f2"]),
+        h2=float(DEFAULT_PARAMS["h2"]),
+        b4=float(DEFAULT_PARAMS["b4"]),
+        ladder=(),
+    )
+
+
 def parse_params_from_html(html: str) -> AskMoneyParams:
-    """Извлекает b2, f2, h2, b4 со страницы."""
+    """Извлекает b2, f2, h2, b4 со страницы.
+
+    Приоритет:
+      1) старый data-prefill (если есть на странице);
+      2) gviz-таблица по TRANSFER_SHEET_URL (новая схема askmoney).
+    """
     vals: Dict[str, float] = {}
     for key in ("b2", "f2", "h2", "b4"):
         v = _parse_prefill_for_variable(html, key)
-        if v is None:
-            raise ValueError(f"Не найден data-prefill для переменной {key}")
-        vals[key] = v
-    return AskMoneyParams(b2=vals["b2"], f2=vals["f2"], h2=vals["h2"], b4=vals["b4"])
+        if v is not None:
+            vals[key] = v
+    if len(vals) == 4:
+        return AskMoneyParams(b2=vals["b2"], f2=vals["f2"], h2=vals["h2"], b4=vals["b4"])
+
+    from_sheet = _params_from_transfer_sheet(html)
+    if from_sheet is not None:
+        return from_sheet
+
+    from_formulas = _params_from_embedded_formulas(html)
+    if from_formulas is not None:
+        return from_formulas
+
+    missing = next((k for k in ("b2", "f2", "h2", "b4") if k not in vals), "b2")
+    raise ValueError(
+        "askmoney: не удалось получить live-параметры "
+        "(TRANSFER_SHEET_URL/таблица недоступны и не найден встроенный RUB rate в формулах; "
+        f"также отсутствует data-prefill для {missing})"
+    )
 
 
 def rub_to_thb(rub: float, p: AskMoneyParams) -> int:
@@ -117,10 +227,36 @@ def rub_to_thb(rub: float, p: AskMoneyParams) -> int:
     """
     if rub < RUB_MIN_PAYOUT:
         return 0
-    thr = p.threshold_rub
-    if rub < thr:
-        return int(math.floor((rub - RUB_BRANCH_SUBTRACT) / p.b2 / 100.0) * 100)
-    return int(math.floor((rub / p.b2 / p.b4) / 100.0) * 100)
+    if p.ladder:
+        ladder_max_rub = p.ladder[-1][0]
+        if rub <= ladder_max_rub:
+            raw = _ladder_raw_thb(rub, p.ladder)
+            return _floor_to_100_number(raw or 0.0)
+    return _floor_to_100_number(rub / p.b2)
+
+
+def _floor_to_100_number(value: float) -> int:
+    if not math.isfinite(value) or value <= 0:
+        return 0
+    return int(math.floor(value / 100.0) * 100)
+
+
+def _ladder_raw_thb(rub_amount: float, ladder: Tuple[Tuple[float, float], ...]) -> Optional[float]:
+    if not ladder or rub_amount <= 0:
+        return None
+    if rub_amount <= ladder[0][0]:
+        return ladder[0][1] * (rub_amount / ladder[0][0])
+
+    for idx in range(len(ladder) - 1):
+        cur_rub, cur_thb = ladder[idx]
+        next_rub, next_thb = ladder[idx + 1]
+        if rub_amount == cur_rub:
+            return cur_thb
+        if rub_amount < next_rub:
+            ratio = (rub_amount - cur_rub) / (next_rub - cur_rub)
+            return cur_thb + ((next_thb - cur_thb) * ratio)
+
+    return ladder[-1][1]
 
 
 def effective_rate_rub_per_thb(rub: float, thb: int) -> Optional[float]:
@@ -295,13 +431,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def cli_main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
 
-    try:
-        params = load_params(args.fetch, args.html_file)
-    except (urllib.error.HTTPError, urllib.error.URLError, ValueError, OSError) as e:
-        print(str(e), file=sys.stderr)
-        return 1
+    needs_params = bool(
+        args.json_params
+        or args.max_rate
+        or args.max_rate_float
+        or args.min_rate
+        or args.rub is not None
+    )
+    params: Optional[AskMoneyParams] = None
+    if needs_params:
+        try:
+            params = load_params(args.fetch, args.html_file)
+        except (urllib.error.HTTPError, urllib.error.URLError, ValueError, OSError) as e:
+            print(str(e), file=sys.stderr)
+            return 1
 
-    if args.json_params:
+    if args.json_params and params is not None:
         print(
             json.dumps(
                 {
@@ -326,7 +471,7 @@ def cli_main(argv=None) -> int:
     elif args.show_formula:
         print("Укажите --fetch или --html-file для --show-formula")
 
-    if args.max_rate or args.max_rate_float:
+    if (args.max_rate or args.max_rate_float) and params is not None:
         br, bt, brt = max_effective_rate_rub_per_thb(
             params, integer_rub=not args.max_rate_float
         )
@@ -336,7 +481,7 @@ def cli_main(argv=None) -> int:
             f"Порог веток: {params.threshold_rub:g} RUB."
         )
 
-    if args.min_rate:
+    if args.min_rate and params is not None:
         try:
             br, bt, brt = min_effective_rate_rub_per_thb(params, rub_cap=args.rub_cap)
         except ValueError as e:
@@ -362,6 +507,10 @@ def cli_main(argv=None) -> int:
                 "Укажите сумму RUB или --json-params / --show-formula / --max-rate / --min-rate"
             )
         return 0
+
+    if params is None:
+        print("Внутренняя ошибка: параметры askmoney не загружены", file=sys.stderr)
+        return 1
 
     thb = rub_to_thb(args.rub, params)
     rate = effective_rate_rub_per_thb(args.rub, thb)
