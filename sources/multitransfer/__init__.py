@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import json
+import os
 import ssl
 import urllib.request
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from rates_http import urlopen_retriable
@@ -19,10 +21,47 @@ _CLIENT_ID = "multitransfer-web-id"
 _DEFAULT_X_REQUEST_ID = "894aa54e-a7bf-4701-a511-4ff8b59560eb"
 _DEFAULT_FHP_SESSION_ID = "e2c657da-a35b-4bb3-abcc-be6288602aba"
 _DEFAULT_FHP_REQUEST_ID = "aba4f640-3eed-49ed-89ac-9ba1d9d383c1"
+_DEFAULT_HEADERS_CACHE_FILE = (
+    Path(__file__).resolve().parents[2] / ".rates_cache" / "multitransfer_headers.json"
+)
 
 
 def help_text() -> str:
     return "Мультитрансфер RUB→THB. Полные опции: multitransfer --help"
+
+
+def _load_dynamic_headers() -> Dict[str, str]:
+    """
+    Загружает актуальные anti-bot заголовки из файла, который может обновляться
+    browser/CDP скриптами. При любой проблеме возвращает пустой словарь.
+    """
+    path_raw = (os.environ.get("MULTITRANSFER_HEADERS_FILE") or "").strip()
+    path = Path(path_raw) if path_raw else _DEFAULT_HEADERS_CACHE_FILE
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+
+    def _pick(*keys: str) -> Optional[str]:
+        for k in keys:
+            v = raw.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        return None
+
+    out: Dict[str, str] = {}
+    fhp_req = _pick("fhprequestid", "FhpRequestId")
+    fhp_sess = _pick("fhpsessionid", "FhpSessionId")
+    x_req = _pick("x-request-id", "X-Request-Id")
+    if fhp_req:
+        out["FhpRequestId"] = fhp_req
+    if fhp_sess:
+        out["FhpSessionId"] = fhp_sess
+    if x_req:
+        out["X-Request-Id"] = x_req
+    return out
 
 
 def _request_commissions(target_thb: float, *, timeout: float = 25.0) -> Dict[str, Any]:
@@ -43,6 +82,7 @@ def _request_commissions(target_thb: float, *, timeout: float = 25.0) -> Dict[st
         "FhpRequestId": _DEFAULT_FHP_REQUEST_ID,
         "User-Agent": "Mozilla/5.0",
     }
+    headers.update(_load_dynamic_headers())
     # Для этого API urllib в ряде сред стабильно получает 423 (WAF/anti-bot),
     # а browser-like TLS fingerprint через curl_cffi проходит.
     try:
