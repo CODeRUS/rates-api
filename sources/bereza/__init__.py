@@ -60,12 +60,13 @@ def _extract_to_amount(data: Any) -> Optional[float]:
     return None
 
 
-def _convert_rub_to_thb(
+def _convert_rub_to_thb_pair(
     amount_rub: float,
     from_currency: str,
     *,
     timeout: float = 20.0,
-) -> float:
+) -> tuple[float, float]:
+    """Возвращает (₽ за 1 THB, получено THB) для переданной суммы RUB."""
     qs = urllib.parse.urlencode(
         {
             "amount": int(round(amount_rub)),
@@ -90,12 +91,44 @@ def _convert_rub_to_thb(
     rub_per_thb = float(amount_rub) / thb
     if rub_per_thb <= 0:
         raise RuntimeError("Bereza: получен невалидный курс RUB/THB")
+    return rub_per_thb, thb
+
+
+def _convert_rub_to_thb(
+    amount_rub: float,
+    from_currency: str,
+    *,
+    timeout: float = 20.0,
+) -> float:
+    rub_per_thb, _ = _convert_rub_to_thb_pair(amount_rub, from_currency, timeout=timeout)
     return rub_per_thb
 
 
+_DEFAULT_TRANSFER_RUB = 30_000.0
+_DEFAULT_CASH_RUB = 10_000.0
+_MIN_SCENARIO_RUB = 1_000.0
+
+
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    cash_rub = 10_000.0
-    transfer_rub = 30_000.0
+    transfer_rub = _DEFAULT_TRANSFER_RUB
+    cash_rub = _DEFAULT_CASH_RUB
+    target_thb = (
+        float(ctx.receiving_thb)
+        if (ctx.receiving_thb is not None and float(ctx.receiving_thb) > 0)
+        else None
+    )
+    if target_thb is not None:
+        try:
+            _, probe_thb = _convert_rub_to_thb_pair(transfer_rub, "RUB (SBP)")
+            if probe_thb > 0:
+                scale = target_thb / probe_thb
+                transfer_rub = max(_MIN_SCENARIO_RUB, _DEFAULT_TRANSFER_RUB * scale)
+                cash_rub = max(_MIN_SCENARIO_RUB, _DEFAULT_CASH_RUB * scale)
+        except Exception as e:
+            ctx.warnings.append(
+                f"Bereza: не удалось подогнать суммы под receiving_thb={target_thb:g}: {e}"
+            )
+
     out: List[SourceQuote] = []
     try:
         tr = _convert_rub_to_thb(transfer_rub, "RUB (SBP)")
