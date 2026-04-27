@@ -26,6 +26,7 @@ def get_summary_text(
     refresh: bool = False,
     unified_allow_stale: bool = True,
     output_filter: str = "",
+    receiving_thb: Optional[float] = None,
 ) -> str:
     """Та же текстовая сводка, что у ``rates.py`` без ``--json``."""
     if refresh:
@@ -37,6 +38,8 @@ def get_summary_text(
     of = (output_filter or "").strip()
     if of:
         argv.extend(["--filter", of])
+    if receiving_thb is not None and receiving_thb > 0:
+        argv.extend(["--receiving-thb", str(receiving_thb)])
     args = parser.parse_args(argv)
     if not refresh:
         args.unified_allow_stale = bool(unified_allow_stale)

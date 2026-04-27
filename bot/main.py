@@ -178,6 +178,7 @@ async def _main_async() -> None:
         *,
         refresh: bool,
         output_filter: str = "",
+        receiving_thb: float | None = None,
     ) -> None:
         chat_id = event.chat_id
         # Не держим Lock во время await: иначе завершившийся запрос в finally может ждать lock
@@ -201,6 +202,7 @@ async def _main_async() -> None:
                         get_summary_text,
                         refresh=refresh,
                         output_filter=output_filter,
+                        receiving_thb=receiving_thb,
                     ),
                     timeout=fetch_timeout,
                 )
@@ -556,7 +558,7 @@ async def _main_async() -> None:
     async def on_start(event: events.NewMessage.Event) -> None:
         await event.respond(
             "Команды:\n"
-            "/rates — сводка RUB/THB; /rates ta или /rates filter ta — пресет; неизвестный фильтр без ошибки\n"
+            "/rates — сводка RUB/THB; /rates 30000 — под receiving-thb; /rates ta или /rates filter ta — пресет; неизвестный фильтр без ошибки\n"
             "/usdt — P2P RUB/USDT и USDT/THB\n"
             "/cash — список городов; /cash N [banki|vbr|rbc|all] [K] — курсы города, опц. источник и топ K\n"
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)\n"
@@ -676,9 +678,12 @@ async def _main_async() -> None:
     async def on_rates(event: events.NewMessage.Event) -> None:
         msg = event.message.message or ""
         tokens = msg.split()
-        refresh, output_filter = parse_rates_command_tokens(tokens)
+        refresh, output_filter, receiving_thb = parse_rates_command_tokens(tokens)
         await _send_rates_summary(
-            event, refresh=refresh, output_filter=output_filter
+            event,
+            refresh=refresh,
+            output_filter=output_filter,
+            receiving_thb=receiving_thb,
         )
 
     @client.on(events.NewMessage(pattern=r"(?i)^/refresh(?:@\S+)?"))
