@@ -1,8 +1,0 @@
-{
-  "action": "reload",
-  "page_url": "https://multitransfer.ru/",
-  "countries_url": "https://api.multitransfer.ru/anonymous/multi/multitransfer-directions/v2/countries",
-  "fhprequestid": "0ce285c8-6245-4d3a-b3e3-168828ba77b9",
-  "fhpsessionid": "7d4da181-6b17-498b-b5a3-74f074ee6e46",
-  "x-request-id": "2a7484e5-4773-4ab8-8230-1d3fd4a86838"
-}
