@@ -147,6 +147,21 @@
 - `BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY` - доступ к Bangkok Bank API;
 - `BANGKOKBANK_HTTP_TIMEOUT_SEC`, `BANGKOKBANK_HTTP_MAX_ATTEMPTS`, `BANGKOKBANK_HTTP_BACKOFF_BASE`;
 - `RATES_DISABLE_RBC`, `RATES_DISABLE_BANKI`, `RATES_DISABLE_VBR` - отключение отдельных источников cash-отчета.
+- `SBER_QR_HOSTNAME`, `SBER_QR_UFS_TOKEN`, `SBER_QR_UFS_SESSION`, `SBER_QR_LINK` - параметры запроса для cron-обновления источника Сбербанк QR;
+- `SBER_QR_TIMEOUT_SEC`, `SBER_QR_VERIFY_SSL` - таймаут и проверка SSL для Sberbank QR cron.
+
+### Sberbank QR refresh cron
+
+Source `sberbank_qr` does not call external API directly.  
+It reads `prim:sber_qr_transfer` from unified cache.
+
+Refresh command:
+
+`python cron/refresh_sberbank_qr.py`
+
+Crontab example:
+
+`*/10 * * * * cd /home/coderus/rates-api && /usr/bin/python3 cron/refresh_sberbank_qr.py >> /var/log/sber_qr_refresh.log 2>&1`
 
 ## Минимальный пример `.env`
 

@@ -21,6 +21,7 @@ PLUGIN_ORDER = (
     "ttexchange",
     "rbc_ttexchange",
     "tbank",
+    "sberbank_qr",
     "unired_bkb",
     "userbot_cash",
 )
@@ -47,6 +48,7 @@ def _mods() -> Dict[str, object]:
         from . import payscan
         from . import rbc_ttexchange
         from . import rshb_unionpay
+        from . import sberbank_qr
         from . import tbank
         from . import ttexchange
         from . import unired_bkb
@@ -73,6 +75,7 @@ def _mods() -> Dict[str, object]:
                 "ttexchange": ttexchange,
                 "rbc_ttexchange": rbc_ttexchange,
                 "tbank": tbank,
+                "sberbank_qr": sberbank_qr,
                 "unired_bkb": unired_bkb,
                 "userbot_cash": userbot_cash,
             }

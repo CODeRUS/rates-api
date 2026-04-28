@@ -43,6 +43,10 @@ CASH_CATEGORIES_ORDER: Tuple[SourceCategory, ...] = (
 
 _CASH_SET = frozenset(CASH_CATEGORIES_ORDER)
 
+# Источники, чьи данные приходят из prim без сетевого fetch в ensure_primitives;
+# refetched_prims не отражает обновление cron → не используем L1-hit по rs:*.
+_SOURCES_SKIP_L1_CACHE_HIT = frozenset({"sberbank_qr"})
+
 # THB за единицу: выше курс — выгоднее клиенту; показываем от большего к меньшему.
 _CASH_THB_PER_UNIT_DESC = frozenset(
     {
@@ -477,7 +481,7 @@ def run_sources_unified(
 
     def worker(src: RateSource) -> _SourceFetchPack:
         l1_key = f"rs:{src.id}:{ctx_digest}"
-        if not refresh:
+        if not refresh and src.id not in _SOURCES_SKIP_L1_CACHE_HIT:
             hit = uc.l1_get_valid(doc, l1_key)
             if hit is not None:
                 prim_for_src = PRIMITIVE_KEYS_BY_SOURCE_ID.get(src.id, ())

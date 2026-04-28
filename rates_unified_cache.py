@@ -14,7 +14,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 _SCHEMA_VERSION = 1
 
@@ -181,6 +181,23 @@ def l1_get_any(
         ent.get("payload"),
         float(ent.get("saved_unix", 0)),
     )
+
+
+def l2_deps_match_with_orphan_prims(
+    doc: Dict[str, Any],
+    deps: Dict[str, int],
+    orphan_prim_keys: Sequence[str],
+) -> bool:
+    """
+    Как :func:`l2_deps_match`, плюс инвалидация, если в ``doc[\"prim\"]`` есть ключ из
+    ``orphan_prim_keys``, которого нет в ``deps`` (старые L2-записи до появления prim в deps).
+    """
+    if deps:
+        prim = doc.get("prim") or {}
+        for k in orphan_prim_keys:
+            if isinstance(k, str) and k in prim and k not in deps:
+                return False
+    return l2_deps_match(doc, deps)
 
 
 def l2_deps_match(doc: Dict[str, Any], deps: Dict[str, int]) -> bool:

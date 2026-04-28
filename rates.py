@@ -43,6 +43,7 @@ load_repo_dotenv(_SCRIPT_DIR)
 
 import rates_unified_cache as ucc
 
+from rates_primitives import SUMMARY_L2_ORPHAN_PRIM_INVALIDATE
 from rates_sources import (
     FetchContext,
     RateRow,
@@ -275,6 +276,9 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
     rows: List[RateRow] = []
     baseline = 0.0
     warnings: List[str] = []
+    # L2-сводка есть, но deps не совпали с unified (например cron обновил prim) —
+    # не подставлять legacy .rates_summary_cache.json, иначе увидим старый Сбер QR и т.п.
+    skip_legacy_cache = False
 
     if not args.refresh:
         ent = ucc.l2_get(
@@ -298,15 +302,19 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
             deps = ent.get("deps") or {}
             payload = ent.get("payload") or {}
             if payload.get("rows") is not None:
-                dep_ok = (not deps) or ucc.l2_deps_match(doc, deps)
+                dep_ok = (not deps) or ucc.l2_deps_match_with_orphan_prims(
+                    doc, deps, SUMMARY_L2_ORPHAN_PRIM_INVALIDATE
+                )
                 if dep_ok or readonly:
                     rows, baseline, warnings = _summary_rows_from_l2_payload(payload)
                     if readonly and not dep_ok:
                         warnings.append(
                             "readonly: L2 сводка при несовпадении deps — только снимок из кеша."
                         )
+                elif not readonly:
+                    skip_legacy_cache = True
 
-    if not rows and not args.refresh:
+    if not rows and not args.refresh and not skip_legacy_cache:
         hit = load_stale_cache(args.cache_file)
         if hit is not None:
             raw, saved = hit

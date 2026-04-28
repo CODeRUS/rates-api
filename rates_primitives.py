@@ -23,6 +23,8 @@ PRIM_BITKUB_USDT_THB = "prim:bitkub:usdt_thb_highest_bid:v1"
 PRIM_BINANCE_TH_USDT_BID = "prim:binance_th:usdt_thb_bid:v1"
 PRIM_NOVAWALLET_LEDGER = "prim:novawallet:ledger_bundle:v1"
 PRIM_MORETA_EXCHANGE_RATES = "prim:moreta:exchange_rates:v1"
+# Курс Сбер QR (cron → unified prim); без HTTP в ensure_primitives.
+PRIM_SBER_QR_TRANSFER = "prim:sber_qr_transfer"
 
 # --- TTL ---
 TTL_PRIM_BYBIT = ucc.TTL_L1_RATE_SOURCE_BYBIT_SEC
@@ -52,7 +54,11 @@ PRIMITIVE_KEYS_BY_SOURCE_ID: Dict[str, Tuple[str, ...]] = {
     "htx_binanceth": (PRIM_HTX_P2P_RUB, PRIM_BINANCE_TH_USDT_BID),
     "bybit_novawallet": (PRIM_BYBIT_P2P_RUB, PRIM_NOVAWALLET_LEDGER),
     "bybit_moreta": (PRIM_BYBIT_P2P_RUB, PRIM_MORETA_EXCHANGE_RATES),
+    "sberbank_qr": (PRIM_SBER_QR_TRANSFER,),
 }
+
+# Если в unified появился примитив, а старая L2-сводка не перечисляет его в deps — пересобрать.
+SUMMARY_L2_ORPHAN_PRIM_INVALIDATE: Tuple[str, ...] = (PRIM_SBER_QR_TRANSFER,)
 
 
 def primitive_keys_for_sources(source_ids: Sequence[str]) -> List[str]:
