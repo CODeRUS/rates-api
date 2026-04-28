@@ -224,9 +224,9 @@ def main(argv: List[str] | None = None) -> int:
     )
 
     errors = 0
-    # Сводка / usdt / exchange / cash без глобального --refresh: в сеть только то, что
-    # протухло по TTL в unified (L1/prim в deps L2, см. rates_unified_cache.l2_deps_match)
-    # или отсутствует в L1. После обновления примитива пересчитываются зависимые rs:*.
+    # Для summary используем refresh=True, чтобы исключить fallback в legacy
+    # .rates_summary_cache.json и гарантированно пересобирать строки в unified.
+    # Для остальных отчётов оставляем мягкий прогрев по unified TTL/deps.
     order = ("summary", "usdt", "exchange", "cash")
     for name in order:
         if name not in tasks:
@@ -234,7 +234,7 @@ def main(argv: List[str] | None = None) -> int:
         try:
             logger.info("Обновление кеша: старт %s", name)
             if name == "summary":
-                get_summary_text(refresh=False, unified_allow_stale=False)
+                get_summary_text(refresh=True, unified_allow_stale=False)
             elif name == "usdt":
                 get_usdt_text(refresh=False, unified_allow_stale=False)
             elif name == "exchange":
