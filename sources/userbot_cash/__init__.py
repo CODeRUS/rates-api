@@ -24,7 +24,9 @@ _EMOJI_BY_SOURCE: Dict[str, str] = {
     str(cfg.source_id): str(cfg.emoji or "").strip() for cfg in USERBOT_SOURCES
 }
 # Пока в L1 лежат старые snapshot с category=transfer.
-_EXCHANGER_SOURCE_IDS = frozenset({"fly_currency", "it_obmen_pattaya"})
+_EXCHANGER_SOURCE_IDS = frozenset(
+    {"fly_currency", "it_obmen_pattaya", "exasia_exthailand"}
+)
 
 
 def help_text() -> str:

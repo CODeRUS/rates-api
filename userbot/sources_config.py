@@ -7,7 +7,7 @@
   - name: как источник будет называться в сводке
   - source_id: стабильный id источника в кеше
   - category:
-      transfer / cash_rub / cash_usd / cash_eur / cash_cny
+      transfer / exchanger / cash_rub / cash_usd / cash_eur / cash_cny
   - pattern: regex с именованной группой (?P<rate>...)
 """
 from __future__ import annotations
@@ -179,6 +179,24 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
         ),
         city="",
         summary_note="минимальная сумма",
+    ),
+    SourceConfig(
+        source_id="exasia_exthailand",
+        name="Exasia",
+        chat="@exthailand",
+        emoji="🤑",
+        currencies=(
+            CurrencyRule(
+                currency="RUBTHB",
+                category="exchanger",
+                # 🇷🇺RUB // Баты - 2.49 < (от20k бат)🇹🇭  <- берем этот курс
+                pattern=(
+                    r"RUB\s*//\s*Баты\s*-\s*(?P<rate>\d+(?:[.,]\d+)?)\s*<\s*\(от20k\s*бат\)"
+                ),
+            ),
+        ),
+        city="",
+        summary_note="от 20000 THB",
     ),
 )
 

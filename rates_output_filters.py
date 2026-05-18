@@ -38,6 +38,7 @@ _PRESETS_RAW: Dict[str, _OutputFilterPreset] = {
             "Payscan",
             "Мультитрансфер",
             "Bereza",
+            "Exasia",
         ),
     ),
 }
