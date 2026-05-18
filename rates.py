@@ -155,8 +155,11 @@ def build_arg_parser(*, add_help: bool = True) -> argparse.ArgumentParser:
     p.add_argument(
         "--receiving-thb",
         type=float,
-        default=None,
-        help="Целевая сумма получения THB для сводки (переопределяет --thb-ref и сценарные суммы источников).",
+        default=DEFAULT_THB_REF,
+        help=(
+            "Целевая сумма получения THB для сводки (по умолчанию %(default)s; "
+            "переопределяет --thb-ref и сценарные суммы источников)."
+        ),
     )
     p.add_argument("--atm-fee", type=float, default=DEFAULT_ATM_FEE_THB, help="Комиссия банкомата, THB")
     p.add_argument("--korona-small", type=float, default=DEFAULT_KORONA_SMALL_RUB)
@@ -238,7 +241,7 @@ def _readonly_fallback_from_any_l2_summary(
 
 
 def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float, List[str]]:
-    target_recv_thb = float(args.receiving_thb) if args.receiving_thb is not None else None
+    target_recv_thb = float(args.receiving_thb)
     key_params = {
         "receiving_thb": target_recv_thb,
         "thb_ref": args.thb_ref,
@@ -498,11 +501,7 @@ def _fetch_context_from_summary_args(args: argparse.Namespace) -> FetchContext:
         avosend_rub=args.avosend_rub,
         unionpay_date=args.unionpay_date,
         moex_override=args.moex_override,
-        receiving_thb=(
-            float(args.receiving_thb)
-            if getattr(args, "receiving_thb", None) is not None
-            else None
-        ),
+        receiving_thb=float(args.receiving_thb),
         warnings=[],
     )
 
