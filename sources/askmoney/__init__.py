@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 SOURCE_ID = "askmoney"
 EMOJI = "🤑"
 IS_BASELINE = False
-CATEGORY = SourceCategory.TRANSFER
+CATEGORY = SourceCategory.EXCHANGER
 
 DEFAULT_SUMMARY_TARGET_THB = 10_000
 

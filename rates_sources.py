@@ -72,6 +72,10 @@ def is_cash_category(cat: SourceCategory) -> bool:
     return cat in _CASH_SET
 
 
+def is_exchanger_category(cat: SourceCategory) -> bool:
+    return cat == SourceCategory.EXCHANGER
+
+
 @dataclass(frozen=True)
 class SourceQuote:
     """Результат одного «курса» от источника: число и подпись."""
@@ -426,6 +430,7 @@ def run_sources(
     rows = list(dedup.values())
 
     transfer = [r for r in rows if r.category == SourceCategory.TRANSFER]
+    exchanger = [r for r in rows if is_exchanger_category(r.category)]
     cash = [r for r in rows if is_cash_category(r.category)]
 
     baseline_rows = [r for r in transfer if r.is_baseline]
@@ -434,10 +439,11 @@ def run_sources(
         key=lambda x: x.rate,
     )
     transfer_ordered = baseline_rows + transfer_other
+    exchanger_ordered = sorted(exchanger, key=lambda x: x.rate)
 
     cash_ordered = sorted(cash, key=_cash_sort_key)
 
-    rows = transfer_ordered + cash_ordered
+    rows = transfer_ordered + exchanger_ordered + cash_ordered
 
     return rows, baseline, w
 
@@ -576,6 +582,7 @@ def run_sources_unified(
     rows = list(dedup.values())
 
     transfer = [r for r in rows if r.category == SourceCategory.TRANSFER]
+    exchanger = [r for r in rows if is_exchanger_category(r.category)]
     cash = [r for r in rows if is_cash_category(r.category)]
 
     baseline_rows = [r for r in transfer if r.is_baseline]
@@ -584,10 +591,11 @@ def run_sources_unified(
         key=lambda x: x.rate,
     )
     transfer_ordered = baseline_rows + transfer_other
+    exchanger_ordered = sorted(exchanger, key=lambda x: x.rate)
 
     cash_ordered = sorted(cash, key=_cash_sort_key)
 
-    rows = transfer_ordered + cash_ordered
+    rows = transfer_ordered + exchanger_ordered + cash_ordered
 
     deps: Dict[str, int] = {}
     for src in seq:

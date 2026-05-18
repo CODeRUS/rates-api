@@ -8,7 +8,7 @@ from rates_sources import FetchContext, SourceCategory, SourceQuote, fmt_money_r
 SOURCE_ID = "ex24"
 EMOJI = "🤑"
 IS_BASELINE = False
-CATEGORY = SourceCategory.TRANSFER
+CATEGORY = SourceCategory.EXCHANGER
 
 _FIAT_CASH_CATEGORY = {
     "RUB": SourceCategory.CASH_RUB,

@@ -137,7 +137,7 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
         currencies=(
             CurrencyRule(
                 currency="RUBTHB",
-                category="transfer",
+                category="exchanger",
                 # Пример:
                 # Онлайн Рубль -> Наличный Бат
                 # от 5к Бат  –  2.68
@@ -166,7 +166,7 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
         currencies=(
             CurrencyRule(
                 currency="RUBTHB",
-                category="transfer",
+                category="exchanger",
                 # RUB -> THB: 2.62 – 2.68  => берем верхнюю границу 2.68
                 pattern=r"RUB\s*(?:->|→)\s*THB\s*:\s*\d+(?:[.,]\d+)?\s*[–-]\s*(?P<rate>\d+(?:[.,]\d+)?)",
             ),

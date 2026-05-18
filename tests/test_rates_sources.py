@@ -14,6 +14,7 @@ from rates_sources import (
     SourceCategory,
     SourceQuote,
     is_cash_category,
+    is_exchanger_category,
     run_sources,
 )
 
@@ -59,8 +60,12 @@ class TestRatesSources(unittest.TestCase):
         )
         cats = {s.id: s.category for s in rs.DEFAULT_SOURCES}
         self.assertEqual(cats["ttexchange"].name, "TRANSFER")
-        for i in ids:
-            self.assertEqual(cats[i].name, "TRANSFER")
+        for sid in ("ex24", "askmoney", "bereza"):
+            self.assertEqual(cats[sid].name, "EXCHANGER")
+        for sid in ids:
+            if sid in {"ex24", "askmoney", "bereza"}:
+                continue
+            self.assertEqual(cats[sid].name, "TRANSFER")
 
     def test_run_sources_sort_and_dedup(self):
         base = RateSource(
@@ -89,6 +94,43 @@ class TestRatesSources(unittest.TestCase):
             [r.rate for r in rows[1:]],
             sorted([r.rate for r in rows[1:]]),
         )
+
+    def test_run_sources_exchanger_block_between_transfer_and_cash(self):
+        forex = RateSource(
+            "forex",
+            "📈",
+            True,
+            SourceCategory.TRANSFER,
+            _fake_summary([SourceQuote(2.5, "Forex")]),
+        )
+        t = RateSource(
+            "t1",
+            "t",
+            False,
+            SourceCategory.TRANSFER,
+            _fake_summary([SourceQuote(3.0, "T")]),
+        )
+        ex = RateSource(
+            "ex",
+            "🤑",
+            False,
+            SourceCategory.EXCHANGER,
+            _fake_summary([SourceQuote(2.7, "Ex")]),
+        )
+        c = RateSource(
+            "cash",
+            "c",
+            False,
+            SourceCategory.CASH_RUB,
+            _fake_summary([SourceQuote(1.0, "Cash")]),
+        )
+        ctx = FetchContext(30_000, 250, 0, 40_000, 10_000, None, None)
+        rows, _, _ = run_sources(ctx, [forex, c, ex, t])
+        labels = [r.label for r in rows]
+        self.assertEqual(labels[0], "Forex")
+        self.assertLess(labels.index("T"), labels.index("Ex"))
+        self.assertLess(labels.index("Ex"), labels.index("Cash"))
+        self.assertTrue(is_exchanger_category(rows[labels.index("Ex")].category))
 
     def test_run_sources_transfer_block_before_cash(self):
         """После baseline TRANSFER: все TRANSFER по rate, затем все наличные по категориям."""

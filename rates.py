@@ -50,6 +50,7 @@ from rates_sources import (
     SourceCategory,
     collect_rows,
     is_cash_category,
+    is_exchanger_category,
     run_sources_unified,
 )
 from sources.korona.koronapay_tariffs import RUB_MIN_SENDING_FOR_BEST_TIER
@@ -70,7 +71,7 @@ CACHE_FILE = (
     _CACHE_OVERRIDE_PATH if _CACHE_OVERRIDE_PATH is not None else _SCRIPT_DIR / ".rates_summary_cache.json"
 )
 CACHE_TTL_SEC = 30 * 60
-CACHE_VERSION = 32
+CACHE_VERSION = 33
 
 _RESERVED = frozenset(
     {"sources", "save", "usdt", "env-status", "cash", "exchange", "rshb", "calc"}
@@ -458,20 +459,32 @@ def print_summary_text(rows: List[RateRow], baseline: float, warnings: List[str]
     for r in sorted(unionpay_up_rows, key=lambda x: x.rate):
         print(r.format_line(baseline), file=file)
 
+    transfer_rows = [r for r in remaining if r.category == SourceCategory.TRANSFER]
+    exchanger_rows = [r for r in remaining if is_exchanger_category(r.category)]
+    cash_rows = [r for r in remaining if is_cash_category(r.category)]
+
     print(file=file)
     print("Перевод RUB ➔ THB", file=file)
+    for r in transfer_rows:
+        print(r.format_line(baseline), file=file)
+
+    if exchanger_rows:
+        print(file=file)
+        print("Менялы", file=file)
+        for r in exchanger_rows:
+            print(r.format_line(baseline), file=file)
+
     prev_cat: Optional[SourceCategory] = None
-    for r in remaining:
-        if is_cash_category(r.category):
-            new_block = (
-                prev_cat is None
-                or not is_cash_category(prev_cat)
-                or r.category != prev_cat
-            )
-            if new_block:
-                if prev_cat is not None:
-                    print(file=file)
-                print(_cash_section_title(r.category), file=file)
+    for r in cash_rows:
+        new_block = (
+            prev_cat is None
+            or not is_cash_category(prev_cat)
+            or r.category != prev_cat
+        )
+        if new_block:
+            if prev_cat is not None or transfer_rows or exchanger_rows:
+                print(file=file)
+            print(_cash_section_title(r.category), file=file)
         print(r.format_line(baseline), file=file)
         prev_cat = r.category
 

@@ -6,9 +6,10 @@ from enum import Enum
 
 
 class SourceCategory(Enum):
-    """Категория источника: переводы vs наличные в обменнике (по валюте наличных)."""
+    """Категория источника: переводы, обменники (менялы), наличные в обменнике."""
 
     TRANSFER = "transfer"
+    EXCHANGER = "exchanger"
     CASH_RUB = "cash_rub"
     CASH_USD = "cash_usd"
     CASH_EUR = "cash_eur"

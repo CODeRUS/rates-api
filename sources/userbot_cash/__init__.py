@@ -23,6 +23,8 @@ _SUMMARY_NOTE_BY_SOURCE: Dict[str, str] = {
 _EMOJI_BY_SOURCE: Dict[str, str] = {
     str(cfg.source_id): str(cfg.emoji or "").strip() for cfg in USERBOT_SOURCES
 }
+# Пока в L1 лежат старые snapshot с category=transfer.
+_EXCHANGER_SOURCE_IDS = frozenset({"fly_currency", "it_obmen_pattaya"})
 
 
 def help_text() -> str:
@@ -41,6 +43,7 @@ def _cat(raw: str) -> Optional[SourceCategory]:
     s = (raw or "").strip().lower()
     mp = {
         "transfer": SourceCategory.TRANSFER,
+        "exchanger": SourceCategory.EXCHANGER,
         "cash_rub": SourceCategory.CASH_RUB,
         "cash_usd": SourceCategory.CASH_USD,
         "cash_eur": SourceCategory.CASH_EUR,
@@ -83,6 +86,8 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
             if sid == "unired_bkb":
                 continue
             c = _cat(str(row.get("category") or ""))
+            if sid in _EXCHANGER_SOURCE_IDS:
+                c = SourceCategory.EXCHANGER
             if c is None:
                 continue
             if c in hidden_cash_thb_cats:
@@ -96,7 +101,9 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
             src_name = str(row.get("source_name") or row.get("source_id") or "Userbot")
             cur = str(row.get("currency") or "").upper()
             # Для transfer-источников показываем только имя источника (без суффикса валюты).
-            label = src_name if (c == SourceCategory.TRANSFER or not cur) else f"{src_name} {cur}"
+            label = src_name if (
+                c in {SourceCategory.TRANSFER, SourceCategory.EXCHANGER} or not cur
+            ) else f"{src_name} {cur}"
             note_cfg = _SUMMARY_NOTE_BY_SOURCE.get(sid, "")
             note = note_cfg if note_cfg else (f"msg #{row.get('message_id')}" if row.get("message_id") is not None else "")
             emoji_cfg = _EMOJI_BY_SOURCE.get(sid, "")
@@ -108,7 +115,9 @@ def summary(ctx: "FetchContext") -> Optional[List[Any]]:
                     note=note,
                     category=c,
                     emoji=emoji,
-                    compare_to_baseline=(c in {SourceCategory.TRANSFER, SourceCategory.CASH_RUB}),
+                    compare_to_baseline=(
+                        c in {SourceCategory.TRANSFER, SourceCategory.EXCHANGER, SourceCategory.CASH_RUB}
+                    ),
                 )
             )
     return out or None

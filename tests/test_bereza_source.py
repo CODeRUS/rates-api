@@ -37,7 +37,7 @@ class TestBerezaSource(unittest.TestCase):
         assert rows is not None
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0].label, "Bereza СБП")
-        self.assertEqual(rows[0].category, SourceCategory.TRANSFER)
+        self.assertEqual(rows[0].category, SourceCategory.EXCHANGER)
         self.assertEqual(rows[1].label, "Bereza Наличные")
         self.assertEqual(rows[1].category, SourceCategory.CASH_RUB)
         self.assertEqual(ctx.warnings, [])

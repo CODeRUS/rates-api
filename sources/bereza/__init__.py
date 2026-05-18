@@ -13,7 +13,7 @@ from rates_sources import FetchContext, SourceCategory, SourceQuote, fmt_money_r
 SOURCE_ID = "bereza"
 EMOJI = "🤑"
 IS_BASELINE = False
-CATEGORY = SourceCategory.TRANSFER
+CATEGORY = SourceCategory.EXCHANGER
 
 _BASE_URL = "https://exchangerates-production.up.railway.app/api/convert"
 _UA = "rates-api/bereza/1.0 (python)"
@@ -137,7 +137,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
                 tr,
                 "Bereza СБП",
                 note=f"≈ {fmt_money_ru(transfer_rub)} RUB",
-                category=SourceCategory.TRANSFER,
+                category=SourceCategory.EXCHANGER,
                 emoji=EMOJI,
             )
         )
