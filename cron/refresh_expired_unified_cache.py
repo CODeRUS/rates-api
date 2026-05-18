@@ -114,7 +114,7 @@ def _plan_refresh(
         elif k == CASH_TT_L1_KEY:
             need.add("cash")
         # cash:l1:* / cash_thb:l1:cell:* не используем — часто осиротевшие ключи (см. docstring).
-        # chatcash:* — снимок userbot; обновление только из userbot, здесь не трогаем.
+        # chatcash:* — userbot и веб-источники (vernadsky/obuv); прогрев через rates.py summary.
     for _k in expired_prim:
         need.add("summary")
     for k in expired_l2:

@@ -24,6 +24,8 @@ PLUGIN_ORDER = (
     "tbank",
     "sberbank_qr",
     "unired_bkb",
+    "vernadsky_msk",
+    "obuv_city_msk",
     "userbot_cash",
 )
 
@@ -54,6 +56,8 @@ def _mods() -> Dict[str, object]:
         from . import tbank
         from . import ttexchange
         from . import unired_bkb
+        from . import vernadsky_msk
+        from . import obuv_city_msk
         from . import userbot_cash
 
         _MODS_CACHE.update(
@@ -80,6 +84,8 @@ def _mods() -> Dict[str, object]:
                 "tbank": tbank,
                 "sberbank_qr": sberbank_qr,
                 "unired_bkb": unired_bkb,
+                "vernadsky_msk": vernadsky_msk,
+                "obuv_city_msk": obuv_city_msk,
                 "userbot_cash": userbot_cash,
             }
         )

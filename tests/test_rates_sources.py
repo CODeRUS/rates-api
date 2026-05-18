@@ -55,6 +55,8 @@ class TestRatesSources(unittest.TestCase):
                 "tbank",
                 "sberbank_qr",
                 "unired_bkb",
+                "vernadsky_msk",
+                "obuv_city_msk",
                 "userbot_cash",
             ],
         )
