@@ -41,6 +41,34 @@ def _normalize_pair_label(currency_pair: str) -> str:
     return s
 
 
+def _iso_timestamp_to_date(ts: str) -> date:
+    """
+    Календарная дата из ``lastUpdatedAt`` (ISO-8601).
+
+    API РСХБ отдаёт, например, ``2026-05-21T17:45:19.11316+03:00`` — в Python 3.9
+    :func:`datetime.fromisoformat` падает на 5 знаках дробной части секунд.
+    """
+    s = ts.strip()
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return date.fromisoformat(s[:10])
+    s = s.replace("Z", "+00:00")
+    if "T" in s:
+        head, _, tail = s.partition("T")
+        if len(head) == 10:
+            dot = tail.find(".")
+            tz_at = max(tail.find("+"), tail.find("-", 1))
+            frac = tail[dot + 1 : tz_at] if dot >= 0 and tz_at > dot else ""
+            tz = tail[tz_at:] if tz_at >= 0 else ""
+            time_part = tail[:dot] if dot >= 0 else (tail[:tz_at] if tz_at >= 0 else tail)
+            if frac:
+                frac6 = (frac + "000000")[:6]
+                norm = f"{head}T{time_part}.{frac6}{tz}"
+            else:
+                norm = f"{head}T{time_part}{tz}"
+            return datetime.fromisoformat(norm).date()
+    return datetime.fromisoformat(s).date()
+
+
 def _snapshot_date(raw_rows: List[Dict[str, Any]]) -> date:
     """Календарная дата снимка по lastUpdatedAt строки CNY/RUB, иначе первой строки."""
     ts: Optional[str] = None
@@ -55,8 +83,7 @@ def _snapshot_date(raw_rows: List[Dict[str, Any]]) -> date:
     if not ts:
         raise ValueError("В ответе API v1/rates нет lastUpdatedAt")
     if isinstance(ts, str):
-        s = ts.replace("Z", "+00:00")
-        return datetime.fromisoformat(s).date()
+        return _iso_timestamp_to_date(ts)
     raise ValueError("lastUpdatedAt должен быть строкой ISO-8601")
 
 

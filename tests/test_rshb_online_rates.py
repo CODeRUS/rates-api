@@ -51,3 +51,14 @@ def test_parse_rates_json_invalid_raises() -> None:
 def test_parse_rates_json_empty_rows() -> None:
     assert online.parse_rates_json("[]") == {}
     assert online.parse_rates_json("[[]]") == {}
+
+
+def test_iso_timestamp_to_date_five_frac_digits() -> None:
+    """РСХБ иногда отдаёт 5 знаков в дробной части — Py 3.9 fromisoformat ломается."""
+    assert online._iso_timestamp_to_date("2026-05-21T17:45:19.11316+03:00") == date(2026, 5, 21)
+
+
+def test_parse_rates_json_five_frac_last_updated() -> None:
+    raw = r"""[[{"currencyPair":"CNY/RUB_TOD","buyRate":10.77,"sellRate":11.32,"lastUpdatedAt":"2026-05-21T17:45:19.11316+03:00"}]]"""
+    tabs = online.parse_rates_json(raw)
+    assert list(tabs.keys()) == [date(2026, 5, 21)]
