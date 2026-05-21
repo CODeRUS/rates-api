@@ -71,7 +71,7 @@ CACHE_FILE = (
     _CACHE_OVERRIDE_PATH if _CACHE_OVERRIDE_PATH is not None else _SCRIPT_DIR / ".rates_summary_cache.json"
 )
 CACHE_TTL_SEC = 30 * 60
-CACHE_VERSION = 33
+CACHE_VERSION = 34
 
 _RESERVED = frozenset(
     {"sources", "save", "usdt", "env-status", "cash", "exchange", "rshb", "calc"}
