@@ -188,32 +188,79 @@ def fetch_visa_direct_usd(
     )
 
 
+def _card_usd_for_receiving_thb(
+    receiving_thb: float,
+    thb_per_usd: float,
+    *,
+    probe_usd: Optional[float] = None,
+    timeout: float = 30.0,
+) -> float:
+    """
+    Сумма USD (WithdrawAmount) для VisaDirect: эквивалент THB на карте ≈ USD × BBL.
+
+    Одна проба + масштабирование (как для счёта); при нелинейности — бинарный поиск.
+    """
+    target = float(receiving_thb)
+    if target <= 0 or thb_per_usd <= 0:
+        return float(probe_usd if probe_usd is not None else _DEFAULT_CARD_USD)
+    usd0 = float(probe_usd if probe_usd is not None else _DEFAULT_CARD_USD)
+    probe = fetch_visa_direct_usd(usd0, timeout=timeout)
+    thb0 = probe.withdraw_amount * thb_per_usd
+    if thb0 <= 0:
+        return max(1.0, target / thb_per_usd)
+    usd_est = max(1.0, target * probe.withdraw_amount / thb0)
+    fee_est = fetch_visa_direct_usd(usd_est, timeout=timeout)
+    thb_est = fee_est.withdraw_amount * thb_per_usd
+    if thb_est >= target:
+        return usd_est
+    lo, hi = usd_est, max(usd_est * 2.0, 10_000.0)
+    picked = usd_est
+    for _ in range(10):
+        mid = (lo + hi) / 2.0
+        fee_mid = fetch_visa_direct_usd(mid, timeout=timeout)
+        thb_mid = fee_mid.withdraw_amount * thb_per_usd
+        if thb_mid >= target:
+            picked = mid
+            hi = mid
+        else:
+            lo = mid
+    return max(1.0, picked)
+
+
 def fetch_summary_fees(
     *,
     account_rub: Optional[float] = None,
     card_usd: Optional[float] = None,
     receiving_thb: Optional[float] = None,
+    thb_per_usd: Optional[float] = None,
     timeout: float = 30.0,
 ) -> List[KwikpayMobFee]:
     """
     Котировки для сводки: счёт (THB) и карта (USD).
 
-    При ``receiving_thb`` подбирается ``amount_rub`` под целевое зачисление THB
-    (один уточняющий запрос после пробы).
+    При ``receiving_thb``:
+      * счёт — подбор ``amount_rub`` (OverseasDeposits);
+      * карта — подбор ``WithdrawAmount`` в USD, если задан ``thb_per_usd`` (BBL TT).
     """
+    target_thb = (
+        float(receiving_thb) if (receiving_thb is not None and float(receiving_thb) > 0) else None
+    )
+    bbl = float(thb_per_usd) if (thb_per_usd is not None and float(thb_per_usd) > 0) else None
+
     rub_probe = float(account_rub if account_rub is not None else _DEFAULT_ACCOUNT_RUB)
-    if receiving_thb is not None and float(receiving_thb) > 0:
+    if target_thb is not None:
         probe = fetch_overseas_deposits_thb(rub_probe, timeout=timeout)
         thb = probe.withdraw_amount
         if thb > 0:
             rub_per = probe.accepted_transfer_rub / thb
-            rub_probe = max(1000.0, float(receiving_thb) * rub_per)
+            rub_probe = max(1000.0, target_thb * rub_per)
+
+    card_probe = float(card_usd if card_usd is not None else _DEFAULT_CARD_USD)
+    if target_thb is not None and bbl is not None:
+        card_probe = _card_usd_for_receiving_thb(
+            target_thb, bbl, probe_usd=card_probe, timeout=timeout
+        )
     out: List[KwikpayMobFee] = []
     out.append(fetch_overseas_deposits_thb(rub_probe, timeout=timeout))
-    out.append(
-        fetch_visa_direct_usd(
-            float(card_usd if card_usd is not None else _DEFAULT_CARD_USD),
-            timeout=timeout,
-        )
-    )
+    out.append(fetch_visa_direct_usd(card_probe, timeout=timeout))
     return out

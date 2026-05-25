@@ -42,25 +42,28 @@ def summary(ctx: "FetchContext") -> Optional[List["SourceQuote"]]:
         if (ctx.receiving_thb is not None and float(ctx.receiving_thb) > 0)
         else None
     )
+
+    thb_per_usd: Optional[float] = None
+    if not bbl.subscription_key_from_env():
+        ctx.warnings.append(
+            "KwikPay карта: задайте BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY для USD/THB (как Unired)"
+        )
+    else:
+        try:
+            thb_per_usd = bbl.fetch_usd50_tt_thb()
+        except (RuntimeError, OSError, urllib.error.URLError, ValueError) as e:
+            ctx.warnings.append(f"KwikPay карта × Bangkok Bank: {e}")
+        except Exception as e:
+            ctx.warnings.append(f"KwikPay карта × Bangkok Bank: {e}")
+
     try:
-        fees = mob.fetch_summary_fees(receiving_thb=target_thb)
+        fees = mob.fetch_summary_fees(
+            receiving_thb=target_thb,
+            thb_per_usd=thb_per_usd,
+        )
     except RuntimeError as e:
         ctx.warnings.append(f"KwikPay: {e}")
         return None
-
-    thb_per_usd: Optional[float] = None
-    if any(f.operation_type == "VisaDirect" for f in fees):
-        if not bbl.subscription_key_from_env():
-            ctx.warnings.append(
-                "KwikPay карта: задайте BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY для USD/THB (как Unired)"
-            )
-        else:
-            try:
-                thb_per_usd = bbl.fetch_usd50_tt_thb()
-            except (RuntimeError, OSError, urllib.error.URLError, ValueError) as e:
-                ctx.warnings.append(f"KwikPay карта × Bangkok Bank: {e}")
-            except Exception as e:
-                ctx.warnings.append(f"KwikPay карта × Bangkok Bank: {e}")
 
     out: List[SourceQuote] = []
     for fee in fees:
@@ -90,7 +93,11 @@ def summary(ctx: "FetchContext") -> Optional[List["SourceQuote"]]:
             rt = fee.rub_per_thb_via_usd(thb_per_usd)
             if rt is None or rt <= 0:
                 continue
-            note = f"≈ {fmt_money_ru(fee.withdraw_amount)} USD, карта"
+            note = (
+                f"≈ {fmt_money_ru(target_thb)} THB"
+                if target_thb is not None
+                else f"≈ {fmt_money_ru(fee.withdraw_amount)} USD"
+            )
             if fee.fee_rub:
                 note += f", ком. {fmt_money_ru(fee.fee_rub)} RUB"
             out.append(
