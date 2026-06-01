@@ -14,7 +14,7 @@ CATEGORY = SourceCategory.TRANSFER
 
 def help_text() -> str:
     return (
-        "Курс THB→RUB для сводки — XE midmarket.\n"
+        "Курс THB→RUB для сводки — XE midmarket; при отсутствии RUB в XE — ExchangeRate-API.\n"
         "CLI: подкоманда «xe» — клиент Xe.com; «er» — ExchangeRate-API (open.er-api.com).\n"
         "Полные опции: forex xe --help   и   forex er --help"
     )
@@ -46,7 +46,7 @@ def command(argv: list[str]) -> int:
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    from . import forex_xe_api as xe
+    from .baseline import thb_rub_rate
 
-    conv = xe.midmarket_convert("THB", "RUB", 1.0)
-    return [SourceQuote(float(conv["result"]), "Forex")]
+    rate, _provider = thb_rub_rate()
+    return [SourceQuote(rate, "Forex")]
