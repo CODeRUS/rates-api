@@ -15,11 +15,15 @@ import ssl
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
+from env_loader import patch_repo_dotenv
 from rates_http import urlopen_retriable
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _COMMISSIONS_URL = "https://mob.kwikpay.ru/ru/api/v1/commissions"
+_REFRESH_SESSION_URL = "https://mob.kwikpay.ru/ru/api/v2/users/refresh_session"
 _DEFAULT_APP_VERSION = "3.31.0"
 _DEFAULT_SENDER_BANK_ID = "9000598"
 _DEFAULT_ACCOUNT_RUB = 50_000.0
@@ -66,20 +70,30 @@ def _auth_token() -> str:
     return tok
 
 
+def _refresh_token() -> str:
+    return _env("KWIKPAY_REFRESH_TOKEN")
+
+
 def _sender_bank_id() -> str:
     return _env("KWIKPAY_SENDER_BANK_ID", _DEFAULT_SENDER_BANK_ID)
 
 
-def _api_headers() -> Dict[str, str]:
-    return {
+def _client_headers(*, with_auth: bool = True) -> Dict[str, str]:
+    hdr = {
         "accept-language": "ru",
         "x-app-version": _env("KWIKPAY_APP_VERSION", _DEFAULT_APP_VERSION),
         "x-app-platform": "android",
-        "x-auth-token": _auth_token(),
         "content-type": "application/json; charset=UTF-8",
         "user-agent": "okhttp/4.12.0",
         "Accept-Encoding": "gzip",
     }
+    if with_auth:
+        hdr["x-auth-token"] = _auth_token()
+    return hdr
+
+
+def _api_headers() -> Dict[str, str]:
+    return _client_headers(with_auth=True)
 
 
 def _decode_body(raw: bytes) -> str:
@@ -88,7 +102,93 @@ def _decode_body(raw: bytes) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def post_commissions(body: Dict[str, Any], *, timeout: float = 30.0) -> Dict[str, Any]:
+class KwikpayAuthError(RuntimeError):
+    """401/403 от mob.kwikpay.ru — сессия недействительна и refresh не помог."""
+
+
+def _format_http_error_detail(raw: bytes) -> str:
+    text = _decode_body(raw).strip()
+    if not text:
+        return "(пустое тело ответа)"
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return text[:500]
+    err = data.get("error") if isinstance(data, dict) else None
+    if isinstance(err, dict):
+        msg = err.get("message") or err.get("type")
+        if msg:
+            return str(msg)
+    if isinstance(data, dict) and data.get("message"):
+        return str(data["message"])
+    return text[:500]
+
+
+def _auth_error_message(code: int, detail: str) -> str:
+    return (
+        "KwikPay: сессия недействительна "
+        f"(HTTP {code}): {detail}. "
+        "Задайте KWIKPAY_REFRESH_TOKEN или обновите токены в приложении."
+    )
+
+
+def _persist_tokens(access_token: str, refresh_token: str) -> None:
+    os.environ["KWIKPAY_AUTH_TOKEN"] = access_token
+    os.environ["KWIKPAY_REFRESH_TOKEN"] = refresh_token
+    patch_repo_dotenv(
+        _REPO_ROOT,
+        {
+            "KWIKPAY_AUTH_TOKEN": access_token,
+            "KWIKPAY_REFRESH_TOKEN": refresh_token,
+        },
+    )
+
+
+def refresh_session(*, timeout: float = 30.0) -> Tuple[str, str]:
+    """
+    POST ``/ru/api/v2/users/refresh_session`` — новая пара access/refresh token.
+
+    Обновляет ``os.environ`` и ``.env`` (``KWIKPAY_AUTH_TOKEN``, ``KWIKPAY_REFRESH_TOKEN``).
+    """
+    rt = _refresh_token()
+    if not rt:
+        raise KwikpayAuthError(
+            "KWIKPAY_REFRESH_TOKEN не задан — автоматическое обновление сессии невозможно."
+        )
+    payload = json.dumps({"refresh_token": rt}, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(
+        _REFRESH_SESSION_URL,
+        data=payload,
+        headers={
+            **_client_headers(with_auth=False),
+            "Content-Length": str(len(payload)),
+        },
+        method="POST",
+    )
+    ctx = ssl.create_default_context()
+    try:
+        with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
+            raw = resp.read()
+    except urllib.error.HTTPError as e:
+        detail = _format_http_error_detail(e.read()[:5000])
+        raise KwikpayAuthError(_auth_error_message(e.code, detail)) from e
+    data = json.loads(_decode_body(raw))
+    if not isinstance(data, dict):
+        raise RuntimeError(f"KwikPay refresh_session: неожиданный ответ {type(data)!r}")
+    try:
+        access = str(data["access_token"]).strip()
+        refresh = str(data["refresh_token"]).strip()
+    except KeyError as e:
+        raise RuntimeError(
+            f"KwikPay refresh_session: нет access_token/refresh_token в ответе: {data!r}"
+        ) from e
+    if not access or not refresh:
+        raise RuntimeError("KwikPay refresh_session: пустые access_token или refresh_token")
+    _persist_tokens(access, refresh)
+    return access, refresh
+
+
+def _post_commissions_once(body: Dict[str, Any], *, timeout: float = 30.0) -> Dict[str, Any]:
     payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(
         _COMMISSIONS_URL,
@@ -101,12 +201,24 @@ def post_commissions(body: Dict[str, Any], *, timeout: float = 30.0) -> Dict[str
         with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
             raw = resp.read()
     except urllib.error.HTTPError as e:
-        detail = e.read()[:500]
-        raise RuntimeError(f"KwikPay HTTP {e.code}: {detail!r}") from e
+        detail = _format_http_error_detail(e.read()[:5000])
+        if e.code in (401, 403):
+            raise KwikpayAuthError(_auth_error_message(e.code, detail)) from e
+        raise RuntimeError(f"KwikPay HTTP {e.code}: {detail}") from e
     data = json.loads(_decode_body(raw))
     if not isinstance(data, dict):
         raise RuntimeError(f"KwikPay: неожиданный ответ {type(data).__name__}")
     return data
+
+
+def post_commissions(body: Dict[str, Any], *, timeout: float = 30.0) -> Dict[str, Any]:
+    try:
+        return _post_commissions_once(body, timeout=timeout)
+    except KwikpayAuthError:
+        if not _refresh_token():
+            raise
+        refresh_session(timeout=timeout)
+        return _post_commissions_once(body, timeout=timeout)
 
 
 def _first_fee(data: Dict[str, Any]) -> Dict[str, Any]:

@@ -18,7 +18,8 @@ CATEGORY = SourceCategory.TRANSFER
 def help_text() -> str:
     return (
         "KwikPay (mob.kwikpay.ru): счёт RUB→THB; карта RUB→USD×BBL TT → RUB/THB в сводке. "
-        "Нужны KWIKPAY_AUTH_TOKEN и BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY (карта). "
+        "Нужны KWIKPAY_AUTH_TOKEN, KWIKPAY_REFRESH_TOKEN (авто-обновление сессии) "
+        "и BANGKOKBANK_OCP_APIM_SUBSCRIPTION_KEY (карта). "
         "Полные опции: kwikpay --help"
     )
 
@@ -61,6 +62,9 @@ def summary(ctx: "FetchContext") -> Optional[List["SourceQuote"]]:
             receiving_thb=target_thb,
             thb_per_usd=thb_per_usd,
         )
+    except mob.KwikpayAuthError as e:
+        ctx.warnings.append(str(e))
+        return None
     except RuntimeError as e:
         ctx.warnings.append(f"KwikPay: {e}")
         return None

@@ -41,13 +41,107 @@ class TestKwikpayMob(unittest.TestCase):
     def setUp(self) -> None:
         self._env = mock.patch.dict(
             os.environ,
-            {"KWIKPAY_AUTH_TOKEN": "test-token", "KWIKPAY_SENDER_BANK_ID": "9000598"},
+            {
+                "KWIKPAY_AUTH_TOKEN": "test-token",
+                "KWIKPAY_SENDER_BANK_ID": "9000598",
+            },
             clear=False,
         )
         self._env.start()
 
     def tearDown(self) -> None:
         self._env.stop()
+
+    @mock.patch("sources.kwikpay.kwikpay_mob.urlopen_retriable")
+    def test_post_commissions_auth_error(self, urlopen_mock) -> None:
+        import urllib.error
+
+        body = (
+            b'{"error":{"type":"Errors::Unauthenticated","message":"'
+            b"\xd0\x92\xd0\xb0\xd1\x88 \xd0\xbd\xd0\xbe\xd0\xbc\xd0\xb5\xd1\x80 \xd1\x82\xd0\xb5\xd0\xbb\xd0\xb5\xd1\x84\xd0\xbe\xd0\xbd\xd0\xb0"
+            b' \xd0\xbd\xd0\xb5 \xd0\xbf\xd0\xbe\xd0\xb4\xd1\x82\xd0\xb2\xd0\xb5\xd1\x80\xd0\xb6\xd0\xb4\xd0\xb5\xd0\xbd"}}'
+        )
+
+        class _Err(urllib.error.HTTPError):
+            def read(self):
+                return body
+
+        urlopen_mock.side_effect = _Err(
+            mob._COMMISSIONS_URL, 401, "Unauthorized", hdrs=None, fp=None
+        )
+        with self.assertRaises(mob.KwikpayAuthError) as ctx:
+            mob.fetch_overseas_deposits_thb(50_000)
+        self.assertIn("KWIKPAY_REFRESH_TOKEN", str(ctx.exception))
+        self.assertIn("номер телефона", str(ctx.exception))
+
+    @mock.patch("sources.kwikpay.kwikpay_mob.patch_repo_dotenv", return_value=True)
+    @mock.patch("sources.kwikpay.kwikpay_mob.urlopen_retriable")
+    def test_post_commissions_refreshes_session_on_401(
+        self, urlopen_mock, patch_dotenv_mock
+    ) -> None:
+        import urllib.error
+
+        os.environ["KWIKPAY_REFRESH_TOKEN"] = "old-refresh"
+        self.addCleanup(os.environ.pop, "KWIKPAY_REFRESH_TOKEN", None)
+
+        auth_body = (
+            b'{"error":{"type":"Errors::Unauthenticated","message":"expired"}}'
+        )
+        refresh_body = json.dumps(
+            {
+                "access_token": "new-access",
+                "refresh_token": "new-refresh",
+                "technical_work": None,
+                "need_document_auth": False,
+            }
+        ).encode()
+        ok_body = json.dumps(_ACCOUNT_RESP).encode()
+
+        class _Resp:
+            def __init__(self, raw: bytes):
+                self._raw = raw
+
+            def read(self):
+                return self._raw
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        class _Err(urllib.error.HTTPError):
+            def __init__(self):
+                super().__init__(
+                    mob._COMMISSIONS_URL, 401, "Unauthorized", hdrs=None, fp=None
+                )
+
+            def read(self):
+                return auth_body
+
+        calls: list[str] = []
+
+        def _side_effect(req, **kwargs):
+            url = req.full_url
+            calls.append(url)
+            if url == mob._REFRESH_SESSION_URL:
+                return _Resp(refresh_body)
+            if url == mob._COMMISSIONS_URL:
+                if calls.count(mob._COMMISSIONS_URL) == 1:
+                    raise _Err()
+                return _Resp(ok_body)
+            raise AssertionError(url)
+
+        urlopen_mock.side_effect = _side_effect
+        fee = mob.fetch_overseas_deposits_thb(50_000)
+        self.assertAlmostEqual(fee.rub_per_thb, 50000 / 22294.21, places=3)
+        self.assertEqual(os.environ["KWIKPAY_AUTH_TOKEN"], "new-access")
+        self.assertEqual(os.environ["KWIKPAY_REFRESH_TOKEN"], "new-refresh")
+        patch_dotenv_mock.assert_called_once()
+        self.assertEqual(
+            patch_dotenv_mock.call_args[0][1]["KWIKPAY_AUTH_TOKEN"],
+            "new-access",
+        )
 
     @mock.patch("sources.kwikpay.kwikpay_mob.urlopen_retriable")
     def test_post_commissions_headers(self, urlopen_mock) -> None:
