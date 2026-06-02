@@ -90,6 +90,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         _,
         live_stale,
         _,
+        stale_sources,
     ) = cfx.fetch_live_inputs(on, ctx.moex_override)
     rshb_sell = float(sell_dec)
     rshb_app = float(sell_online_dec)
@@ -157,8 +158,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
         )
 
     if live_stale:
-        ctx.warnings.append(
-            "РСХБ/UnionPay/MOEX: таймаут сети — в расчётах использованы "
-            f"последние сохранённые курсы ({cfx.LIVE_INPUTS_CACHE_FILE.name})."
-        )
+        msg = cfx.format_live_inputs_stale_warning(stale_sources)
+        if msg:
+            ctx.warnings.append(msg)
     return out or None

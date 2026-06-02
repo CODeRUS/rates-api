@@ -144,6 +144,7 @@ def build_calc_report_text(
     from sources.rshb_unionpay.card_fx_calculator import (
         _msk_now_str,
         fetch_live_inputs,
+        format_live_inputs_stale_warning,
         max_thb_net_for_atm_rub_budget,
     )
 
@@ -152,11 +153,13 @@ def build_calc_report_text(
     warnings: List[str] = []
     rows: List[_CalcRowOut] = []
 
-    cpt, moex, rshb_sell_dec, _rshb_date, online_sell_dec, _, rshb_stale, _ = (
+    cpt, moex, rshb_sell_dec, _rshb_date, online_sell_dec, _, rshb_stale, _, stale_sources = (
         fetch_live_inputs(unionpay_on, moex_override, readonly=readonly)
     )
     if rshb_stale and not readonly:
-        warnings.append("РСХБ/UnionPay: использованы сохранённые курсы (таймаут сети).")
+        msg = format_live_inputs_stale_warning(stale_sources)
+        if msg:
+            warnings.append(msg)
 
     rshb_sell = float(rshb_sell_dec)
     online_sell_f = float(online_sell_dec)

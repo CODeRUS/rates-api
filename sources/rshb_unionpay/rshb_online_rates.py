@@ -101,7 +101,12 @@ def _flatten_top_level(data: Any) -> List[Dict[str, Any]]:
     return out
 
 
-def fetch_rates_json(*, timeout: float = 60.0, url: Optional[str] = None) -> str:
+def fetch_rates_json(
+    *,
+    timeout: float = 60.0,
+    url: Optional[str] = None,
+    max_attempts: Optional[int] = None,
+) -> str:
     ctx = ssl.create_default_context()
     req = urllib.request.Request(
         url or RSHB_RATES_API_URL,
@@ -111,7 +116,10 @@ def fetch_rates_json(*, timeout: float = 60.0, url: Optional[str] = None) -> str
             "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
         },
     )
-    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
+    kw: Dict[str, Any] = {"timeout": timeout, "context": ctx}
+    if max_attempts is not None:
+        kw["max_attempts_override"] = max_attempts
+    with urlopen_retriable(req, **kw) as r:
         return r.read().decode("utf-8", errors="replace")
 
 

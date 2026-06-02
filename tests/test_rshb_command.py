@@ -105,6 +105,7 @@ class TestRshbTextFormat(unittest.TestCase):
             date(2026, 3, 27),
             False,
             {},
+            (),
         )
         txt = cfx.build_rshb_text(thb_nets=(30000.0,), atm_fee_thb=250.0)
         self.assertIn("Курс THB/RUB:", txt)
@@ -129,6 +130,7 @@ class TestRshbTextFormat(unittest.TestCase):
             date(2026, 3, 27),
             False,
             {},
+            (),
         )
         txt = cfx.build_rshb_text(
             thb_nets=(30_000.0, 10_000.0, 1_000.0), atm_fee_thb=250.0

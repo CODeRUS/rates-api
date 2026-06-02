@@ -61,6 +61,7 @@ def load_context(
         rshb_online_d,
         stale,
         up,
+        stale_sources,
     ) = cfx.fetch_live_inputs(on, moex_override)
     br = moex
     return ReportContext(

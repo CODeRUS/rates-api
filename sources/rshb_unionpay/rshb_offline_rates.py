@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from rates_http import urlopen_retriable
 from datetime import date
 from decimal import Decimal
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 RSHB_OFFLINE_URL = "https://old.rshb.ru/natural/cards/rates/rates_offline/"
 USER_AGENT = (
@@ -43,7 +43,7 @@ class PairQuote:
     sell: Decimal
 
 
-def fetch_offline_page(*, timeout: float = 60.0) -> str:
+def fetch_offline_page(*, timeout: float = 60.0, max_attempts: Optional[int] = None) -> str:
     ctx = ssl.create_default_context()
     req = urllib.request.Request(
         RSHB_OFFLINE_URL,
@@ -53,7 +53,10 @@ def fetch_offline_page(*, timeout: float = 60.0) -> str:
             "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
         },
     )
-    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
+    kw: Dict[str, Any] = {"timeout": timeout, "context": ctx}
+    if max_attempts is not None:
+        kw["max_attempts_override"] = max_attempts
+    with urlopen_retriable(req, **kw) as r:
         return r.read().decode("utf-8", errors="replace")
 
 

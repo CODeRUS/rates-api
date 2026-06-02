@@ -64,6 +64,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 try:
@@ -95,6 +96,36 @@ RUB_CARD_ATM_PCT = _pct_from_env("RATES_RUB_CARD_ATM_PCT", 0.015)
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 # Последний успешный снимок UnionPay + MOEX + РСХБ (для расчётов при таймауте сети).
 LIVE_INPUTS_CACHE_FILE = _REPO_ROOT / ".card_fx_live_inputs_cache.json"
+
+# Метки источников для предупреждений при частичном кеше.
+_STALE_UNIONPAY = "UnionPay"
+_STALE_MOEX = "MOEX"
+_STALE_RSHB_OFFLINE = "РСХБ offline"
+_STALE_RSHB_ONLINE = "РСХБ online"
+
+
+def _card_fx_http_timeout() -> float:
+    raw = os.environ.get("CARD_FX_HTTP_TIMEOUT_SEC", "").strip()
+    if raw:
+        try:
+            return max(5.0, float(raw))
+        except ValueError:
+            pass
+    return 25.0
+
+
+def _card_fx_http_max_attempts() -> int:
+    raw = os.environ.get("CARD_FX_HTTP_MAX_ATTEMPTS", "").strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass
+    return 2
+
+
+def _recoverable_fetch_error(exc: BaseException) -> bool:
+    return _is_timeout_error(exc) or _is_missing_online_cny_error(exc)
 
 
 def _is_timeout_error(exc: BaseException) -> bool:
@@ -191,32 +222,113 @@ def _load_live_inputs_cache() -> Optional[
 def _fetch_live_inputs_network(
     on: Optional[date],
     moex_override: Optional[float],
-) -> Tuple[float, float, Decimal, date, Decimal, date, Dict[str, Any]]:
-    """Сетевой сбор без кеша при ошибке."""
-    up = unionpay_rates.fetch_daily_file(on)
-    cpt = unionpay_rates.cny_per_thb(cache=up)
-    moex = float(moex_override) if moex_override is not None else moex_fx.cny_rub_tom()
-    raw = rshb_offline_rates.fetch_offline_page()
-    tables = rshb_offline_rates.parse_offline_html(raw)
-    if not tables:
-        raise RuntimeError("РСХБ rates_offline: нет таблиц курсов на странице")
-    rshb_on = on
-    if rshb_on is None or rshb_on not in tables:
-        rshb_on = max(tables.keys())
-    sell = rshb_offline_rates.cny_rur_sell(on=rshb_on, html=raw)
+) -> Tuple[float, float, Decimal, date, Decimal, date, Dict[str, Any], Tuple[str, ...]]:
+    """
+    Параллельный сбор UnionPay, MOEX, РСХБ offline/online.
 
-    raw_on = rshb_online_rates.fetch_rates_json()
-    tables_on = rshb_online_rates.parse_rates_json(raw_on)
-    if not tables_on:
-        raise RuntimeError("РСХБ API v1/rates: нет котировок в ответе")
-    if on is None:
-        rshb_online_on = max(tables_on.keys())
-        online_sell = rshb_online_rates.cny_rur_sell(on=None, html=raw_on)
-    else:
-        rshb_online_on = on
-        online_sell = rshb_online_rates.cny_rur_sell(on=on, html=raw_on)
+    При таймауте отдельного источника подставляется значение из
+    ``.card_fx_live_inputs_cache.json`` (если файл есть). Возвращает кортеж полей
+    и ``stale_sources`` — метки источников, взятых из кеша.
+    """
+    timeout = _card_fx_http_timeout()
+    attempts = _card_fx_http_max_attempts()
+    cached = _load_live_inputs_cache()
+    stale: List[str] = []
 
-    return cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up
+    def _cache_unionpay() -> Tuple[Dict[str, Any], float]:
+        if cached is None:
+            raise RuntimeError("нет кеша UnionPay")
+        up = cached[6]
+        return up, cached[0]
+
+    def _cache_moex() -> float:
+        if cached is None:
+            raise RuntimeError("нет кеша MOEX")
+        return cached[1]
+
+    def _cache_rshb_offline() -> Tuple[Decimal, date]:
+        if cached is None:
+            raise RuntimeError("нет кеша РСХБ offline")
+        return cached[2], cached[3]
+
+    def _cache_rshb_online() -> Tuple[Decimal, date]:
+        if cached is None:
+            raise RuntimeError("нет кеша РСХБ online")
+        return cached[4], cached[5]
+
+    def _fetch_unionpay() -> Tuple[Dict[str, Any], float]:
+        up = unionpay_rates.fetch_daily_file(on, timeout=timeout)
+        return up, unionpay_rates.cny_per_thb(cache=up)
+
+    def _fetch_moex() -> float:
+        if moex_override is not None:
+            return float(moex_override)
+        return moex_fx.cny_rub_tom(timeout=timeout)
+
+    def _fetch_rshb_offline() -> Tuple[Decimal, date]:
+        raw = rshb_offline_rates.fetch_offline_page(
+            timeout=timeout, max_attempts=attempts
+        )
+        tables = rshb_offline_rates.parse_offline_html(raw)
+        if not tables:
+            raise RuntimeError("РСХБ rates_offline: нет таблиц курсов на странице")
+        rshb_on = on
+        if rshb_on is None or rshb_on not in tables:
+            rshb_on = max(tables.keys())
+        sell = rshb_offline_rates.cny_rur_sell(on=rshb_on, html=raw)
+        return sell, rshb_on
+
+    def _fetch_rshb_online() -> Tuple[Decimal, date]:
+        raw_on = rshb_online_rates.fetch_rates_json(
+            timeout=timeout, max_attempts=attempts
+        )
+        tables_on = rshb_online_rates.parse_rates_json(raw_on)
+        if not tables_on:
+            raise RuntimeError("РСХБ API v1/rates: нет котировок в ответе")
+        if on is None:
+            rshb_online_on = max(tables_on.keys())
+            online_sell = rshb_online_rates.cny_rur_sell(on=None, html=raw_on)
+        else:
+            rshb_online_on = on
+            online_sell = rshb_online_rates.cny_rur_sell(on=on, html=raw_on)
+        return online_sell, rshb_online_on
+
+    def _run(
+        label: str,
+        fetch_fn,
+        cache_fn,
+    ):
+        try:
+            return fetch_fn(), False
+        except BaseException as e:
+            if not _recoverable_fetch_error(e):
+                raise
+            if cached is None:
+                raise
+            stale.append(label)
+            return cache_fn(), True
+
+    tasks = {
+        _STALE_UNIONPAY: (_fetch_unionpay, _cache_unionpay),
+        _STALE_MOEX: (_fetch_moex, _cache_moex),
+        _STALE_RSHB_OFFLINE: (_fetch_rshb_offline, _cache_rshb_offline),
+        _STALE_RSHB_ONLINE: (_fetch_rshb_online, _cache_rshb_online),
+    }
+    parts: Dict[str, Any] = {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futs = {
+            pool.submit(_run, label, fetch_fn, cache_fn): label
+            for label, (fetch_fn, cache_fn) in tasks.items()
+        }
+        for fut in as_completed(futs):
+            label = futs[fut]
+            parts[label] = fut.result()[0]
+
+    up, cpt = parts[_STALE_UNIONPAY]
+    moex = parts[_STALE_MOEX]
+    sell, rshb_on = parts[_STALE_RSHB_OFFLINE]
+    online_sell, rshb_online_on = parts[_STALE_RSHB_ONLINE]
+    return cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up, tuple(stale)
 
 
 @dataclass
@@ -423,26 +535,29 @@ def fetch_live_inputs(
     *,
     use_cache_on_timeout: bool = True,
     readonly: bool = False,
-) -> tuple[float, float, Decimal, date, Decimal, date, bool, Dict[str, Any]]:
+) -> tuple[float, float, Decimal, date, Decimal, date, bool, Dict[str, Any], Tuple[str, ...]]:
     """
     UnionPay THB→CNY, MOEX CNY/RUB, РСХБ CNY/RUR (offline + online), даты таблиц.
 
     Возвращает
     ``(cny_per_thb, moex, rshb_offline_sell, rshb_offline_date,
-      rshb_online_sell, rshb_online_date, used_stale_cache, unionpay_payload)``.
+      rshb_online_sell, rshb_online_date, used_stale_cache, unionpay_payload,
+      stale_sources)``.
 
-    ``rshb_offline_*`` — ``rates_offline``, рублёвая карта: CNY/RUR **продажа**.
-    ``rshb_online_*`` — ``/api/v1/rates``, юаневая карта (приложение): CNY/RUR **продажа**.
+    ``stale_sources`` — метки источников, взятых из кеша после таймаута.
 
-    При **таймауте** сети и ``use_cache_on_timeout=True`` подставляются значения из
-    ``.card_fx_live_inputs_cache.json`` (последний успешный запуск), флаг
-    ``used_stale_cache`` = True.
+    При **таймауте** отдельного источника и ``use_cache_on_timeout=True`` для него
+    берётся значение из ``.card_fx_live_inputs_cache.json``; ``used_stale_cache`` = True,
+    если хотя бы один источник из кеша.
 
     ``readonly=True`` — только файл ``.card_fx_live_inputs_cache.json``, без HTTP.
-
-    ``unionpay_payload`` — тот же объект, что у :func:`unionpay_rates.fetch_daily_file`,
-    для передачи в ``cache=`` в отчётах.
     """
+    all_sources = (
+        _STALE_UNIONPAY,
+        _STALE_MOEX,
+        _STALE_RSHB_OFFLINE,
+        _STALE_RSHB_ONLINE,
+    )
     if readonly:
         cached = _load_live_inputs_cache()
         if cached is None:
@@ -451,20 +566,28 @@ def fetch_live_inputs(
                 "(нужен хотя бы один успешный онлайн-сбор курсов)."
             )
         cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up = cached
-        return cpt, moex, sell, rshb_on, online_sell, rshb_online_on, True, up
+        return cpt, moex, sell, rshb_on, online_sell, rshb_online_on, True, up, all_sources
     try:
-        cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up = (
+        cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up, stale_sources = (
             _fetch_live_inputs_network(on, moex_override)
         )
         _save_live_inputs_cache(
             cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up
         )
-        return cpt, moex, sell, rshb_on, online_sell, rshb_online_on, False, up
+        return (
+            cpt,
+            moex,
+            sell,
+            rshb_on,
+            online_sell,
+            rshb_online_on,
+            bool(stale_sources),
+            up,
+            stale_sources,
+        )
     except BaseException as e:
         cached = None
-        if use_cache_on_timeout and (
-            _is_timeout_error(e) or _is_missing_online_cny_error(e)
-        ):
+        if use_cache_on_timeout and _recoverable_fetch_error(e):
             cached = _load_live_inputs_cache()
         if cached is not None:
             cpt, moex, sell, rshb_on, online_sell, rshb_online_on, up = cached
@@ -477,8 +600,26 @@ def fetch_live_inputs(
                 rshb_online_on,
                 True,
                 up,
+                all_sources,
             )
         raise
+
+
+def format_live_inputs_stale_warning(stale_sources: Tuple[str, ...]) -> str:
+    """Текст предупреждения для сводки при частичном или полном кеше."""
+    cache = LIVE_INPUTS_CACHE_FILE.name
+    if not stale_sources:
+        return ""
+    if len(stale_sources) >= 4:
+        return (
+            f"РСХБ/UnionPay/MOEX: таймаут сети — в расчётах использованы "
+            f"последние сохранённые курсы ({cache})."
+        )
+    listed = ", ".join(stale_sources)
+    return (
+        f"РСХБ/UnionPay/MOEX: таймаут ({listed}) — из кеша ({cache}); "
+        "остальные источники обновлены с сети."
+    )
 
 
 def _msk_now_str() -> str:
@@ -590,7 +731,7 @@ def build_rshb_text(
     if not amounts:
         amounts = [30_000.0]
 
-    cpt, moex, rshb_sell_dec, rshb_date, online_sell_dec, _, _stale, _ = fetch_live_inputs(
+    cpt, moex, rshb_sell_dec, rshb_date, online_sell_dec, _, _stale, _, _ = fetch_live_inputs(
         on, moex_override, readonly=readonly
     )
     rshb_sell = float(rshb_sell_dec)
@@ -793,7 +934,7 @@ def cli_main(argv: Optional[Sequence[str]] = None) -> int:
         )
         return 0
     if args.moex_override is not None:
-        cpt, _, rsd, _, online_sd, _, stale, _ = fetch_live_inputs(
+        cpt, _, rsd, _, online_sd, _, stale, _, _ = fetch_live_inputs(
             d, moex_override=args.moex_override
         )
         if stale:
