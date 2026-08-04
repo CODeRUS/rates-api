@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import time
 import unittest
 from unittest import mock
 
@@ -27,6 +28,39 @@ class TestBerezaSource(unittest.TestCase):
         self.assertEqual(_extract_to_amount({"to_amount": 123.4}), 123.4)
         self.assertEqual(_extract_to_amount({"result": "456.7"}), 456.7)
         self.assertEqual(_extract_to_amount({"data": {"converted_amount": 11}}), 11.0)
+
+    @mock.patch("sources.bereza._http_json")
+    def test_fetch_access_token_caches(self, m_http) -> None:
+        import sources.bereza as bz
+
+        bz._token_cache = ("", 0.0)
+        m_http.return_value = {"token": "tok-1", "expires": time.time() + 600}
+        t1 = bz.fetch_access_token()
+        t2 = bz.fetch_access_token()
+        self.assertEqual(t1, "tok-1")
+        self.assertEqual(t2, "tok-1")
+        self.assertEqual(m_http.call_count, 1)
+
+    @mock.patch("sources.bereza.fetch_access_token", return_value="tok-x")
+    @mock.patch("sources.bereza._http_json")
+    def test_convert_sends_access_token_header(self, m_http, _tok) -> None:
+        import sources.bereza as bz
+
+        m_http.return_value = {
+            "amount": 30000.0,
+            "from_currency": "RUB (SBP)",
+            "to_currency": "THB",
+            "result": 12000.0,
+            "rate": 0.4,
+        }
+        rate, thb = bz._convert_rub_to_thb_pair(30_000, "RUB (SBP)")
+        self.assertAlmostEqual(thb, 12000.0)
+        self.assertAlmostEqual(rate, 2.5)
+        _args, kwargs = m_http.call_args
+        self.assertIn("x-bereza-access-token", kwargs["headers"])
+        self.assertEqual(kwargs["headers"]["x-bereza-access-token"], "tok-x")
+        self.assertEqual(kwargs["headers"]["sec-fetch-site"], "same-origin")
+        self.assertTrue(str(_args[0]).startswith(bz._CONVERT_URL))
 
     @mock.patch("sources.bereza._convert_rub_to_thb")
     def test_summary_returns_transfer_and_cash(self, m_convert) -> None:
