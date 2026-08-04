@@ -28,6 +28,9 @@ _DEFAULT_APP_VERSION = "3.31.0"
 _DEFAULT_SENDER_BANK_ID = "9000598"
 _DEFAULT_ACCOUNT_RUB = 50_000.0
 _DEFAULT_CARD_USD = 500.0
+# VisaDirect API: сумма WithdrawAmount в USD (эмпирически 5…1000).
+_VISA_DIRECT_USD_MIN = 5.0
+_VISA_DIRECT_USD_MAX = 1000.0
 
 
 @dataclass(frozen=True)
@@ -300,6 +303,10 @@ def fetch_visa_direct_usd(
     )
 
 
+def _clamp_visa_direct_usd(usd: float) -> float:
+    return max(_VISA_DIRECT_USD_MIN, min(_VISA_DIRECT_USD_MAX, float(usd)))
+
+
 def _card_usd_for_receiving_thb(
     receiving_thb: float,
     thb_per_usd: float,
@@ -310,22 +317,28 @@ def _card_usd_for_receiving_thb(
     """
     Сумма USD (WithdrawAmount) для VisaDirect: эквивалент THB на карте ≈ USD × BBL.
 
-    Одна проба + масштабирование (как для счёта); при нелинейности — бинарный поиск.
+    Ограничено лимитом API 5…1000 USD. Если целевой THB требует больше 1000 USD —
+    берём максимум (курс RUB/THB от суммы почти не зависит). Бинарный поиск только
+    внутри допустимого диапазона.
     """
     target = float(receiving_thb)
     if target <= 0 or thb_per_usd <= 0:
-        return float(probe_usd if probe_usd is not None else _DEFAULT_CARD_USD)
-    usd0 = float(probe_usd if probe_usd is not None else _DEFAULT_CARD_USD)
+        return _clamp_visa_direct_usd(
+            probe_usd if probe_usd is not None else _DEFAULT_CARD_USD
+        )
+    usd0 = _clamp_visa_direct_usd(
+        probe_usd if probe_usd is not None else _DEFAULT_CARD_USD
+    )
     probe = fetch_visa_direct_usd(usd0, timeout=timeout)
     thb0 = probe.withdraw_amount * thb_per_usd
     if thb0 <= 0:
-        return max(1.0, target / thb_per_usd)
-    usd_est = max(1.0, target * probe.withdraw_amount / thb0)
+        return _clamp_visa_direct_usd(target / thb_per_usd)
+    usd_est = _clamp_visa_direct_usd(target * probe.withdraw_amount / thb0)
     fee_est = fetch_visa_direct_usd(usd_est, timeout=timeout)
     thb_est = fee_est.withdraw_amount * thb_per_usd
-    if thb_est >= target:
+    if thb_est >= target or usd_est >= _VISA_DIRECT_USD_MAX:
         return usd_est
-    lo, hi = usd_est, max(usd_est * 2.0, 10_000.0)
+    lo, hi = usd_est, _VISA_DIRECT_USD_MAX
     picked = usd_est
     for _ in range(10):
         mid = (lo + hi) / 2.0
@@ -336,7 +349,7 @@ def _card_usd_for_receiving_thb(
             hi = mid
         else:
             lo = mid
-    return max(1.0, picked)
+    return _clamp_visa_direct_usd(picked)
 
 
 def fetch_summary_fees(
@@ -372,7 +385,13 @@ def fetch_summary_fees(
         card_probe = _card_usd_for_receiving_thb(
             target_thb, bbl, probe_usd=card_probe, timeout=timeout
         )
+    else:
+        card_probe = _clamp_visa_direct_usd(card_probe)
     out: List[KwikpayMobFee] = []
     out.append(fetch_overseas_deposits_thb(rub_probe, timeout=timeout))
-    out.append(fetch_visa_direct_usd(card_probe, timeout=timeout))
+    try:
+        out.append(fetch_visa_direct_usd(card_probe, timeout=timeout))
+    except RuntimeError:
+        # Счёт уже получен; карта опциональна (лимит/API).
+        pass
     return out

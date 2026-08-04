@@ -203,6 +203,27 @@ class TestKwikpayMob(unittest.TestCase):
         card = fees[1]
         self.assertAlmostEqual(card.withdraw_amount * 35.0, 30_000, delta=1.0)
         self.assertGreaterEqual(card_mock.call_count, 2)
+        self.assertLessEqual(card.withdraw_amount, mob._VISA_DIRECT_USD_MAX)
+
+    @mock.patch("sources.kwikpay.kwikpay_mob.fetch_visa_direct_usd")
+    @mock.patch("sources.kwikpay.kwikpay_mob.fetch_overseas_deposits_thb")
+    def test_receiving_thb_clamps_card_usd_to_api_max(self, acc_mock, card_mock) -> None:
+        acc_mock.return_value = mob.KwikpayMobFee(
+            "OverseasDeposits", 50_000, 22_000, "THB", 0, 0
+        )
+        seen: list[float] = []
+
+        def _card(usd: float, **_kw) -> mob.KwikpayMobFee:
+            seen.append(usd)
+            self.assertLessEqual(usd, mob._VISA_DIRECT_USD_MAX)
+            return mob.KwikpayMobFee("VisaDirect", usd * 73.0, usd, "USD", 100.0, 0)
+
+        card_mock.side_effect = _card
+        # 100_000 THB / 35 ≈ 2857 USD > API max 1000 → clamp
+        fees = mob.fetch_summary_fees(receiving_thb=100_000, thb_per_usd=35.0)
+        self.assertEqual(len(fees), 2)
+        self.assertEqual(fees[1].withdraw_amount, mob._VISA_DIRECT_USD_MAX)
+        self.assertTrue(all(u <= mob._VISA_DIRECT_USD_MAX for u in seen))
 
     @mock.patch(
         "sources.unired_bkb.bbl_latest_fx.subscription_key_from_env",
