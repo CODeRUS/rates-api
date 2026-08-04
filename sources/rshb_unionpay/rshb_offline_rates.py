@@ -44,7 +44,8 @@ class PairQuote:
 
 
 def fetch_offline_page(*, timeout: float = 60.0, max_attempts: Optional[int] = None) -> str:
-    ctx = ssl.create_default_context()
+    # old.rshb.ru: сертификат Russian Trusted CA — часто нет в системном trust store.
+    ctx = ssl._create_unverified_context()
     req = urllib.request.Request(
         RSHB_OFFLINE_URL,
         headers={

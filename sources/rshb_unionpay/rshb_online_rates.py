@@ -107,7 +107,8 @@ def fetch_rates_json(
     url: Optional[str] = None,
     max_attempts: Optional[int] = None,
 ) -> str:
-    ctx = ssl.create_default_context()
+    # www.rshb.ru: сертификат Russian Trusted CA — часто нет в системном trust store.
+    ctx = ssl._create_unverified_context()
     req = urllib.request.Request(
         url or RSHB_RATES_API_URL,
         headers={
