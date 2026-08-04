@@ -10,7 +10,7 @@ PLUGIN_ORDER = (
     "bybit_bitkub",
     "bybit_novawallet",
     "bybit_moreta",
-    "korona",
+    # korona временно исключён из сводки/refresh (API 400/таймауты); CLI rates.py korona доступен.
     "avosend",
     "multitransfer",
     "avosend_bkb",
