@@ -14,8 +14,11 @@ EUR/USD, USD/CNY, CNY/RUR, USD/RUR, EUR/RUR и колонками ПОКУПКА
 
 from __future__ import annotations
 
+import logging
 import re
+import shutil
 import ssl
+import subprocess
 import urllib.request
 from dataclasses import dataclass
 
@@ -23,6 +26,8 @@ from rates_http import urlopen_retriable
 from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 RSHB_OFFLINE_URL = "https://old.rshb.ru/natural/cards/rates/rates_offline/"
 USER_AGENT = (
@@ -43,7 +48,71 @@ class PairQuote:
     sell: Decimal
 
 
-def fetch_offline_page(*, timeout: float = 60.0, max_attempts: Optional[int] = None) -> str:
+def _fetch_offline_page_curl(
+    *,
+    timeout: float,
+    attempts: int = 5,
+) -> str:
+    """
+    Скачивание через curl.
+
+    Сеть до old.rshb.ru часто обрывает длинные ответы (~20 KB из ~130 KB).
+    Gzip (~26 KB) обычно проходит целиком; при сбое — короткие повторы.
+    ``urllib`` к этому хосту зависает на теле ответа — не используем как основной путь.
+    """
+    curl = shutil.which("curl")
+    if not curl:
+        raise RuntimeError("curl не найден в PATH")
+    # Fail-fast: при «залипании» после ~20 KB не ждать полный timeout.
+    per_try = max(8.0, min(float(timeout), 15.0))
+    n_try = max(1, int(attempts))
+    last_err: Optional[BaseException] = None
+    for i in range(n_try):
+        cmd = [
+            curl,
+            "-fsS",
+            "-k",  # Russian Trusted CA часто нет в trust store
+            "--compressed",  # gzip: меньше байт на проводе — реже обрыв
+            "-m",
+            str(int(round(per_try))),
+            "-A",
+            USER_AGENT,
+            "-H",
+            "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "-H",
+            "Accept-Language: ru-RU,ru;q=0.9,en;q=0.8",
+            RSHB_OFFLINE_URL,
+        ]
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=per_try + 5.0,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as e:
+            last_err = TimeoutError(f"РСХБ offline curl: timeout {per_try}s")
+            logger.debug("РСХБ offline curl try %s/%s timeout", i + 1, n_try)
+            continue
+        if proc.returncode != 0:
+            err = (proc.stderr or b"").decode("utf-8", errors="replace")[:300]
+            last_err = RuntimeError(f"РСХБ offline curl exit {proc.returncode}: {err}")
+            logger.debug("РСХБ offline curl try %s/%s: %s", i + 1, n_try, err.strip())
+            continue
+        text = (proc.stdout or b"").decode("utf-8", errors="replace")
+        if "CNY/RUR" not in text and "CNY/RUB" not in text:
+            last_err = RuntimeError(
+                f"РСХБ offline curl: ответ без CNY/RUR ({len(text)} bytes)"
+            )
+            continue
+        return text
+    assert last_err is not None
+    raise last_err
+
+
+def _fetch_offline_page_urllib(
+    *, timeout: float, max_attempts: Optional[int] = None
+) -> str:
     # old.rshb.ru: сертификат Russian Trusted CA — часто нет в системном trust store.
     ctx = ssl._create_unverified_context()
     req = urllib.request.Request(
@@ -52,6 +121,7 @@ def fetch_offline_page(*, timeout: float = 60.0, max_attempts: Optional[int] = N
             "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+            "Accept-Encoding": "identity",
         },
     )
     kw: Dict[str, Any] = {"timeout": timeout, "context": ctx}
@@ -59,6 +129,19 @@ def fetch_offline_page(*, timeout: float = 60.0, max_attempts: Optional[int] = N
         kw["max_attempts_override"] = max_attempts
     with urlopen_retriable(req, **kw) as r:
         return r.read().decode("utf-8", errors="replace")
+
+
+def fetch_offline_page(*, timeout: float = 60.0, max_attempts: Optional[int] = None) -> str:
+    """
+    HTML архива rates_offline.
+
+    Основной транспорт — curl+gzip с повторами. urllib только если curl нет в PATH
+    (на практике к old.rshb.ru urllib часто зависает mid-body).
+    """
+    attempts = max(3, int(max_attempts) if max_attempts is not None else 5)
+    if shutil.which("curl"):
+        return _fetch_offline_page_curl(timeout=timeout, attempts=attempts)
+    return _fetch_offline_page_urllib(timeout=timeout, max_attempts=1)
 
 
 def parse_offline_html(
