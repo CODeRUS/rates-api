@@ -31,15 +31,9 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     from . import askmoney_rub_thb as am
 
     t0 = time.perf_counter()
-    html = am.fetch_homepage_html()
-    t1 = time.perf_counter()
-    params = am.parse_params_from_html(html)
+    params = am.fetch_params()
     t2 = time.perf_counter()
-    logger.info(
-        "askmoney: после загрузки HTML %.2fs, разбор параметров %.2fs",
-        t1 - t0,
-        t2 - t1,
-    )
+    logger.info("askmoney: получены параметры за %.2fs", t2 - t0)
     # По умолчанию в общей сводке фиксируем целевое получение 10 000 THB,
     # чтобы заметка была сопоставима между запусками.
     target_thb = (

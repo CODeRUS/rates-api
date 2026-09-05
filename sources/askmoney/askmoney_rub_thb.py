@@ -40,6 +40,9 @@ from typing import Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 ASKMONEY_URL = "https://askmoney.pro/"
+# С 2026 калькулятор берёт курсы с локального REST-эндпоинта сайта
+# (см. assets/js/calculator.js → /wp-json/askmoney/v1/rates), а не из data-vals.
+ASKMONEY_REST_URL = "https://askmoney.pro/wp-json/askmoney/v1/rates"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36"
 
 # Fallback, если парсинг не сработал (как в вашем примере).
@@ -78,6 +81,65 @@ def fetch_homepage_html(*, timeout: float = 30.0) -> str:
         len(raw.encode("utf-8")),
     )
     return raw
+
+
+def fetch_rest_rates(*, timeout: float = 20.0) -> dict:
+    """GET /wp-json/askmoney/v1/rates → JSON с блоком ``transfer`` (RUB/USD)."""
+    ctx = ssl.create_default_context()
+    req = urllib.request.Request(
+        ASKMONEY_REST_URL,
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json,*/*"},
+    )
+    with urlopen_retriable(req, timeout=timeout, context=ctx) as r:
+        raw = r.read().decode(r.headers.get_content_charset() or "utf-8", errors="replace")
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError(f"askmoney REST: неожиданный ответ {type(data).__name__}")
+    return data
+
+
+def params_from_rest(data: dict) -> AskMoneyParams:
+    """Строит :class:`AskMoneyParams` из JSON REST-эндпоинта.
+
+    ``transfer.RUB.rate`` — RUB за 1 THB для крупных сумм (b2), ``ladder`` — точки
+    ``(rubAmount, rawThb)``, ``rubThreshold`` — граница веток (threshold_rub).
+    """
+    transfer = data.get("transfer") if isinstance(data, dict) else None
+    rub = transfer.get("RUB") if isinstance(transfer, dict) else None
+    if not isinstance(rub, dict):
+        raise ValueError("askmoney REST: нет transfer.RUB в ответе")
+    rate = _to_float(rub.get("rate"))
+    if not rate or rate <= 0:
+        raise ValueError(f"askmoney REST: невалидный transfer.RUB.rate={rub.get('rate')!r}")
+    ladder: List[Tuple[float, float]] = []
+    for item in rub.get("ladder") or []:
+        if not isinstance(item, dict):
+            continue
+        rub_amount = _to_float(item.get("rubAmount"))
+        raw_thb = _to_float(item.get("rawThb"))
+        if rub_amount and rub_amount > 0 and raw_thb and raw_thb > 0:
+            ladder.append((rub_amount, raw_thb))
+    ladder.sort(key=lambda x: x[0])
+    threshold = _to_float(rub.get("rubThreshold")) or float(DEFAULT_PARAMS["h2"]) * float(
+        DEFAULT_PARAMS["f2"]
+    )
+    return AskMoneyParams(
+        b2=rate,
+        f2=1.0,
+        h2=threshold,
+        b4=1.0,
+        ladder=tuple(ladder),
+    )
+
+
+def fetch_params(*, timeout: float = 20.0) -> AskMoneyParams:
+    """Курсы askmoney: сначала REST-эндпоинт, при сбое — парсинг HTML главной."""
+    try:
+        return params_from_rest(fetch_rest_rates(timeout=timeout))
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError, json.JSONDecodeError) as e:
+        logger.info("askmoney REST недоступен (%s) — фолбэк на HTML", e)
+    html = fetch_homepage_html(timeout=timeout)
+    return parse_params_from_html(html)
 
 
 def _parse_prefill_for_variable(html: str, var: str) -> Optional[float]:
@@ -383,8 +445,7 @@ def load_params(fetch: bool, html_file: Optional[str]) -> AskMoneyParams:
             html = f.read()
         return parse_params_from_html(html)
     if fetch:
-        html = fetch_homepage_html()
-        return parse_params_from_html(html)
+        return fetch_params()
     return AskMoneyParams(**DEFAULT_PARAMS)  # type: ignore[arg-type]
 
 
