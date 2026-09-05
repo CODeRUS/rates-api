@@ -36,7 +36,7 @@ def load_settings() -> UserbotSettings:
     sess_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        n = int(_env("USERBOT_BOOTSTRAP_MESSAGES_LIMIT", "5"))
+        n = int(_env("USERBOT_BOOTSTRAP_MESSAGES_LIMIT", "20"))
     except ValueError:
         n = 5
     n = max(1, n)

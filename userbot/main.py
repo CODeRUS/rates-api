@@ -10,9 +10,13 @@ from typing import Dict, Iterable, List
 
 import rates_unified_cache as ucc
 from telethon import TelegramClient, events
+from telethon.errors import FloodWaitError, UserAlreadyParticipantError
+from telethon.tl.functions.channels import JoinChannelRequest
+from telethon.utils import get_peer_id
 
 from env_loader import load_repo_dotenv
 from userbot.cache_writer import key_for_source, write_source_snapshot
+from userbot.chats import event_chat_keys, keys_from_event, lookup_source, normalize_chat_ref
 from userbot.config import load_settings
 from userbot.models import ParsedRate, SourceConfig
 from userbot.parser import compile_rules, parse_message
@@ -20,15 +24,6 @@ from userbot.sources_config import USERBOT_SOURCES
 
 logger = logging.getLogger(__name__)
 _ROOT = Path(__file__).resolve().parent.parent
-
-
-def _normalize_chat_ref(raw: str) -> str:
-    s = (raw or "").strip()
-    if not s:
-        return s
-    if s.startswith("@"):
-        return "@" + s[1:].lower()
-    return s
 
 
 def _group_by_source(rows: Iterable[ParsedRate]) -> Dict[str, List[ParsedRate]]:
@@ -90,6 +85,60 @@ def _merge_with_existing_snapshot(cfg: SourceConfig, rows: Iterable[ParsedRate])
     combined.extend(_read_existing_source_snapshot(cfg))
     combined.extend(list(rows))
     return _pick_latest_per_currency(combined)
+
+
+async def _ensure_channel(client: TelegramClient, cfg: SourceConfig) -> object:
+    entity = await client.get_entity(cfg.chat)
+    try:
+        await client(JoinChannelRequest(entity))
+        logger.info("joined %s (%s)", cfg.source_id, cfg.chat)
+    except UserAlreadyParticipantError:
+        pass
+    except FloodWaitError as e:
+        logger.warning("join %s flood wait %ss", cfg.source_id, getattr(e, "seconds", "?"))
+    except Exception as e:
+        logger.warning("join %s failed: %s", cfg.source_id, e)
+    return entity
+
+
+def _register_entity_keys(
+    cfg_by_chat: Dict[str, SourceConfig],
+    cfg: SourceConfig,
+    entity: object,
+) -> None:
+    username = getattr(entity, "username", None)
+    raw_id = getattr(entity, "id", None)
+    keys = list(event_chat_keys(username=username, chat_id=raw_id if raw_id is not None else None))
+    keys.append(normalize_chat_ref(cfg.chat))
+    try:
+        keys.extend(event_chat_keys(chat_id=int(get_peer_id(entity))))
+    except Exception:
+        pass
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for key in keys:
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        uniq.append(key)
+        cfg_by_chat[key] = cfg
+    logger.info("listen %s keys=%s", cfg.source_id, ",".join(uniq))
+
+
+async def _build_chat_index(
+    client: TelegramClient,
+    sources: Iterable[SourceConfig],
+) -> Dict[str, SourceConfig]:
+    cfg_by_chat: Dict[str, SourceConfig] = {}
+    for cfg in sources:
+        cfg_by_chat[normalize_chat_ref(cfg.chat)] = cfg
+        try:
+            entity = await _ensure_channel(client, cfg)
+        except Exception as e:
+            logger.warning("resolve %s (%s) failed: %s", cfg.source_id, cfg.chat, e)
+            continue
+        _register_entity_keys(cfg_by_chat, cfg, entity)
+    return cfg_by_chat
 
 
 async def _bootstrap_source(
@@ -154,6 +203,9 @@ async def _run(*, login_only: bool, login_phone: str) -> None:
         await client.disconnect()
         return
 
+    cfg_by_chat = await _build_chat_index(client, USERBOT_SOURCES)
+    compiled = {c.source_id: compile_rules(c) for c in USERBOT_SOURCES}
+
     for cfg in USERBOT_SOURCES:
         await _bootstrap_source(
             client,
@@ -161,13 +213,8 @@ async def _run(*, login_only: bool, login_phone: str) -> None:
             limit=s.bootstrap_messages_limit,
         )
 
-    cfg_by_chat = {_normalize_chat_ref(c.chat): c for c in USERBOT_SOURCES}
-    compiled = {c.source_id: compile_rules(c) for c in USERBOT_SOURCES}
-
     async def _process_event_message(event: object, *, event_kind: str) -> None:
-        chat = getattr(event.chat, "username", None)
-        chat_key = ("@" + chat.lower()) if chat else str(event.chat_id)
-        cfg = cfg_by_chat.get(chat_key)
+        cfg = lookup_source(cfg_by_chat, keys_from_event(event))
         if cfg is None:
             return
         msg = getattr(event, "message", None)
