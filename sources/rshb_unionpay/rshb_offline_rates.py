@@ -17,9 +17,11 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import socket
 import ssl
 import subprocess
 import urllib.request
+import zlib
 from dataclasses import dataclass
 
 from rates_http import urlopen_retriable
@@ -83,6 +85,8 @@ def _fetch_offline_page_curl(
             "Accept-Language: ru-RU,ru;q=0.9,en;q=0.8",
             RSHB_OFFLINE_URL,
         ]
+        stdout = b""
+        rc: Optional[int] = None
         try:
             proc = subprocess.run(
                 cmd,
@@ -90,22 +94,27 @@ def _fetch_offline_page_curl(
                 timeout=per_try + 5.0,
                 check=False,
             )
+            stdout = proc.stdout or b""
+            rc = proc.returncode
         except subprocess.TimeoutExpired as e:
-            last_err = TimeoutError(f"РСХБ offline curl: timeout {per_try}s")
-            logger.debug("РСХБ offline curl try %s/%s timeout", i + 1, n_try)
-            continue
-        if proc.returncode != 0:
+            # curl завис на уровне процесса — забираем то, что уже успел отдать.
+            stdout = e.stdout or b""
+            rc = None
+            logger.debug("РСХБ offline curl try %s/%s subprocess timeout", i + 1, n_try)
+        text = stdout.decode("utf-8", errors="replace")
+        # old.rshb.ru часто не закрывает соединение (curl exit 28), но gzip-тело
+        # с нужной таблицей уже получено целиком — принимаем частичный ответ.
+        if "CNY/RUR" in text or "CNY/RUB" in text:
+            return text
+        if rc not in (0, None):
             err = (proc.stderr or b"").decode("utf-8", errors="replace")[:300]
-            last_err = RuntimeError(f"РСХБ offline curl exit {proc.returncode}: {err}")
+            last_err = RuntimeError(f"РСХБ offline curl exit {rc}: {err}")
             logger.debug("РСХБ offline curl try %s/%s: %s", i + 1, n_try, err.strip())
-            continue
-        text = (proc.stdout or b"").decode("utf-8", errors="replace")
-        if "CNY/RUR" not in text and "CNY/RUB" not in text:
+        else:
             last_err = RuntimeError(
                 f"РСХБ offline curl: ответ без CNY/RUR ({len(text)} bytes)"
             )
-            continue
-        return text
+        continue
     assert last_err is not None
     raise last_err
 
@@ -113,6 +122,15 @@ def _fetch_offline_page_curl(
 def _fetch_offline_page_urllib(
     *, timeout: float, max_attempts: Optional[int] = None
 ) -> str:
+    """
+    Чтение rates_offline по кускам (gzip) с ранним выходом.
+
+    old.rshb.ru не закрывает соединение и виснет на теле уже после ~8 KB —
+    полный ``read()`` всегда таймаутит. С ``Accept-Encoding: gzip`` первые ~16 KB
+    сжатого потока распаковываются в ~95 KB HTML (таблица CNY/RUR ~на 82 KB), чего
+    достаточно. Читаем чанки, потоково распаковываем и выходим, как только видим
+    маркер CNY/RUR с запасом.
+    """
     # old.rshb.ru: сертификат Russian Trusted CA — часто нет в системном trust store.
     ctx = ssl._create_unverified_context()
     req = urllib.request.Request(
@@ -121,26 +139,61 @@ def _fetch_offline_page_urllib(
             "User-Agent": USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
-            "Accept-Encoding": "identity",
+            "Accept-Encoding": "gzip",
         },
     )
-    kw: Dict[str, Any] = {"timeout": timeout, "context": ctx}
-    if max_attempts is not None:
-        kw["max_attempts_override"] = max_attempts
-    with urlopen_retriable(req, **kw) as r:
-        return r.read().decode("utf-8", errors="replace")
+    tail_margin = 8192  # дочитать после маркера, чтобы таблица попала целиком
+    resp = urllib.request.urlopen(req, timeout=timeout, context=ctx)
+    is_gzip = "gzip" in (resp.headers.get("Content-Encoding") or "").lower()
+    dec = zlib.decompressobj(zlib.MAX_WBITS | 16) if is_gzip else None
+    buf = bytearray()
+    try:
+        while True:
+            try:
+                chunk = resp.read(8192)
+            except (socket.timeout, TimeoutError):
+                break  # сервер завис на теле — используем накопленное
+            if not chunk:
+                break
+            if dec is not None:
+                try:
+                    buf += dec.decompress(chunk)
+                except zlib.error:
+                    break
+            else:
+                buf += chunk
+            idx = buf.find(b"CNY/RUR")
+            if idx < 0:
+                idx = buf.find(b"CNY/RUB")
+            if idx >= 0 and len(buf) >= idx + tail_margin:
+                break
+    finally:
+        try:
+            resp.close()
+        except Exception:
+            pass
+    text = bytes(buf).decode("utf-8", errors="replace")
+    if "CNY/RUR" not in text and "CNY/RUB" not in text:
+        raise TimeoutError(
+            f"РСХБ offline urllib: нет CNY/RUR в ответе ({len(buf)} bytes)"
+        )
+    return text
 
 
 def fetch_offline_page(*, timeout: float = 60.0, max_attempts: Optional[int] = None) -> str:
     """
     HTML архива rates_offline.
 
-    Основной транспорт — curl+gzip с повторами. urllib только если curl нет в PATH
-    (на практике к old.rshb.ru urllib часто зависает mid-body).
+    Основной транспорт — curl+gzip с повторами (быстрее и переживает обрыв тела).
+    Если curl нет в PATH или он не смог — urllib с чтением по кускам и ранним
+    выходом (сервер не закрывает соединение, полный ``read()`` всегда таймаутит).
     """
     attempts = max(3, int(max_attempts) if max_attempts is not None else 5)
     if shutil.which("curl"):
-        return _fetch_offline_page_curl(timeout=timeout, attempts=attempts)
+        try:
+            return _fetch_offline_page_curl(timeout=timeout, attempts=attempts)
+        except Exception as e:
+            logger.info("РСХБ offline curl не удался (%s) — фолбэк на urllib", e)
     return _fetch_offline_page_urllib(timeout=timeout, max_attempts=1)
 
 
