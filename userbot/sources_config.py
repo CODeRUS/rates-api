@@ -135,9 +135,11 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
             CurrencyRule(
                 currency="RUBTHB",
                 category="exchanger",
-                # 🇷🇺RUB // Баты - 2.49 < (от20k бат)🇹🇭  <- берем этот курс
+                # Старый формат: 🇷🇺RUB // Баты - 2.49 < (от20k бат)
+                # Новый формат:  🇷🇺RUB // THB -  2.83  < (от20k THB)
                 pattern=(
-                    r"RUB\s*//\s*Баты\s*-\s*(?P<rate>\d+(?:[.,]\d+)?)\s*<\s*\(от20k\s*бат\)"
+                    r"RUB\s*//\s*(?:Баты|THB)\s*-\s*(?P<rate>\d+(?:[.,]\d+)?)"
+                    r"\s*<\s*\(от\s*20k\s*(?:бат|THB)\)"
                 ),
             ),
         ),
