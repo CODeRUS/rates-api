@@ -35,6 +35,66 @@ except Exception as exc:  # pragma: no cover
 TARGET_URL = "https://multitransfer.ru"
 DEFAULT_DEBUG_URL = "http://127.0.0.1:9222"
 DEFAULT_HEADERS_FILE = Path(__file__).resolve().parents[1] / ".rates_cache" / "multitransfer_headers.json"
+DEFAULT_USER_DATA_DIR = Path.home() / ".config" / "chromium"
+DEFAULT_PROFILE_DIRECTORY = "Default"
+
+
+def _chromium_start_cmd(
+    *,
+    chromium_binary: str,
+    debug_url: str,
+    start_url: str,
+    user_data_dir: Path,
+    profile_directory: str,
+) -> list[str]:
+    """
+    Запуск с явным профилем, без guest и без окна выбора профилей.
+
+    ``--profile-directory`` + URL на командной строке и
+    ``--hide-profile-picker-on-startup`` отключают Profile Picker.
+    ``--guest`` не используем: он открывает Guest Profile, а не cookies Default.
+    """
+    port = _debug_port_from_url(debug_url)
+    return [
+        chromium_binary,
+        f"--user-data-dir={str(user_data_dir)}",
+        f"--profile-directory={profile_directory}",
+        "--hide-profile-picker-on-startup",
+        "--disable-features=ProfilePickerOnStartup",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--window-size=1920,1080",
+        "--window-position=0,0",
+        f"--remote-debugging-port={port}",
+        start_url,
+    ]
+
+
+def _prefer_named_profile(user_data_dir: Path, profile_directory: str) -> None:
+    """Сбросить last_used с Guest на указанный профиль, иначе Chromium может открыть picker."""
+    local_state_path = user_data_dir / "Local State"
+    if not local_state_path.is_file():
+        return
+    try:
+        data = json.loads(local_state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return
+    if not isinstance(data, dict):
+        return
+    profile = data.get("profile")
+    if not isinstance(profile, dict):
+        profile = {}
+        data["profile"] = profile
+    if (
+        profile.get("last_used") == profile_directory
+        and profile.get("last_active_profiles") == [profile_directory]
+    ):
+        return
+    profile["last_used"] = profile_directory
+    profile["last_active_profiles"] = [profile_directory]
+    tmp = local_state_path.with_name("Local State.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(local_state_path)
 
 
 def _is_commissions_request(url: str) -> bool:
@@ -111,17 +171,19 @@ def _start_chromium_browser(
     display: str,
     debug_url: str,
     start_url: str,
+    user_data_dir: Path,
+    profile_directory: str,
 ) -> subprocess.Popen:
-    port = _debug_port_from_url(debug_url)
     env = os.environ.copy()
     env["DISPLAY"] = display
-    cmd = [
-        chromium_binary, "--guest",
-        "--window-size=1920,1080",
-        "--window-position=0,0",
-        f"--remote-debugging-port={port}",
-        start_url,
-    ]
+    _prefer_named_profile(user_data_dir, profile_directory)
+    cmd = _chromium_start_cmd(
+        chromium_binary=chromium_binary,
+        debug_url=debug_url,
+        start_url=start_url,
+        user_data_dir=user_data_dir,
+        profile_directory=profile_directory,
+    )
     return subprocess.Popen(
         cmd,
         env=env,
@@ -788,6 +850,7 @@ def main() -> int:
         action="store_true",
         help=(
             "Start chromium-browser with DISPLAY, window geometry, "
+            "named profile (no guest, no profile picker), "
             "--remote-debugging-port (from --debug-url), then open start URL; "
             "terminate that browser when the script exits."
         ),
@@ -796,6 +859,28 @@ def main() -> int:
         "--chromium-binary",
         default="chromium-browser",
         help="Browser executable when using --start-browser (default: chromium-browser)",
+    )
+    parser.add_argument(
+        "--user-data-dir",
+        default=os.environ.get(
+            "MULTITRANSFER_CHROMIUM_USER_DATA_DIR",
+            str(DEFAULT_USER_DATA_DIR),
+        ),
+        help=(
+            "Chromium --user-data-dir for --start-browser "
+            f"(default: {DEFAULT_USER_DATA_DIR} or MULTITRANSFER_CHROMIUM_USER_DATA_DIR)"
+        ),
+    )
+    parser.add_argument(
+        "--profile-directory",
+        default=os.environ.get(
+            "MULTITRANSFER_CHROMIUM_PROFILE_DIRECTORY",
+            DEFAULT_PROFILE_DIRECTORY,
+        ),
+        help=(
+            "Chromium --profile-directory for --start-browser "
+            f"(default: {DEFAULT_PROFILE_DIRECTORY} or MULTITRANSFER_CHROMIUM_PROFILE_DIRECTORY)"
+        ),
     )
     parser.add_argument(
         "--display",
@@ -845,6 +930,9 @@ def main() -> int:
                 display=args.display,
                 debug_url=args.debug_url,
                 start_url=args.start_url,
+                user_data_dir=Path(args.user_data_dir).expanduser(),
+                profile_directory=(args.profile_directory or DEFAULT_PROFILE_DIRECTORY).strip()
+                or DEFAULT_PROFILE_DIRECTORY,
             )
             try:
                 _wait_cdp_ready(args.debug_url, timeout_sec=args.browser_ready_timeout)
