@@ -58,6 +58,32 @@ class TestVbrSellRows(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertAlmostEqual(rows[0][0], 10.5)
 
+    def test_rates_card_usd_sell(self) -> None:
+        html = (
+            '<div class="rates-card" name="RatesTableExpand" data-currencies="USD,">'
+            '<div class="rates-card-org">Экспобанк</div>'
+            '<div class="rates-card-param" data-rates-currency="UsdBuy">'
+            '<div class="rates-card-value">87,00 ₽</div></div>'
+            '<div class="rates-card-param" data-rates-currency="UsdSell">'
+            '<div class="rates-card-value">84,90 ₽</div></div></div>'
+        )
+        rows = vbr_sell_rows(html, "USD")
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0][0], 84.9)
+        self.assertEqual(rows[0][1], "Экспобанк")
+
+    def test_rates_card_reuses_usdsell_for_eur_page(self) -> None:
+        html = (
+            '<div class="rates-card" name="RatesTableExpand" data-currencies="EUR,">'
+            '<div class="rates-card-org">КАМКОМБАНК</div>'
+            '<div class="rates-card-param" data-rates-currency="UsdSell">'
+            '<div class="rates-card-value">96,50 ₽</div></div></div>'
+        )
+        rows = vbr_sell_rows(html, "EUR")
+        self.assertEqual(len(rows), 1)
+        self.assertAlmostEqual(rows[0][0], 96.5)
+        self.assertEqual(vbr_sell_rows(html, "USD"), [])
+
 
 class TestMergeThreeLayers(unittest.TestCase):
     def test_unions_sources(self) -> None:
