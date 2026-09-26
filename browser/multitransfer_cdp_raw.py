@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -26,13 +29,13 @@ try:
 except Exception as exc:  # pragma: no cover
     print(
         "Missing dependency: websocket-client. Install it with:\n"
-        "  python3.9 -m pip install websocket-client",
+        "  python3.7 -m pip install --user websocket-client",
         file=sys.stderr,
     )
     raise SystemExit(3) from exc
 
 
-TARGET_URL = "https://multitransfer.ru"
+TARGET_URL = "https://multitransfer.ru/transfer/thailand"
 DEFAULT_DEBUG_URL = "http://127.0.0.1:9222"
 DEFAULT_HEADERS_FILE = Path(__file__).resolve().parents[1] / ".rates_cache" / "multitransfer_headers.json"
 DEFAULT_USER_DATA_DIR = Path.home() / ".config" / "chromium"
@@ -95,6 +98,46 @@ def _prefer_named_profile(user_data_dir: Path, profile_directory: str) -> None:
     tmp = local_state_path.with_name("Local State.tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     tmp.replace(local_state_path)
+
+
+def _clear_stale_chromium_singleton(user_data_dir: Path) -> None:
+    """Снять SingletonLock, если pid из него уже мёртв — иначе --start-browser молча не поднимает CDP."""
+    lock = user_data_dir / "SingletonLock"
+    if not lock.exists() and not lock.is_symlink():
+        return
+    alive = False
+    try:
+        target = os.readlink(str(lock))
+    except OSError:
+        target = ""
+    if target:
+        suffix = target.rsplit("-", 1)[-1]
+        try:
+            pid = int(suffix)
+        except ValueError:
+            pid = None
+        if pid is not None:
+            try:
+                os.kill(pid, 0)
+                alive = True
+            except ProcessLookupError:
+                alive = False
+            except PermissionError:
+                alive = True
+            except OSError:
+                alive = False
+    if alive:
+        return
+    for name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        path = user_data_dir / name
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def _url_contains(haystack: str, needle: str) -> bool:
+    return needle.lower().rstrip("/") in (haystack or "").lower().rstrip("/")
 
 
 def _is_commissions_request(url: str) -> bool:
@@ -177,6 +220,7 @@ def _start_chromium_browser(
     env = os.environ.copy()
     env["DISPLAY"] = display
     _prefer_named_profile(user_data_dir, profile_directory)
+    _clear_stale_chromium_singleton(user_data_dir)
     cmd = _chromium_start_cmd(
         chromium_binary=chromium_binary,
         debug_url=debug_url,
@@ -224,12 +268,20 @@ def _list_page_tabs(debug_url: str) -> list:
     return [t for t in tabs if isinstance(t, dict) and t.get("type") == "page"]
 
 
-def _find_page_tab(debug_url: str, marker: str) -> Optional[Dict[str, Any]]:
+def _find_page_tab(
+    debug_url: str,
+    marker: str,
+    prefer_url: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
     """
-    Prefer a page tab whose URL contains marker; otherwise use the first page tab
-    (e.g. chrome://newtab/) and navigate to TARGET_URL via CDP.
+    Prefer the transfer URL tab; then a tab whose URL contains marker;
+    otherwise the first page tab (e.g. chrome://newtab/).
     """
     pages = _list_page_tabs(debug_url)
+    if prefer_url:
+        for tab in pages:
+            if _url_contains(tab.get("url") or "", prefer_url):
+                return tab
     marker_lower = marker.lower()
     for tab in pages:
         if marker_lower in (tab.get("url") or "").lower():
@@ -513,13 +565,14 @@ def run(
     settle_ms: int,
     amount: str,
     save_headers_file: Optional[Path],
+    target_url: str = TARGET_URL,
 ) -> int:
     timeout_sec = max(1.0, timeout_ms / 1000.0)
     try:
-        tab = _find_page_tab(debug_url, marker)
+        tab = _find_page_tab(debug_url, marker, prefer_url=target_url)
         if tab is None:
             try:
-                tab = _create_new_tab(debug_url, TARGET_URL)
+                tab = _create_new_tab(debug_url, target_url)
             except urllib.error.HTTPError as exc:
                 raise RuntimeError(
                     "No page tabs in Chromium and cannot create one via /json/new "
@@ -528,9 +581,7 @@ def run(
             action = "open"
             navigate = False
         else:
-            tab_url = (tab.get("url") or "").lower()
-            marker_lower = marker.lower()
-            if marker_lower in tab_url or TARGET_URL.lower().rstrip("/") in tab_url.rstrip("/"):
+            if _url_contains(tab.get("url") or "", target_url):
                 # Already on transfer page; reload often prevents commissions after amount input.
                 action = "use-existing"
                 navigate = False
@@ -567,9 +618,9 @@ def run(
 
         if navigate:
             if action == "open":
-                pass  # /json/new already opened TARGET_URL
+                pass  # /json/new already opened target_url
             else:
-                cdp.call("Page.navigate", {"url": TARGET_URL}, timeout_sec=timeout_sec)
+                cdp.call("Page.navigate", {"url": target_url}, timeout_sec=timeout_sec)
             # Wait for transfer form; flsafety must finish before commissions fires.
             try:
                 _wait_amount_field_center(cdp, timeout_sec=min(25.0, timeout_sec * 0.6))
@@ -948,6 +999,7 @@ def main() -> int:
             settle_ms=args.settle_ms,
             amount=args.amount,
             save_headers_file=save_headers_file,
+            target_url=args.start_url,
         )
     finally:
         if browser_proc is not None:
