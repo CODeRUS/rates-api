@@ -68,8 +68,25 @@ def parse_atm_cashout_rub_per_thb(data: Dict[str, Any]) -> Optional[float]:
     return None
 
 
+def _is_cert_error(exc: BaseException) -> bool:
+    if isinstance(exc, ssl.SSLError):
+        return True
+    if isinstance(exc, urllib.error.URLError):
+        reason = exc.reason
+        if isinstance(reason, ssl.SSLError):
+            return True
+        msg = str(reason or exc).upper()
+        return "CERTIFICATE" in msg or "CERT_VERIFY" in msg
+    return False
+
+
+def _iter_ssl_contexts():
+    yield ssl.create_default_context()
+    # На части хостов цепочка tbank.ru содержит лишний self-signed сертификат.
+    yield ssl._create_unverified_context()
+
+
 def _load_rates_json(*, timeout: float = 20.0) -> Optional[Dict[str, Any]]:
-    ctx = ssl.create_default_context()
     req = urllib.request.Request(
         RATES_URL,
         headers={
@@ -77,12 +94,24 @@ def _load_rates_json(*, timeout: float = 20.0) -> Optional[Dict[str, Any]]:
             "User-Agent": USER_AGENT,
         },
     )
-    try:
-        with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
-            raw = resp.read().decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
-        return json.loads(raw)
-    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, TimeoutError):
+    last_ssl: Optional[BaseException] = None
+    for ctx in _iter_ssl_contexts():
+        try:
+            with urlopen_retriable(req, timeout=timeout, context=ctx) as resp:
+                raw = resp.read().decode(
+                    resp.headers.get_content_charset() or "utf-8", errors="replace"
+                )
+            return json.loads(raw)
+        except (urllib.error.URLError, ssl.SSLError) as e:
+            if _is_cert_error(e):
+                last_ssl = e
+                continue
+            return None
+        except (urllib.error.HTTPError, json.JSONDecodeError, TimeoutError):
+            return None
+    if last_ssl is not None:
         return None
+    return None
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
