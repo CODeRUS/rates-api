@@ -456,37 +456,56 @@ def _key_down_up(
         cdp.call("Input.dispatchKeyEvent", params, timeout_sec=10.0)
 
 
-_COMMIT_AMOUNT_JS = """
+# Комиссии уходят из addToQueue(amount, "RUB", currency).
+# onChange с debounce пропускает запрос, если значение уже записано в форму,
+# а blur сбрасывает очередь.
+_AMOUNT_ONCHANGE_JS = """
 ((digits) => {
-  const inp = document.querySelector('input[name="amount"]');
+  const inp = document.querySelector('[data-testid="transfer_widget_debit-amount-field_input"]')
+    || document.querySelector('input[name="amount"]');
   if (!inp) return {ok: false, reason: 'no input[name=amount]'};
-  const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-  if (desc && desc.set) desc.set.call(inp, '');
-  else inp.value = '';
-  inp.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'deleteContentBackward'}));
-  if (desc && desc.set) desc.set.call(inp, digits);
-  else inp.value = digits;
-  inp.dispatchEvent(new InputEvent('input', {bubbles: true, data: digits, inputType: 'insertText'}));
-  inp.dispatchEvent(new Event('change', {bubbles: true}));
-  inp.dispatchEvent(new FocusEvent('blur', {bubbles: true}));
-  return {ok: true, value: inp.value, digits: digits};
+  inp.focus();
+  const fiberKey = Object.keys(inp).find((k) => k.indexOf('__reactFiber') === 0);
+  let fiber = fiberKey ? inp[fiberKey] : null;
+  let queue = null;
+  let handler = null;
+  while (fiber) {
+    const props = fiber.memoizedProps || null;
+    if (props && !queue && typeof props.addToQueue === 'function') queue = props.addToQueue;
+    if (props && !handler && typeof props.onChange === 'function') {
+      const src = Function.prototype.toString.call(props.onChange);
+      if (src.indexOf('transfer_widget_debit-amount-field_input') !== -1) handler = props.onChange;
+    }
+    fiber = fiber.return;
+  }
+  if (queue) {
+    queue(Number(digits), 'RUB', 'THB');
+    return {ok: true, via: 'addToQueue', value: inp.value || '', digits: String(digits)};
+  }
+  if (handler) {
+    handler(String(digits));
+    return {ok: true, via: 'onChange', value: inp.value || '', digits: String(digits)};
+  }
+  return {ok: false, reason: 'no addToQueue', value: inp.value || ''};
 })
 """
 
 
-def _commit_amount_value(cdp: "CDPSession", digits: str, timeout_sec: float) -> Dict[str, Any]:
-    expr = _COMMIT_AMOUNT_JS.strip() + f"({json.dumps(digits)})"
+def _amount_onchange_js(digits: str) -> str:
+    return _AMOUNT_ONCHANGE_JS.strip() + f"({json.dumps(digits)})"
+
+
+def _trigger_amount_onchange(cdp: "CDPSession", digits: str, timeout_sec: float) -> Dict[str, Any]:
     result = cdp.call(
         "Runtime.evaluate",
-        {"expression": expr, "returnByValue": True},
+        {"expression": _amount_onchange_js(digits), "returnByValue": True},
         timeout_sec=timeout_sec,
     )
     if result.get("exceptionDetails"):
         raise RuntimeError(f"CDP evaluate failed: {result['exceptionDetails']}")
     value = result.get("result", {}).get("value")
-    if not isinstance(value, dict) or not value.get("ok"):
-        reason = value.get("reason") if isinstance(value, dict) else "unknown"
-        raise RuntimeError(f"Failed to commit amount: {reason}")
+    if not isinstance(value, dict):
+        raise RuntimeError("Failed to trigger amount onChange")
     return value
 
 
@@ -516,7 +535,7 @@ def _type_digit(cdp: "CDPSession", ch: str) -> None:
 
 
 def _enter_amount(cdp: "CDPSession", amount: str, timeout_sec: float) -> Dict[str, Any]:
-    """Click field for focus/caret, type digits via keyboard, commit for React/API."""
+    """Фокус на поле суммы и React onChange, без blur: иначе виджет отменяет commissions."""
     try:
         cdp.call("Page.bringToFront", timeout_sec=5.0)
     except Exception:
@@ -540,20 +559,22 @@ def _enter_amount(cdp: "CDPSession", amount: str, timeout_sec: float) -> Dict[st
     if not digits:
         raise RuntimeError(f"Invalid --amount: {amount!r}")
 
-    # Clear existing text like a user (select all + delete).
+    deadline = time.monotonic() + min(8.0, timeout_sec)
+    last: Dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        last = _trigger_amount_onchange(cdp, digits, timeout_sec=10.0)
+        if last.get("ok"):
+            return {"ok": True, "value": last.get("value"), "digits": digits, "via": last.get("via")}
+        time.sleep(0.25)
+
     _key_down_up(cdp, key="a", code="KeyA", vk=65, modifiers=2)
     time.sleep(0.05)
     _key_down_up(cdp, key="Backspace", code="Backspace", vk=8)
     time.sleep(0.1)
-
     for ch in digits:
         _type_digit(cdp, ch)
         time.sleep(0.07)
-
-    time.sleep(0.15)
-    # MUI/React listens to native value updates; keyboard alone does not trigger commissions.
-    committed = _commit_amount_value(cdp, digits, timeout_sec=10.0)
-    return {"ok": True, "value": committed.get("value"), "digits": digits}
+    return {"ok": True, "value": digits, "digits": digits, "fallback": "keyboard"}
 
 
 def run(

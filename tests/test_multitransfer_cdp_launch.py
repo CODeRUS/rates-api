@@ -128,6 +128,12 @@ class TestChromiumStartCmd(unittest.TestCase):
             )
         )
 
+    def test_amount_onchange_keeps_focus(self) -> None:
+        text = _SRC.read_text(encoding="utf-8")
+        self.assertIn("transfer_widget_debit-amount-field_input", text)
+        self.assertIn("addToQueue", text)
+        self.assertNotIn("FocusEvent('blur'", text)
+
 
 if __name__ == "__main__":
     unittest.main()
