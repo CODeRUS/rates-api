@@ -44,6 +44,7 @@ from telethon import TelegramClient, events
 from telethon.extensions import html as tg_html
 from telethon.tl import types as tl_types
 
+from bot.auto_leave import handle_membership_update
 from bot.guest import handle_guest_update
 from bot.rates_tokens import parse_rates_command_tokens
 from bot.calc_args import parse_calc_command_args
@@ -1207,6 +1208,23 @@ async def _main_async() -> None:
         getattr(me, "bot_guestchat", None),
         bot_username,
     )
+    self_id = int(me.id)
+    join_updates = tuple(
+        cls
+        for name in (
+            "UpdateChannelParticipant",
+            "UpdateChatParticipant",
+            "UpdateChatParticipantAdd",
+            "UpdateNewMessage",
+            "UpdateNewChannelMessage",
+        )
+        if (cls := getattr(tl_types, name, None)) is not None
+    )
+    if join_updates:
+        @client.on(events.Raw(join_updates))
+        async def on_bot_added(update: object) -> None:
+            await handle_membership_update(update, self_id)
+
     guest_cls = getattr(tl_types, "UpdateBotGuestChatQuery", None)
     if guest_cls is None:
         logger.warning(
