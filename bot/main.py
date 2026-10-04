@@ -42,7 +42,9 @@ load_repo_dotenv(_ROOT)
 
 from telethon import TelegramClient, events
 from telethon.extensions import html as tg_html
+from telethon.tl import types as tl_types
 
+from bot.guest import handle_guest_update
 from bot.rates_tokens import parse_rates_command_tokens
 from bot.calc_args import parse_calc_command_args
 from bot.rshb_args import parse_rshb_command_args
@@ -1198,6 +1200,23 @@ async def _main_async() -> None:
 
     logger.info("Telethon polling (bot)…")
     await client.start(bot_token=bot_token)
+    me = await client.get_me()
+    bot_username = getattr(me, "username", None) or ""
+    logger.info(
+        "bot_guestchat=%s username=%s",
+        getattr(me, "bot_guestchat", None),
+        bot_username,
+    )
+    guest_cls = getattr(tl_types, "UpdateBotGuestChatQuery", None)
+    if guest_cls is None:
+        logger.warning(
+            "UpdateBotGuestChatQuery is missing in this Telethon build; guest mode is disabled"
+        )
+    else:
+        @client.on(events.Raw(guest_cls))
+        async def on_guest_raw(update: object) -> None:
+            await handle_guest_update(client, update, bot_username)
+
     await client.run_until_disconnected()
 
 
