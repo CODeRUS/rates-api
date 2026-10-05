@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 from rates_sources import FetchContext, SourceCategory
-from sources.bereza import _extract_to_amount, summary
+from sources.bereza import _extract_to_amount, _http_error, summary
 
 
 def _ctx(*, receiving_thb: float | None = None) -> FetchContext:
@@ -24,6 +24,11 @@ def _ctx(*, receiving_thb: float | None = None) -> FetchContext:
 
 
 class TestBerezaSource(unittest.TestCase):
+    def test_cloudflare_403_is_short(self) -> None:
+        err = _http_error(403, "<html><title>Just a moment...</title><script>_cf_chl_opt")
+        self.assertIn("Cloudflare", str(err))
+        self.assertNotIn("<html>", str(err))
+        self.assertLess(len(str(err)), 120)
     def test_extract_to_amount_candidates(self) -> None:
         self.assertEqual(_extract_to_amount({"to_amount": 123.4}), 123.4)
         self.assertEqual(_extract_to_amount({"result": "456.7"}), 456.7)

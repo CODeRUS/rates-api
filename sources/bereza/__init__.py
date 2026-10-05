@@ -92,6 +92,24 @@ def _extract_to_amount(data: Any) -> Optional[float]:
     return None
 
 
+def _is_cloudflare_challenge(body: str) -> bool:
+    low = (body or "").lower()
+    return (
+        "just a moment" in low
+        or "_cf_chl_opt" in low
+        or "challenge-platform" in low
+    )
+
+
+def _http_error(status: int, body: str) -> RuntimeError:
+    if status == 403 and _is_cloudflare_challenge(body):
+        return RuntimeError(
+            "Bereza: Cloudflare challenge, курс с bereza-exchange.com недоступен"
+        )
+    detail = " ".join((body or "").split())[:180]
+    return RuntimeError(f"Bereza HTTP {status}: {detail}")
+
+
 def _http_json(url: str, *, headers: Dict[str, str], timeout: float) -> Any:
     req = urllib.request.Request(url, headers=headers)
     try:
@@ -102,8 +120,8 @@ def _http_json(url: str, *, headers: Dict[str, str], timeout: float) -> Any:
                 resp.headers.get_content_charset() or "utf-8", errors="replace"
             )
     except urllib.error.HTTPError as e:
-        detail = e.read()[:500].decode("utf-8", errors="replace")
-        raise RuntimeError(f"Bereza HTTP {e.code}: {detail}") from e
+        body = e.read().decode("utf-8", errors="replace")
+        raise _http_error(e.code, body) from e
     try:
         return json.loads(raw)
     except json.JSONDecodeError as e:
@@ -165,7 +183,10 @@ def _convert_rub_to_thb_pair(
         data = _once(token)
     except RuntimeError as e:
         # Токен мог протухнуть — один повтор с force refresh.
-        if "401" in str(e) or "403" in str(e) or "access token" in str(e).lower():
+        err = str(e).lower()
+        if "cloudflare" in err:
+            raise
+        if "401" in err or "403" in err or "access token" in err:
             token = fetch_access_token(timeout=timeout, force=True)
             data = _once(token)
         else:
