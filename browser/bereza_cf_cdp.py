@@ -127,13 +127,68 @@ def clearance_from_cookies(cookies: Any) -> Optional[str]:
     return None
 
 
+def is_cloudflare_stub(title: str) -> bool:
+    """Заглушка Cloudflare, а не страница обменника."""
+    low = (title or "").strip().lower()
+    if not low:
+        return False
+    return (
+        "just a moment" in low
+        or "performing security verification" in low
+        or "checking your browser" in low
+        or "attention required" in low
+        or low.startswith("cloudflare")
+    )
+
+
 def clearance_usable(title: str, http_status: int, clearance: Optional[str]) -> bool:
     """Кука пригодна только после живой загрузки, не по заголовку из кэша."""
-    if not title or "just a moment" in title.lower():
+    if not title or is_cloudflare_stub(title):
         return False
     if http_status != 200:
         return False
     return isinstance(clearance, str) and bool(clearance.strip())
+
+
+def attributes_to_dict(attributes: Any) -> Dict[str, str]:
+    if not isinstance(attributes, list):
+        return {}
+    out: Dict[str, str] = {}
+    items = iter(attributes)
+    for key in items:
+        try:
+            value = next(items)
+        except StopIteration:
+            break
+        out[str(key)] = "" if value is None else str(value)
+    return out
+
+
+def is_turnstile_iframe(node_name: str, attributes: Any) -> bool:
+    if str(node_name or "").upper() != "IFRAME":
+        return False
+    attrs = attributes_to_dict(attributes)
+    src = (attrs.get("src") or "").lower()
+    title = (attrs.get("title") or "").lower()
+    return "challenges.cloudflare.com" in src or "turnstile" in src or "turnstile" in title or "cloudflare" in title
+
+
+def checkbox_click_point(content: Any) -> Optional[tuple]:
+    """Левая галочка виджета. content — квад content из DOM.getBoxModel."""
+    if not isinstance(content, (list, tuple)) or len(content) < 8:
+        return None
+    try:
+        xs = [float(content[i]) for i in range(0, 8, 2)]
+        ys = [float(content[i]) for i in range(1, 8, 2)]
+    except (TypeError, ValueError):
+        return None
+    x1 = min(xs)
+    y1 = min(ys)
+    width = max(xs) - x1
+    height = max(ys) - y1
+    if width < 40 or height < 20:
+        return None
+    return (x1 + 28.0, y1 + height / 2.0)
 
 
 def _eval_json(cdp, expression: str, timeout_sec: float) -> Dict[str, Any]:
@@ -171,10 +226,146 @@ def _wait_loaded(cdp, timeout_sec: float) -> str:
         state = _eval_json(cdp, expr, timeout_sec=10.0)
         title = str(state.get("title") or "")
         ready = str(state.get("ready") or "")
-        if ready == "complete" and title and "just a moment" not in title.lower():
+        if ready == "complete" and title and not is_cloudflare_stub(title):
             return title
         time.sleep(0.5)
     return title
+
+
+def _wait_ready(cdp, timeout_sec: float) -> str:
+    """Дождаться complete, в том числе на заглушке. Без reload."""
+    deadline = time.monotonic() + timeout_sec
+    title = ""
+    expr = "JSON.stringify({title: document.title || '', ready: document.readyState || ''})"
+    while time.monotonic() < deadline:
+        state = _eval_json(cdp, expr, timeout_sec=10.0)
+        title = str(state.get("title") or "")
+        ready = str(state.get("ready") or "")
+        if ready == "complete" and title:
+            return title
+        time.sleep(0.4)
+    return title
+
+
+def _scroll_offset(cdp, timeout_sec: float) -> tuple:
+    state = _eval_json(
+        cdp,
+        "JSON.stringify({x: window.scrollX || 0, y: window.scrollY || 0})",
+        timeout_sec=timeout_sec,
+    )
+    try:
+        return float(state.get("x") or 0), float(state.get("y") or 0)
+    except (TypeError, ValueError):
+        return 0.0, 0.0
+
+
+def _turnstile_click_point(cdp, timeout_sec: float) -> Optional[tuple]:
+    try:
+        cdp.call("DOM.getDocument", {"depth": 0, "pierce": True}, timeout_sec=timeout_sec)
+        found = cdp.call(
+            "DOM.performSearch",
+            {"query": "iframe", "includeUserAgentShadowDOM": True},
+            timeout_sec=timeout_sec,
+        )
+    except RuntimeError:
+        return None
+    search_id = found.get("searchId") if isinstance(found, dict) else None
+    try:
+        count = int((found or {}).get("resultCount") or 0)
+    except (TypeError, ValueError):
+        count = 0
+    try:
+        if not search_id or count <= 0:
+            return None
+        result = cdp.call(
+            "DOM.getSearchResults",
+            {"searchId": search_id, "fromIndex": 0, "toIndex": min(count, 40)},
+            timeout_sec=timeout_sec,
+        )
+        scroll_x, scroll_y = _scroll_offset(cdp, timeout_sec=min(5.0, timeout_sec))
+        for node_id in result.get("nodeIds") or []:
+            desc = cdp.call("DOM.describeNode", {"nodeId": node_id}, timeout_sec=timeout_sec)
+            node = desc.get("node") or {}
+            if not is_turnstile_iframe(node.get("nodeName"), node.get("attributes")):
+                continue
+            try:
+                box = cdp.call("DOM.getBoxModel", {"nodeId": node_id}, timeout_sec=timeout_sec)
+            except RuntimeError:
+                continue
+            point = checkbox_click_point((box.get("model") or {}).get("content"))
+            if point is None:
+                continue
+            x = point[0] - scroll_x
+            y = point[1] - scroll_y
+            if x < 0 or y < 0 or x > 4000 or y > 3000:
+                continue
+            return (x, y)
+        return None
+    finally:
+        if search_id:
+            try:
+                cdp.call("DOM.discardSearchResults", {"searchId": search_id}, timeout_sec=5.0)
+            except RuntimeError:
+                pass
+
+
+def _dispatch_click(cdp, x: float, y: float, timeout_sec: float) -> None:
+    cdp.call(
+        "Input.dispatchMouseEvent",
+        {"type": "mouseMoved", "x": x, "y": y},
+        timeout_sec=timeout_sec,
+    )
+    time.sleep(0.05)
+    cdp.call(
+        "Input.dispatchMouseEvent",
+        {"type": "mousePressed", "x": x, "y": y, "button": "left", "clickCount": 1},
+        timeout_sec=timeout_sec,
+    )
+    time.sleep(0.05)
+    cdp.call(
+        "Input.dispatchMouseEvent",
+        {"type": "mouseReleased", "x": x, "y": y, "button": "left", "clickCount": 1},
+        timeout_sec=timeout_sec,
+    )
+
+
+def click_turnstile_checkbox(cdp, timeout_sec: float) -> bool:
+    """Клик по галочке Turnstile, если виджет уже на странице."""
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        point = _turnstile_click_point(cdp, timeout_sec=min(10.0, max(1.0, deadline - time.monotonic())))
+        if point is not None:
+            _dispatch_click(cdp, point[0], point[1], timeout_sec=10.0)
+            return True
+        time.sleep(0.4)
+    return False
+
+
+def _read_title_and_status(cdp, timeout_sec: float) -> tuple:
+    title = _wait_loaded(cdp, timeout_sec)
+    status = 0
+    if title and not is_cloudflare_stub(title):
+        status = _probe_access_token(cdp, timeout_sec)
+    return title, status
+
+
+def _pass_cloudflare_stub(cdp, title: str, status: int, timeout_sec: float) -> tuple:
+    """Если открыта заглушка — кликнуть галочку и дождаться сайта. Иначе не трогать страницу."""
+    if title and not is_cloudflare_stub(title) and status == 200:
+        return title, status
+    for _attempt in range(2):
+        if title and not is_cloudflare_stub(title) and status == 200:
+            break
+        # На заглушке виджет появляется не сразу. Без заглушки — один короткий поиск.
+        wait = 12.0 if is_cloudflare_stub(title) else 2.0
+        clicked = click_turnstile_checkbox(cdp, timeout_sec=min(wait, timeout_sec))
+        if not clicked:
+            if is_cloudflare_stub(title):
+                print("cloudflare: галочка не найдена", file=sys.stderr)
+            break
+        print("cloudflare: клик по галочке", file=sys.stderr)
+        title, status = _read_title_and_status(cdp, timeout_sec=min(20.0, timeout_sec))
+    return title, status
 
 
 def _probe_access_token(cdp, timeout_sec: float) -> int:
@@ -241,8 +432,9 @@ def run(
     try:
         cdp.call("Page.enable", timeout_sec=timeout_sec)
         cdp.call("Network.enable", timeout_sec=timeout_sec)
-        title = _wait_loaded(cdp, timeout_sec)
-        status = _probe_access_token(cdp, timeout_sec) if title and "just a moment" not in title.lower() else 0
+        title = _wait_ready(cdp, min(8.0, timeout_sec))
+        status = _probe_access_token(cdp, timeout_sec) if title and not is_cloudflare_stub(title) else 0
+        title, status = _pass_cloudflare_stub(cdp, title, status, timeout_sec)
         raw = cdp.call(
             "Network.getCookies",
             {"urls": [TARGET_URL, "https://bereza-exchange.com/api/access-token"]},
