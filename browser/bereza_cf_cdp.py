@@ -4,7 +4,7 @@
 Снять cf_clearance Bereza из уже пройденного Chromium-профиля и записать
 ``.rates_cache/bereza_cf.json`` для источника ``bereza``.
 
-Запуск как у multitransfer (профиль ``~/.config/chromium``, DISPLAY :1)::
+Запуск snap Chromium (профиль ``~/snap/chromium/common/chromium``, DISPLAY :1)::
 
     python3.7 browser/bereza_cf_cdp.py --start-browser
 
@@ -29,6 +29,16 @@ _CDP_PATH = Path(__file__).resolve().parent / "multitransfer_cdp_raw.py"
 DEFAULT_OUT = _ROOT / ".rates_cache" / "bereza_cf.json"
 TARGET_URL = "https://bereza-exchange.com/"
 DEFAULT_DEBUG_URL = "http://127.0.0.1:9223"
+SNAP_CHROMIUM = "/snap/bin/chromium"
+DEFAULT_USER_DATA_DIR = Path.home() / "snap" / "chromium" / "common" / "chromium"
+
+
+def default_chromium_binary(path: Optional[str] = None) -> str:
+    """Только snap Chromium. Системный chromium-browser не подставлять."""
+    candidate = path or SNAP_CHROMIUM
+    if os.path.exists(candidate):
+        return candidate
+    raise FileNotFoundError(candidate)
 
 
 def _cdp():
@@ -472,10 +482,13 @@ def main() -> int:
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--origin", default=None)
     parser.add_argument("--start-browser", action="store_true")
-    parser.add_argument("--chromium-binary", default="chromium-browser")
+    parser.add_argument(
+        "--chromium-binary",
+        default=os.environ.get("BEREZA_CHROMIUM_BINARY", default_chromium_binary()),
+    )
     parser.add_argument(
         "--user-data-dir",
-        default=os.environ.get("BEREZA_CHROMIUM_USER_DATA_DIR", str(Path.home() / ".config" / "chromium")),
+        default=os.environ.get("BEREZA_CHROMIUM_USER_DATA_DIR", str(DEFAULT_USER_DATA_DIR)),
     )
     parser.add_argument(
         "--profile-directory",
@@ -494,6 +507,10 @@ def main() -> int:
             user_data = Path(args.user_data_dir).expanduser()
             pid = live_chromium_pid(user_data)
             if pid:
+                exe = cdp_mod._proc_exe(pid)
+                if not cdp_mod.is_snap_chromium_exe(exe):
+                    print("уже запущен не snap chromium: %s" % exe, file=sys.stderr)
+                    return 1
                 existing = debug_url_of_pid(pid)
                 if not existing:
                     print(
@@ -502,9 +519,10 @@ def main() -> int:
                     )
                     return 1
                 debug_url = existing
-                print("браузер уже запущен: %s" % debug_url)
+                print("браузер уже запущен: %s exe %s" % (debug_url, exe))
             else:
                 # Без URL: вкладки восстанавливает сессия. Новую откроем ниже, если Bereza нет.
+                print("starting %s" % args.chromium_binary, file=sys.stderr)
                 browser_proc = cdp_mod._start_chromium_browser(
                     chromium_binary=args.chromium_binary,
                     display=args.display,
@@ -518,6 +536,15 @@ def main() -> int:
                 except TimeoutError as exc:
                     print(str(exc), file=sys.stderr)
                     return 1
+                ok, detail = cdp_mod.cdp_owner_ok(
+                    cdp_mod._debug_port_from_url(debug_url),
+                    browser_proc.pid,
+                    user_data,
+                )
+                if not ok:
+                    print(detail, file=sys.stderr)
+                    return 1
+                print("chromium exe %s" % detail, file=sys.stderr)
         return run(
             debug_url=debug_url,
             timeout_sec=max(1.0, args.timeout_ms / 1000.0),

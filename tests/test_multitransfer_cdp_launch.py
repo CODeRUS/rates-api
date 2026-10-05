@@ -31,8 +31,8 @@ def _load_launch_helpers():
             "_select_page_tab",
             "debug_url_from_cmdline",
             "live_chromium_pid",
-            "_playwright_revision",
             "default_chromium_binary",
+            "is_snap_chromium_exe",
         ):
             keep.append(node)
         elif isinstance(node, ast.Assign):
@@ -44,7 +44,7 @@ def _load_launch_helpers():
                     "DEFAULT_USER_DATA_DIR",
                     "DEFAULT_PROFILE_DIRECTORY",
                     "TARGET_URL",
-                    "_PLAYWRIGHT_ROOT",
+                    "SNAP_CHROMIUM",
                 }
                 for n in names
             ):
@@ -74,25 +74,29 @@ class TestChromiumStartCmd(unittest.TestCase):
         self.assertIn("--disable-features=ProfilePickerOnStartup", cmd)
         self.assertIn("--profile-directory=Default", cmd)
         self.assertTrue(
-            any(a.startswith("--user-data-dir=") and a.endswith("/.config/chromium-multitransfer") for a in cmd)
+            any(
+                a.startswith("--user-data-dir=")
+                and a.endswith("/snap/chromium/common/chromium-multitransfer")
+                for a in cmd
+            )
         )
         self.assertIn("--remote-debugging-port=9222", cmd)
         self.assertEqual(cmd[-1], "https://multitransfer.ru/transfer/thailand")
 
-    def test_default_chromium_binary_picks_newest_playwright_build(self) -> None:
+    def test_default_chromium_binary_is_snap(self) -> None:
         ns = _load_launch_helpers()
+        self.assertEqual(ns["SNAP_CHROMIUM"], "/snap/bin/chromium")
+        self.assertFalse(ns["is_snap_chromium_exe"]("/usr/lib/chromium-browser/chromium-browser"))
+        self.assertFalse(ns["is_snap_chromium_exe"]("/usr/bin/chromium-browser"))
+        self.assertTrue(
+            ns["is_snap_chromium_exe"]("/snap/chromium/3548/usr/lib/chromium-browser/chrome")
+        )
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            older = root / "chromium-1000" / "chrome-linux" / "chrome"
-            newer = root / "chromium-1067" / "chrome-linux" / "chrome"
-            older.parent.mkdir(parents=True)
-            newer.parent.mkdir(parents=True)
-            older.write_text("", encoding="utf-8")
-            newer.write_text("", encoding="utf-8")
-            self.assertEqual(ns["default_chromium_binary"](root), str(newer))
-            empty = root / "empty"
-            empty.mkdir()
-            self.assertEqual(ns["default_chromium_binary"](empty), "chromium-browser")
+            snap = Path(tmp) / "chromium"
+            snap.write_text("", encoding="utf-8")
+            self.assertEqual(ns["default_chromium_binary"](str(snap)), str(snap))
+        with self.assertRaises(FileNotFoundError):
+            ns["default_chromium_binary"]("/no/such/chromium-browser")
 
     def test_default_start_url_is_thailand_transfer(self) -> None:
         ns = _load_launch_helpers()

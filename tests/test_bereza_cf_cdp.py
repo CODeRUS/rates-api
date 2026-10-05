@@ -4,10 +4,13 @@ from __future__ import annotations
 import unittest
 
 from browser.bereza_cf_cdp import (
+    DEFAULT_USER_DATA_DIR,
+    SNAP_CHROMIUM,
     checkbox_click_point,
     clearance_usable,
     click_turnstile_checkbox,
     debug_url_from_cmdline,
+    default_chromium_binary,
     find_bereza_tab,
     is_cloudflare_stub,
     is_turnstile_iframe,
@@ -46,6 +49,13 @@ class TestBerezaCfExport(unittest.TestCase):
             "http://127.0.0.1:9222",
         )
         self.assertIsNone(debug_url_from_cmdline([b"chromium"]))
+
+    def test_default_browser_is_snap(self) -> None:
+        self.assertEqual(SNAP_CHROMIUM, "/snap/bin/chromium")
+        self.assertEqual(default_chromium_binary(), "/snap/bin/chromium")
+        self.assertTrue(str(DEFAULT_USER_DATA_DIR).endswith("/snap/chromium/common/chromium"))
+        with self.assertRaises(FileNotFoundError):
+            default_chromium_binary("/usr/bin/chromium-browser-missing")
 
     def test_cloudflare_stub_titles(self) -> None:
         self.assertTrue(is_cloudflare_stub("Just a moment..."))

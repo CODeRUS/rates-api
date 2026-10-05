@@ -36,32 +36,25 @@ except Exception as exc:  # pragma: no cover
 
 
 TARGET_URL = "https://multitransfer.ru/transfer/thailand"
-# 9222 занимает системный Chromium 112. Этот скрипт слушает отдельный порт.
+# Отдельный порт: пользовательский snap Chromium часто уже слушает 9222.
 DEFAULT_DEBUG_URL = "http://127.0.0.1:9224"
 DEFAULT_HEADERS_FILE = Path(__file__).resolve().parents[1] / ".rates_cache" / "multitransfer_headers.json"
-# Отдельный профиль: системный Chromium 112 это же ~/.config/chromium, и его POST commissions режет FHP (423/103).
-DEFAULT_USER_DATA_DIR = Path.home() / ".config" / "chromium-multitransfer"
+# Отдельный профиль внутри snap data: snap не пишет SingletonLock в ~/.config.
+DEFAULT_USER_DATA_DIR = Path.home() / "snap" / "chromium" / "common" / "chromium-multitransfer"
 DEFAULT_PROFILE_DIRECTORY = "Default"
-_PLAYWRIGHT_ROOT = Path.home() / ".cache" / "ms-playwright"
+SNAP_CHROMIUM = "/snap/bin/chromium"
 
 
-def _playwright_revision(binary: Path) -> int:
-    # ~/.cache/ms-playwright/chromium-1067/chrome-linux/chrome
-    name = binary.parent.parent.name
-    digits = "".join(ch for ch in name if ch.isdigit())
-    try:
-        return int(digits)
-    except ValueError:
-        return 0
+def default_chromium_binary(path: Optional[str] = None) -> str:
+    """Только snap Chromium. Системный chromium-browser не подставлять."""
+    candidate = path or SNAP_CHROMIUM
+    if os.path.exists(candidate):
+        return candidate
+    raise FileNotFoundError(candidate)
 
 
-def default_chromium_binary(search_root: Optional[Path] = None) -> str:
-    """Chromium 115+ из Playwright. Системный 112 API комиссий не проходит."""
-    root = search_root if search_root is not None else _PLAYWRIGHT_ROOT
-    binaries = [p for p in root.glob("chromium-*/chrome-linux/chrome") if p.is_file()]
-    if not binaries:
-        return "chromium-browser"
-    return str(max(binaries, key=_playwright_revision))
+def is_snap_chromium_exe(exe: str) -> bool:
+    return exe.startswith("/snap/chromium/") or exe.startswith("/snap/bin/")
 
 
 def _chromium_start_cmd(
@@ -239,6 +232,59 @@ def _listener_pid(port: int) -> Optional[int]:
             continue
         return int("".join(digits))
     return None
+
+
+def _proc_exe(pid: int) -> str:
+    try:
+        return os.readlink("/proc/%d/exe" % pid)
+    except OSError:
+        return ""
+
+
+def _proc_cmdline(pid: int) -> str:
+    try:
+        raw = Path("/proc/%d/cmdline" % pid).read_bytes()
+    except OSError:
+        return ""
+    return raw.replace(b"\0", b" ").decode("utf-8", "replace")
+
+
+def _is_ancestor(ancestor: int, pid: int) -> bool:
+    seen = set()
+    while pid > 1 and pid not in seen:
+        if pid == ancestor:
+            return True
+        seen.add(pid)
+        try:
+            stat = Path("/proc/%d/stat" % pid).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        rparen = stat.rfind(")")
+        if rparen < 0:
+            return False
+        parts = stat[rparen + 2 :].split()
+        if not parts:
+            return False
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            return False
+    return False
+
+
+def cdp_owner_ok(port: int, started_pid: int, user_data_dir: Path) -> tuple:
+    """CDP должен слушать snap Chromium, который только что запустили."""
+    owner = _listener_pid(port)
+    if owner is None:
+        return False, "CDP port %s has no listener" % port
+    exe = _proc_exe(owner)
+    if not is_snap_chromium_exe(exe):
+        return False, "CDP is %s, not snap chromium" % (exe or ("pid %s" % owner))
+    if owner == started_pid or _is_ancestor(started_pid, owner):
+        return True, exe
+    if str(user_data_dir) in _proc_cmdline(owner):
+        return True, exe
+    return False, "CDP pid %s is not the snap Chromium just started (pid %s)" % (owner, started_pid)
 
 
 def _debug_port_from_url(debug_url: str) -> int:
@@ -1123,7 +1169,7 @@ def main() -> int:
         "--start-browser",
         action="store_true",
         help=(
-            "Start Chromium 115+ with DISPLAY, window geometry, "
+            "Start snap Chromium with DISPLAY, window geometry, "
             "a dedicated profile (no guest, no profile picker) and "
             "--remote-debugging-port (from --debug-url) when that profile is not already running. "
             "Reuse an open transfer tab; open the start URL only if it is missing. "
@@ -1133,10 +1179,7 @@ def main() -> int:
     parser.add_argument(
         "--chromium-binary",
         default=os.environ.get("MULTITRANSFER_CHROMIUM_BINARY", default_chromium_binary()),
-        help=(
-            "Browser executable when using --start-browser "
-            "(default: newest Playwright Chromium, else chromium-browser)"
-        ),
+        help="Browser executable when using --start-browser (default: /snap/bin/chromium)",
     )
     parser.add_argument(
         "--user-data-dir",
@@ -1207,6 +1250,10 @@ def main() -> int:
             user_data = Path(args.user_data_dir).expanduser()
             pid = live_chromium_pid(user_data)
             if pid:
+                exe = _proc_exe(pid)
+                if not is_snap_chromium_exe(exe):
+                    print("already running browser is not snap chromium: %s" % exe, file=sys.stderr)
+                    return 1
                 existing = debug_url_of_pid(pid)
                 if not existing:
                     print(
@@ -1215,7 +1262,7 @@ def main() -> int:
                     )
                     return 1
                 debug_url = existing
-                print("browser already running: %s" % debug_url, file=sys.stderr)
+                print("browser already running: %s exe %s" % (debug_url, exe), file=sys.stderr)
             else:
                 # Без URL в командной строке: не открывать вкладку до проверки сессии.
                 print("starting %s" % args.chromium_binary, file=sys.stderr)
@@ -1233,14 +1280,15 @@ def main() -> int:
                 except TimeoutError as exc:
                     print(str(exc), file=sys.stderr)
                     return 1
-                owner = _listener_pid(_debug_port_from_url(debug_url))
-                if owner is not None and owner != browser_proc.pid:
-                    print(
-                        "CDP %s is served by pid %s, not the Chromium just started (pid %s)."
-                        % (debug_url, owner, browser_proc.pid),
-                        file=sys.stderr,
-                    )
+                ok, detail = cdp_owner_ok(
+                    _debug_port_from_url(debug_url),
+                    browser_proc.pid,
+                    user_data,
+                )
+                if not ok:
+                    print(detail, file=sys.stderr)
                     return 1
+                print("chromium exe %s" % detail, file=sys.stderr)
         return run(
             debug_url=debug_url,
             marker=args.marker,
