@@ -40,6 +40,79 @@ def _cdp():
     return mod
 
 
+def find_bereza_tab(tabs: Any, marker: str = "bereza-exchange.com") -> Optional[Dict[str, Any]]:
+    """Только вкладка Bereza. Чужую вкладку не подменять."""
+    if not isinstance(tabs, list):
+        return None
+    marker_l = marker.lower()
+    for tab in tabs:
+        if not isinstance(tab, dict):
+            continue
+        if tab.get("type") not in (None, "page"):
+            continue
+        url = str(tab.get("url") or "")
+        if marker_l in url.lower():
+            return tab
+    return None
+
+
+def live_chromium_pid(user_data_dir: Path) -> Optional[int]:
+    lock = user_data_dir / "SingletonLock"
+    if not lock.exists() and not lock.is_symlink():
+        return None
+    try:
+        target = os.readlink(str(lock))
+    except OSError:
+        return None
+    suffix = target.rsplit("-", 1)[-1]
+    try:
+        pid = int(suffix)
+    except ValueError:
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        return pid
+    except OSError:
+        return None
+    return pid
+
+
+def debug_url_from_cmdline(argv: Any) -> Optional[str]:
+    if isinstance(argv, bytes):
+        text = argv.replace(b"\0", b" ").decode("utf-8", "replace")
+    elif isinstance(argv, str):
+        text = argv
+    else:
+        chunks = []
+        for part in argv:
+            chunks.append(part.decode("utf-8", "replace") if isinstance(part, bytes) else str(part))
+        text = " ".join(chunks)
+    marker = "--remote-debugging-port="
+    start = text.find(marker)
+    if start < 0:
+        return None
+    port = []
+    for ch in text[start + len(marker) :]:
+        if ch.isdigit():
+            port.append(ch)
+        else:
+            break
+    if not port:
+        return None
+    return "http://127.0.0.1:%s" % "".join(port)
+
+
+def debug_url_of_pid(pid: int) -> Optional[str]:
+    try:
+        raw = Path("/proc/%d/cmdline" % pid).read_bytes()
+    except OSError:
+        return None
+    return debug_url_from_cmdline(raw)
+
+
 def clearance_from_cookies(cookies: Any) -> Optional[str]:
     if not isinstance(cookies, list):
         return None
@@ -89,29 +162,18 @@ def _user_agent(cdp, timeout_sec: float) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _mark_document(cdp, timeout_sec: float) -> None:
-    cdp.call(
-        "Runtime.evaluate",
-        {"expression": "document.documentElement.dataset.bzProbe='1'", "returnByValue": True},
-        timeout_sec=timeout_sec,
-    )
-
-
-def _wait_fresh_page(cdp, timeout_sec: float) -> str:
-    """Ждать новый документ после reload/navigate. Кэш со старым title не считается."""
+def _wait_loaded(cdp, timeout_sec: float) -> str:
+    """Дождаться уже открытой страницы. Без reload и без новой навигации."""
     deadline = time.monotonic() + timeout_sec
     title = ""
-    expr = (
-        "JSON.stringify({probe: (document.documentElement && document.documentElement.dataset.bzProbe) || '',"
-        " title: document.title || '', ready: document.readyState || ''})"
-    )
+    expr = "JSON.stringify({title: document.title || '', ready: document.readyState || ''})"
     while time.monotonic() < deadline:
         state = _eval_json(cdp, expr, timeout_sec=10.0)
         title = str(state.get("title") or "")
-        fresh = str(state.get("probe") or "") != "1" and str(state.get("ready") or "") == "complete"
-        if fresh and title and "just a moment" not in title.lower():
+        ready = str(state.get("ready") or "")
+        if ready == "complete" and title and "just a moment" not in title.lower():
             return title
-        time.sleep(1.0)
+        time.sleep(0.5)
     return title
 
 
@@ -142,15 +204,35 @@ def _save(path: Path, payload: Dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def run(debug_url: str, timeout_sec: float, out_path: Path, origin: Optional[str]) -> int:
+def _wait_bereza_tab(cdp_mod, debug_url: str, timeout_sec: float) -> Optional[Dict[str, Any]]:
+    deadline = time.monotonic() + timeout_sec
+    while True:
+        tab = find_bereza_tab(cdp_mod._list_page_tabs(debug_url))
+        if tab is not None:
+            return tab
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.4)
+
+
+def run(
+    debug_url: str,
+    timeout_sec: float,
+    out_path: Path,
+    origin: Optional[str],
+    target_url: str = TARGET_URL,
+) -> int:
     cdp_mod = _cdp()
-    tab = cdp_mod._find_page_tab(debug_url, "bereza-exchange.com", prefer_url=TARGET_URL)
+    tab = _wait_bereza_tab(cdp_mod, debug_url, timeout_sec=5.0)
     if tab is None:
+        print("открываю вкладку %s" % target_url)
         try:
-            tab = cdp_mod._create_new_tab(debug_url, TARGET_URL)
+            tab = cdp_mod._create_new_tab(debug_url, target_url)
         except urllib.error.HTTPError as exc:
             print("нет вкладки Chromium: HTTP %s" % exc.code, file=sys.stderr)
             return 1
+    else:
+        print("вкладка уже открыта: %s" % (tab.get("url") or target_url))
     ws_url = tab.get("webSocketDebuggerUrl")
     if not ws_url:
         print("вкладка без webSocketDebuggerUrl", file=sys.stderr)
@@ -159,13 +241,7 @@ def run(debug_url: str, timeout_sec: float, out_path: Path, origin: Optional[str
     try:
         cdp.call("Page.enable", timeout_sec=timeout_sec)
         cdp.call("Network.enable", timeout_sec=timeout_sec)
-        _mark_document(cdp, timeout_sec)
-        current = tab.get("url") or ""
-        if TARGET_URL.rstrip("/") not in current.rstrip("/"):
-            cdp.call("Page.navigate", {"url": TARGET_URL}, timeout_sec=timeout_sec)
-        else:
-            cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=timeout_sec)
-        title = _wait_fresh_page(cdp, timeout_sec)
+        title = _wait_loaded(cdp, timeout_sec)
         status = _probe_access_token(cdp, timeout_sec) if title and "just a moment" not in title.lower() else 0
         raw = cdp.call(
             "Network.getCookies",
@@ -220,26 +296,42 @@ def main() -> int:
 
     cdp_mod = _cdp()
     browser_proc = None
+    debug_url = args.debug_url
     try:
         if args.start_browser:
-            browser_proc = cdp_mod._start_chromium_browser(
-                chromium_binary=args.chromium_binary,
-                display=args.display,
-                debug_url=args.debug_url,
-                start_url=args.start_url,
-                user_data_dir=Path(args.user_data_dir).expanduser(),
-                profile_directory=(args.profile_directory or "Default").strip() or "Default",
-            )
-            try:
-                cdp_mod._wait_cdp_ready(args.debug_url, timeout_sec=args.browser_ready_timeout)
-            except TimeoutError as exc:
-                print(str(exc), file=sys.stderr)
-                return 1
+            user_data = Path(args.user_data_dir).expanduser()
+            pid = live_chromium_pid(user_data)
+            if pid:
+                existing = debug_url_of_pid(pid)
+                if not existing:
+                    print(
+                        "Chromium уже запущен без remote debugging, второй экземпляр не открываю.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                debug_url = existing
+                print("браузер уже запущен: %s" % debug_url)
+            else:
+                # Без URL: вкладки восстанавливает сессия. Новую откроем ниже, если Bereza нет.
+                browser_proc = cdp_mod._start_chromium_browser(
+                    chromium_binary=args.chromium_binary,
+                    display=args.display,
+                    debug_url=debug_url,
+                    start_url="",
+                    user_data_dir=user_data,
+                    profile_directory=(args.profile_directory or "Default").strip() or "Default",
+                )
+                try:
+                    cdp_mod._wait_cdp_ready(debug_url, timeout_sec=args.browser_ready_timeout)
+                except TimeoutError as exc:
+                    print(str(exc), file=sys.stderr)
+                    return 1
         return run(
-            debug_url=args.debug_url,
+            debug_url=debug_url,
             timeout_sec=max(1.0, args.timeout_ms / 1000.0),
             out_path=Path(args.out),
             origin=args.origin,
+            target_url=args.start_url or TARGET_URL,
         )
     finally:
         if browser_proc is not None:

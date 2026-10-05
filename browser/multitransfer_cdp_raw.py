@@ -58,7 +58,7 @@ def _chromium_start_cmd(
     ``--guest`` не используем: он открывает Guest Profile, а не cookies Default.
     """
     port = _debug_port_from_url(debug_url)
-    return [
+    cmd = [
         chromium_binary,
         f"--user-data-dir={str(user_data_dir)}",
         f"--profile-directory={profile_directory}",
@@ -69,8 +69,10 @@ def _chromium_start_cmd(
         "--window-size=1920,1080",
         "--window-position=0,0",
         f"--remote-debugging-port={port}",
-        start_url,
     ]
+    if start_url:
+        cmd.append(start_url)
+    return cmd
 
 
 def _prefer_named_profile(user_data_dir: Path, profile_directory: str) -> None:
