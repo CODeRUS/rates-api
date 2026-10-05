@@ -19,6 +19,7 @@ PLUGIN_ORDER = (
     "askmoney",
     "payscan",
     "bereza",
+    "xaacta",
     "ttexchange",
     "rbc_ttexchange",
     "tbank",
@@ -59,6 +60,7 @@ def _mods() -> Dict[str, object]:
         from . import vernadsky_msk
         from . import obuv_city_msk
         from . import userbot_cash
+        from . import xaacta
 
         _MODS_CACHE.update(
             {
@@ -79,6 +81,7 @@ def _mods() -> Dict[str, object]:
                 "askmoney": askmoney,
                 "payscan": payscan,
                 "bereza": bereza,
+                "xaacta": xaacta,
                 "ttexchange": ttexchange,
                 "rbc_ttexchange": rbc_ttexchange,
                 "tbank": tbank,
