@@ -36,10 +36,32 @@ except Exception as exc:  # pragma: no cover
 
 
 TARGET_URL = "https://multitransfer.ru/transfer/thailand"
-DEFAULT_DEBUG_URL = "http://127.0.0.1:9222"
+# 9222 занимает системный Chromium 112. Этот скрипт слушает отдельный порт.
+DEFAULT_DEBUG_URL = "http://127.0.0.1:9224"
 DEFAULT_HEADERS_FILE = Path(__file__).resolve().parents[1] / ".rates_cache" / "multitransfer_headers.json"
-DEFAULT_USER_DATA_DIR = Path.home() / ".config" / "chromium"
+# Отдельный профиль: системный Chromium 112 это же ~/.config/chromium, и его POST commissions режет FHP (423/103).
+DEFAULT_USER_DATA_DIR = Path.home() / ".config" / "chromium-multitransfer"
 DEFAULT_PROFILE_DIRECTORY = "Default"
+_PLAYWRIGHT_ROOT = Path.home() / ".cache" / "ms-playwright"
+
+
+def _playwright_revision(binary: Path) -> int:
+    # ~/.cache/ms-playwright/chromium-1067/chrome-linux/chrome
+    name = binary.parent.parent.name
+    digits = "".join(ch for ch in name if ch.isdigit())
+    try:
+        return int(digits)
+    except ValueError:
+        return 0
+
+
+def default_chromium_binary(search_root: Optional[Path] = None) -> str:
+    """Chromium 115+ из Playwright. Системный 112 API комиссий не проходит."""
+    root = search_root if search_root is not None else _PLAYWRIGHT_ROOT
+    binaries = [p for p in root.glob("chromium-*/chrome-linux/chrome") if p.is_file()]
+    if not binaries:
+        return "chromium-browser"
+    return str(max(binaries, key=_playwright_revision))
 
 
 def _chromium_start_cmd(
@@ -186,6 +208,37 @@ def _http_json(url: str, method: str = "GET") -> Any:
 
 def _join(base: str, path: str) -> str:
     return urllib.parse.urljoin(base.rstrip("/") + "/", path.lstrip("/"))
+
+
+def _listener_pid(port: int) -> Optional[int]:
+    try:
+        out = subprocess.check_output(
+            ["ss", "-ltnp"],
+            stderr=subprocess.DEVNULL,
+            universal_newlines=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    marker = ":%d" % port
+    for line in out.splitlines():
+        if marker not in line or "pid=" not in line:
+            continue
+        tail = line.split("pid=", 1)[1]
+        digits = []
+        for ch in tail:
+            if ch.isdigit():
+                digits.append(ch)
+            else:
+                break
+        if not digits:
+            continue
+        # :9224 must not match :92240
+        idx = line.find(marker)
+        after = line[idx + len(marker) : idx + len(marker) + 1]
+        if after and after.isdigit():
+            continue
+        return int("".join(digits))
+    return None
 
 
 def _debug_port_from_url(debug_url: str) -> int:
@@ -839,6 +892,7 @@ def run(
                 "fhprequestid": merged.get("fhprequestid"),
                 "fhpsessionid": merged.get("fhpsessionid"),
                 "x-request-id": merged.get("x-request-id"),
+                "user_agent": merged.get("user-agent") or "",
             }
 
         def _schedule_emit(rid: str, merged: Dict[str, Any]) -> None:
@@ -1069,8 +1123,8 @@ def main() -> int:
         "--start-browser",
         action="store_true",
         help=(
-            "Start chromium-browser with DISPLAY, window geometry, "
-            "named profile (no guest, no profile picker) and "
+            "Start Chromium 115+ with DISPLAY, window geometry, "
+            "a dedicated profile (no guest, no profile picker) and "
             "--remote-debugging-port (from --debug-url) when that profile is not already running. "
             "Reuse an open transfer tab; open the start URL only if it is missing. "
             "Terminate only the browser this process started."
@@ -1078,8 +1132,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--chromium-binary",
-        default="chromium-browser",
-        help="Browser executable when using --start-browser (default: chromium-browser)",
+        default=os.environ.get("MULTITRANSFER_CHROMIUM_BINARY", default_chromium_binary()),
+        help=(
+            "Browser executable when using --start-browser "
+            "(default: newest Playwright Chromium, else chromium-browser)"
+        ),
     )
     parser.add_argument(
         "--user-data-dir",
@@ -1161,6 +1218,7 @@ def main() -> int:
                 print("browser already running: %s" % debug_url, file=sys.stderr)
             else:
                 # Без URL в командной строке: не открывать вкладку до проверки сессии.
+                print("starting %s" % args.chromium_binary, file=sys.stderr)
                 browser_proc = _start_chromium_browser(
                     chromium_binary=args.chromium_binary,
                     display=args.display,
@@ -1174,6 +1232,14 @@ def main() -> int:
                     _wait_cdp_ready(debug_url, timeout_sec=args.browser_ready_timeout)
                 except TimeoutError as exc:
                     print(str(exc), file=sys.stderr)
+                    return 1
+                owner = _listener_pid(_debug_port_from_url(debug_url))
+                if owner is not None and owner != browser_proc.pid:
+                    print(
+                        "CDP %s is served by pid %s, not the Chromium just started (pid %s)."
+                        % (debug_url, owner, browser_proc.pid),
+                        file=sys.stderr,
+                    )
                     return 1
         return run(
             debug_url=debug_url,

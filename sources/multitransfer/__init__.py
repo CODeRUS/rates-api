@@ -61,6 +61,9 @@ def _load_dynamic_headers() -> Dict[str, str]:
         out["FhpSessionId"] = fhp_sess
     if x_req:
         out["X-Request-Id"] = x_req
+    ua = _pick("user_agent", "user-agent", "User-Agent")
+    if ua:
+        out["User-Agent"] = ua
     return out
 
 

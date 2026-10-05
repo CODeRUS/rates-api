@@ -31,6 +31,8 @@ def _load_launch_helpers():
             "_select_page_tab",
             "debug_url_from_cmdline",
             "live_chromium_pid",
+            "_playwright_revision",
+            "default_chromium_binary",
         ):
             keep.append(node)
         elif isinstance(node, ast.Assign):
@@ -42,6 +44,7 @@ def _load_launch_helpers():
                     "DEFAULT_USER_DATA_DIR",
                     "DEFAULT_PROFILE_DIRECTORY",
                     "TARGET_URL",
+                    "_PLAYWRIGHT_ROOT",
                 }
                 for n in names
             ):
@@ -71,10 +74,25 @@ class TestChromiumStartCmd(unittest.TestCase):
         self.assertIn("--disable-features=ProfilePickerOnStartup", cmd)
         self.assertIn("--profile-directory=Default", cmd)
         self.assertTrue(
-            any(a.startswith("--user-data-dir=") and a.endswith("/.config/chromium") for a in cmd)
+            any(a.startswith("--user-data-dir=") and a.endswith("/.config/chromium-multitransfer") for a in cmd)
         )
         self.assertIn("--remote-debugging-port=9222", cmd)
         self.assertEqual(cmd[-1], "https://multitransfer.ru/transfer/thailand")
+
+    def test_default_chromium_binary_picks_newest_playwright_build(self) -> None:
+        ns = _load_launch_helpers()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            older = root / "chromium-1000" / "chrome-linux" / "chrome"
+            newer = root / "chromium-1067" / "chrome-linux" / "chrome"
+            older.parent.mkdir(parents=True)
+            newer.parent.mkdir(parents=True)
+            older.write_text("", encoding="utf-8")
+            newer.write_text("", encoding="utf-8")
+            self.assertEqual(ns["default_chromium_binary"](root), str(newer))
+            empty = root / "empty"
+            empty.mkdir()
+            self.assertEqual(ns["default_chromium_binary"](empty), "chromium-browser")
 
     def test_default_start_url_is_thailand_transfer(self) -> None:
         ns = _load_launch_helpers()
