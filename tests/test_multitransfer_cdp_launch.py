@@ -28,6 +28,9 @@ def _load_launch_helpers():
             "_prefer_named_profile",
             "_clear_stale_chromium_singleton",
             "_url_contains",
+            "_select_page_tab",
+            "debug_url_from_cmdline",
+            "live_chromium_pid",
         ):
             keep.append(node)
         elif isinstance(node, ast.Assign):
@@ -128,11 +131,40 @@ class TestChromiumStartCmd(unittest.TestCase):
             )
         )
 
+    def test_select_page_tab_does_not_reuse_unrelated_page(self) -> None:
+        ns = _load_launch_helpers()
+        pages = [
+            {"type": "page", "url": "https://bereza-exchange.com/"},
+            {
+                "type": "page",
+                "url": "https://multitransfer.ru/transfer/thailand?transfer=1",
+            },
+        ]
+        found = ns["_select_page_tab"](
+            pages,
+            "multitransfer",
+            prefer_url="https://multitransfer.ru/transfer/thailand",
+            fallback=False,
+        )
+        self.assertEqual(found["url"], pages[1]["url"])
+        self.assertIsNone(
+            ns["_select_page_tab"](pages[:1], "multitransfer", prefer_url=ns["TARGET_URL"], fallback=False)
+        )
+
+    def test_debug_url_from_single_cmdline_string(self) -> None:
+        ns = _load_launch_helpers()
+        raw = (
+            b"chromium-browser --window-size=1920,1080 --remote-debugging-port=9222\x00"
+        )
+        self.assertEqual(ns["debug_url_from_cmdline"](raw), "http://127.0.0.1:9222")
+
     def test_amount_onchange_keeps_focus(self) -> None:
         text = _SRC.read_text(encoding="utf-8")
         self.assertIn("transfer_widget_debit-amount-field_input", text)
         self.assertIn("addToQueue", text)
         self.assertNotIn("FocusEvent('blur'", text)
+        self.assertIn("functionality did not fire, reloading tab", text)
+        self.assertIn("Page.reload", text)
 
 
 if __name__ == "__main__":

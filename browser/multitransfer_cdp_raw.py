@@ -270,25 +270,102 @@ def _list_page_tabs(debug_url: str) -> list:
     return [t for t in tabs if isinstance(t, dict) and t.get("type") == "page"]
 
 
+def _select_page_tab(
+    pages: Any,
+    marker: str,
+    prefer_url: Optional[str] = None,
+    fallback: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """
+    Prefer the transfer URL tab; then a tab whose URL contains marker.
+    ``fallback`` returns the first page tab when nothing matches.
+    """
+    if not isinstance(pages, list):
+        return None
+    page_tabs = [t for t in pages if isinstance(t, dict) and t.get("type") in (None, "page")]
+    if prefer_url:
+        for tab in page_tabs:
+            if _url_contains(tab.get("url") or "", prefer_url):
+                return tab
+    marker_lower = (marker or "").lower()
+    if marker_lower:
+        for tab in page_tabs:
+            if marker_lower in (tab.get("url") or "").lower():
+                return tab
+    if fallback and page_tabs:
+        return page_tabs[0]
+    return None
+
+
 def _find_page_tab(
     debug_url: str,
     marker: str,
     prefer_url: Optional[str] = None,
+    fallback: bool = True,
 ) -> Optional[Dict[str, Any]]:
-    """
-    Prefer the transfer URL tab; then a tab whose URL contains marker;
-    otherwise the first page tab (e.g. chrome://newtab/).
-    """
-    pages = _list_page_tabs(debug_url)
-    if prefer_url:
-        for tab in pages:
-            if _url_contains(tab.get("url") or "", prefer_url):
-                return tab
-    marker_lower = marker.lower()
-    for tab in pages:
-        if marker_lower in (tab.get("url") or "").lower():
-            return tab
-    return pages[0] if pages else None
+    return _select_page_tab(
+        _list_page_tabs(debug_url),
+        marker,
+        prefer_url=prefer_url,
+        fallback=fallback,
+    )
+
+
+def live_chromium_pid(user_data_dir: Path) -> Optional[int]:
+    lock = user_data_dir / "SingletonLock"
+    if not lock.exists() and not lock.is_symlink():
+        return None
+    try:
+        target = os.readlink(str(lock))
+    except OSError:
+        return None
+    suffix = target.rsplit("-", 1)[-1]
+    try:
+        pid = int(suffix)
+    except ValueError:
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return None
+    except PermissionError:
+        return pid
+    except OSError:
+        return None
+    return pid
+
+
+def debug_url_from_cmdline(argv: Any) -> Optional[str]:
+    if isinstance(argv, bytes):
+        text = argv.replace(b"\0", b" ").decode("utf-8", "replace")
+    elif isinstance(argv, str):
+        text = argv
+    else:
+        chunks = []
+        for part in argv:
+            chunks.append(part.decode("utf-8", "replace") if isinstance(part, bytes) else str(part))
+        text = " ".join(chunks)
+    marker = "--remote-debugging-port="
+    start = text.find(marker)
+    if start < 0:
+        return None
+    port = []
+    for ch in text[start + len(marker) :]:
+        if ch.isdigit():
+            port.append(ch)
+        else:
+            break
+    if not port:
+        return None
+    return "http://127.0.0.1:%s" % "".join(port)
+
+
+def debug_url_of_pid(pid: int) -> Optional[str]:
+    try:
+        raw = Path("/proc/%d/cmdline" % pid).read_bytes()
+    except OSError:
+        return None
+    return debug_url_from_cmdline(raw)
 
 
 def _create_new_tab(debug_url: str, target_url: str) -> Dict[str, Any]:
@@ -592,8 +669,16 @@ def run(
 ) -> int:
     timeout_sec = max(1.0, timeout_ms / 1000.0)
     try:
-        tab = _find_page_tab(debug_url, marker, prefer_url=target_url)
+        tab = None
+        # Сессия может дорисовать вкладки сразу после старта. Чужую вкладку не перехватываем.
+        discover_deadline = time.monotonic() + 5.0
+        while True:
+            tab = _find_page_tab(debug_url, marker, prefer_url=target_url, fallback=False)
+            if tab is not None or time.monotonic() >= discover_deadline:
+                break
+            time.sleep(0.4)
         if tab is None:
+            print("opening tab %s" % target_url, file=sys.stderr)
             try:
                 tab = _create_new_tab(debug_url, target_url)
             except urllib.error.HTTPError as exc:
@@ -604,13 +689,9 @@ def run(
             action = "open"
             navigate = False
         else:
-            if _url_contains(tab.get("url") or "", target_url):
-                # Already on transfer page; reload often prevents commissions after amount input.
-                action = "use-existing"
-                navigate = False
-            else:
-                action = "navigate"
-                navigate = True
+            print("tab already open: %s" % (tab.get("url") or target_url), file=sys.stderr)
+            action = "use-existing"
+            navigate = False
 
         ws_url = tab.get("webSocketDebuggerUrl")
         if not ws_url:
@@ -665,10 +746,62 @@ def run(
         extra_headers_by_id: Dict[str, Dict[str, Any]] = {}
         shared_fhp_headers: Dict[str, Any] = {}
         amount_entered = False
+        amount_entered_at: Optional[float] = None
+        reloaded = False
 
         pending_emit_mono: Optional[float] = None
         pending_emit_id: Optional[str] = None
         pending_emit_out: Optional[Dict[str, Any]] = None
+
+        def _reset_capture_state() -> None:
+            nonlocal latest_commissions_post_id, amount_entered, amount_entered_at
+            nonlocal pending_emit_mono, pending_emit_id, pending_emit_out
+            latest_commissions_post_id = None
+            commissions_url_by_id.clear()
+            base_headers_by_id.clear()
+            extra_headers_by_id.clear()
+            shared_fhp_headers.clear()
+            amount_entered = False
+            amount_entered_at = None
+            pending_emit_mono = None
+            pending_emit_id = None
+            pending_emit_out = None
+
+        def _reload_for_retry() -> bool:
+            nonlocal reloaded, page_ready_at, deadline, action, cdp
+            if reloaded:
+                return False
+            reloaded = True
+            print("functionality did not fire, reloading tab", file=sys.stderr)
+            _reset_capture_state()
+            try:
+                cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=min(20.0, timeout_sec))
+            except Exception as exc:
+                print("reload on current socket failed: %s" % exc, file=sys.stderr)
+                try:
+                    cdp.close()
+                except Exception:
+                    pass
+                fresh = _find_page_tab(debug_url, marker, prefer_url=target_url, fallback=False)
+                ws = (fresh or {}).get("webSocketDebuggerUrl")
+                if not ws:
+                    return False
+                cdp = CDPSession(websocket_url=ws, timeout_sec=timeout_sec, origin=origin)
+                cdp.call("Network.enable", timeout_sec=timeout_sec)
+                cdp.call("Page.enable", timeout_sec=timeout_sec)
+                cdp.call("Runtime.enable", timeout_sec=timeout_sec)
+                cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=min(20.0, timeout_sec))
+            try:
+                _wait_amount_field_center(cdp, timeout_sec=min(25.0, timeout_sec))
+            except RuntimeError:
+                pass
+            settle_until = time.monotonic() + 3.0
+            while time.monotonic() < settle_until:
+                cdp.recv_event(timeout_sec=0.2)
+            action = "reload"
+            page_ready_at = time.monotonic()
+            deadline = time.monotonic() + timeout_sec
+            return True
 
         def _merge_for(rid: str) -> Dict[str, Any]:
             merged: Dict[str, Any] = {}
@@ -797,7 +930,7 @@ def run(
                 _handle_network_event(ev)
 
         def _try_enter_amount() -> None:
-            nonlocal amount_entered
+            nonlocal amount_entered, amount_entered_at
             if amount_entered:
                 return
             if time.monotonic() < page_ready_at:
@@ -807,6 +940,7 @@ def run(
                 return
             # Mark before typing so commissions POST during Input.* calls is handled.
             amount_entered = True
+            amount_entered_at = time.monotonic()
             try:
                 _enter_amount(cdp, amount, timeout_sec=min(remaining, 35.0))
             except Exception:
@@ -838,6 +972,8 @@ def run(
                             while True:
                                 time.sleep(1)
                         return 0
+                if not reloaded and _reload_for_retry():
+                    continue
                 if not amount_entered:
                     print(
                         "Timed out: transfer amount field did not appear or amount was not entered.",
@@ -856,6 +992,16 @@ def run(
                 return done
 
             _try_enter_amount()
+
+            if (
+                not reloaded
+                and amount_entered
+                and amount_entered_at is not None
+                and not latest_commissions_post_id
+                and time.monotonic() - amount_entered_at >= 10.0
+            ):
+                if _reload_for_retry():
+                    continue
 
             recv_timeout = min(1.0, remaining)
             if pending_emit_mono is not None:
@@ -924,9 +1070,10 @@ def main() -> int:
         action="store_true",
         help=(
             "Start chromium-browser with DISPLAY, window geometry, "
-            "named profile (no guest, no profile picker), "
-            "--remote-debugging-port (from --debug-url), then open start URL; "
-            "terminate that browser when the script exits."
+            "named profile (no guest, no profile picker) and "
+            "--remote-debugging-port (from --debug-url) when that profile is not already running. "
+            "Reuse an open transfer tab; open the start URL only if it is missing. "
+            "Terminate only the browser this process started."
         ),
     )
     parser.add_argument(
@@ -997,24 +1144,39 @@ def main() -> int:
     save_headers_file = None if args.no_save_headers else Path(args.save_headers_file)
 
     browser_proc: Optional[subprocess.Popen] = None
+    debug_url = args.debug_url
     try:
         if args.start_browser:
-            browser_proc = _start_chromium_browser(
-                chromium_binary=args.chromium_binary,
-                display=args.display,
-                debug_url=args.debug_url,
-                start_url=args.start_url,
-                user_data_dir=Path(args.user_data_dir).expanduser(),
-                profile_directory=(args.profile_directory or DEFAULT_PROFILE_DIRECTORY).strip()
-                or DEFAULT_PROFILE_DIRECTORY,
-            )
-            try:
-                _wait_cdp_ready(args.debug_url, timeout_sec=args.browser_ready_timeout)
-            except TimeoutError as exc:
-                print(str(exc), file=sys.stderr)
-                return 1
+            user_data = Path(args.user_data_dir).expanduser()
+            pid = live_chromium_pid(user_data)
+            if pid:
+                existing = debug_url_of_pid(pid)
+                if not existing:
+                    print(
+                        "Chromium is already running without remote debugging; not starting another instance.",
+                        file=sys.stderr,
+                    )
+                    return 1
+                debug_url = existing
+                print("browser already running: %s" % debug_url, file=sys.stderr)
+            else:
+                # Без URL в командной строке: не открывать вкладку до проверки сессии.
+                browser_proc = _start_chromium_browser(
+                    chromium_binary=args.chromium_binary,
+                    display=args.display,
+                    debug_url=debug_url,
+                    start_url="",
+                    user_data_dir=user_data,
+                    profile_directory=(args.profile_directory or DEFAULT_PROFILE_DIRECTORY).strip()
+                    or DEFAULT_PROFILE_DIRECTORY,
+                )
+                try:
+                    _wait_cdp_ready(debug_url, timeout_sec=args.browser_ready_timeout)
+                except TimeoutError as exc:
+                    print(str(exc), file=sys.stderr)
+                    return 1
         return run(
-            debug_url=args.debug_url,
+            debug_url=debug_url,
             marker=args.marker,
             timeout_ms=args.timeout_ms,
             keep_open=args.keep_open,
