@@ -54,14 +54,29 @@ def clearance_from_cookies(cookies: Any) -> Optional[str]:
     return None
 
 
-def _page_title(cdp, timeout_sec: float) -> str:
+def clearance_usable(title: str, http_status: int, clearance: Optional[str]) -> bool:
+    """Кука пригодна только после живой загрузки, не по заголовку из кэша."""
+    if not title or "just a moment" in title.lower():
+        return False
+    if http_status != 200:
+        return False
+    return isinstance(clearance, str) and bool(clearance.strip())
+
+
+def _eval_json(cdp, expression: str, timeout_sec: float) -> Dict[str, Any]:
     result = cdp.call(
         "Runtime.evaluate",
-        {"expression": "document.title || ''", "returnByValue": True},
+        {"expression": expression, "returnByValue": True},
         timeout_sec=timeout_sec,
     )
     value = (result.get("result") or {}).get("value")
-    return value if isinstance(value, str) else ""
+    if not isinstance(value, str):
+        return {}
+    try:
+        data = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _user_agent(cdp, timeout_sec: float) -> str:
@@ -74,15 +89,49 @@ def _user_agent(cdp, timeout_sec: float) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _wait_past_challenge(cdp, timeout_sec: float) -> str:
+def _mark_document(cdp, timeout_sec: float) -> None:
+    cdp.call(
+        "Runtime.evaluate",
+        {"expression": "document.documentElement.dataset.bzProbe='1'", "returnByValue": True},
+        timeout_sec=timeout_sec,
+    )
+
+
+def _wait_fresh_page(cdp, timeout_sec: float) -> str:
+    """Ждать новый документ после reload/navigate. Кэш со старым title не считается."""
     deadline = time.monotonic() + timeout_sec
     title = ""
+    expr = (
+        "JSON.stringify({probe: (document.documentElement && document.documentElement.dataset.bzProbe) || '',"
+        " title: document.title || '', ready: document.readyState || ''})"
+    )
     while time.monotonic() < deadline:
-        title = _page_title(cdp, timeout_sec=10.0)
-        if title and "just a moment" not in title.lower():
+        state = _eval_json(cdp, expr, timeout_sec=10.0)
+        title = str(state.get("title") or "")
+        fresh = str(state.get("probe") or "") != "1" and str(state.get("ready") or "") == "complete"
+        if fresh and title and "just a moment" not in title.lower():
             return title
         time.sleep(1.0)
     return title
+
+
+def _probe_access_token(cdp, timeout_sec: float) -> int:
+    expr = (
+        "(async () => {"
+        " const r = await fetch('/api/access-token', {credentials:'include', headers:{accept:'*/*'}});"
+        " return String(r.status);"
+        "})()"
+    )
+    result = cdp.call(
+        "Runtime.evaluate",
+        {"expression": expr, "awaitPromise": True, "returnByValue": True},
+        timeout_sec=timeout_sec,
+    )
+    value = (result.get("result") or {}).get("value")
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _save(path: Path, payload: Dict[str, Any]) -> None:
@@ -110,25 +159,26 @@ def run(debug_url: str, timeout_sec: float, out_path: Path, origin: Optional[str
     try:
         cdp.call("Page.enable", timeout_sec=timeout_sec)
         cdp.call("Network.enable", timeout_sec=timeout_sec)
+        _mark_document(cdp, timeout_sec)
         current = tab.get("url") or ""
         if TARGET_URL.rstrip("/") not in current.rstrip("/"):
             cdp.call("Page.navigate", {"url": TARGET_URL}, timeout_sec=timeout_sec)
-        title = _wait_past_challenge(cdp, timeout_sec)
-        if not title or "just a moment" in title.lower():
-            print(
-                "Cloudflare challenge не пройден (title=%r). Файл cookie не перезаписан."
-                % title,
-                file=sys.stderr,
-            )
-            return 2
+        else:
+            cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=timeout_sec)
+        title = _wait_fresh_page(cdp, timeout_sec)
+        status = _probe_access_token(cdp, timeout_sec) if title and "just a moment" not in title.lower() else 0
         raw = cdp.call(
             "Network.getCookies",
             {"urls": [TARGET_URL, "https://bereza-exchange.com/api/access-token"]},
             timeout_sec=timeout_sec,
         )
         clearance = clearance_from_cookies(raw.get("cookies"))
-        if not clearance:
-            print("cf_clearance нет в cookie профиля. Файл не перезаписан.", file=sys.stderr)
+        if not clearance_usable(title, status, clearance):
+            print(
+                "Bereza cookie не обновлена (title=%r status=%s). Файл не перезаписан."
+                % (title, status),
+                file=sys.stderr,
+            )
             return 2
         ua = _user_agent(cdp, timeout_sec=10.0)
         _save(
@@ -139,7 +189,7 @@ def run(debug_url: str, timeout_sec: float, out_path: Path, origin: Optional[str
                 "saved_unix": time.time(),
             },
         )
-        print("bereza cf saved len=%d file=%s" % (len(clearance), out_path))
+        print("bereza cf saved len=%d status=%s file=%s" % (len(clearance), status, out_path))
         return 0
     finally:
         cdp.close()
