@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
+import os
 import ssl
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from rates_http import urlopen_retriable
@@ -24,6 +26,7 @@ _UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36"
 )
+_CF_FILE = Path(__file__).resolve().parents[2] / ".rates_cache" / "bereza_cf.json"
 
 # Короткоживущий токен из /api/access-token (кэш процесса).
 _token_cache: Tuple[str, float] = ("", 0.0)  # token, expires_unix
@@ -41,11 +44,35 @@ def command(argv: list[str]) -> int:
     return 0
 
 
+def _cf_file() -> Path:
+    raw = (os.environ.get("BEREZA_CF_FILE") or "").strip()
+    return Path(raw) if raw else _CF_FILE
+
+
+def load_cf_clearance() -> Dict[str, str]:
+    """Cookie из ``browser/bereza_cf_cdp.py``. Пустой словарь, если файла нет."""
+    try:
+        raw = json.loads(_cf_file().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    out: Dict[str, str] = {}
+    clearance = raw.get("cf_clearance")
+    if isinstance(clearance, str) and clearance.strip():
+        out["cf_clearance"] = clearance.strip()
+    ua = raw.get("user_agent")
+    if isinstance(ua, str) and ua.strip():
+        out["user_agent"] = ua.strip()
+    return out
+
+
 def _browser_headers(*, access_token: Optional[str] = None) -> Dict[str, str]:
+    cf = load_cf_clearance()
     hdr = {
         "Accept": "*/*",
         "Accept-Language": "en-US,en;q=0.9",
-        "User-Agent": _UA,
+        "User-Agent": cf.get("user_agent") or _UA,
         "Referer": f"{_SITE}/",
         "Origin": _SITE,
         "sec-ch-ua": '"Not:A-Brand";v="99", "Chromium";v="112"',
@@ -55,6 +82,8 @@ def _browser_headers(*, access_token: Optional[str] = None) -> Dict[str, str]:
         "sec-fetch-mode": "cors",
         "sec-fetch-site": "same-origin",
     }
+    if cf.get("cf_clearance"):
+        hdr["Cookie"] = "cf_clearance=" + cf["cf_clearance"]
     if access_token:
         hdr["x-bereza-access-token"] = access_token
     return hdr

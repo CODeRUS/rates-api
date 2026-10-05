@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 import time
 import unittest
 from unittest import mock
 
 from rates_sources import FetchContext, SourceCategory
-from sources.bereza import _extract_to_amount, _http_error, summary
+from sources.bereza import _browser_headers, _extract_to_amount, _http_error, summary
 
 
 def _ctx(*, receiving_thb: float | None = None) -> FetchContext:
@@ -24,6 +27,20 @@ def _ctx(*, receiving_thb: float | None = None) -> FetchContext:
 
 
 class TestBerezaSource(unittest.TestCase):
+    def test_browser_headers_include_saved_clearance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "bereza_cf.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                json.dump(
+                    {"cf_clearance": "clearance-token", "user_agent": "UA-Test"},
+                    fh,
+                )
+            with mock.patch.dict(os.environ, {"BEREZA_CF_FILE": path}):
+                headers = _browser_headers()
+        self.assertEqual(headers["Cookie"], "cf_clearance=clearance-token")
+        self.assertEqual(headers["User-Agent"], "UA-Test")
+        self.assertEqual(headers["sec-fetch-site"], "same-origin")
+
     def test_cloudflare_403_is_short(self) -> None:
         err = _http_error(403, "<html><title>Just a moment...</title><script>_cf_chl_opt")
         self.assertIn("Cloudflare", str(err))
