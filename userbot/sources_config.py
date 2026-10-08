@@ -142,6 +142,15 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
                     r"\s*<\s*\(от\s*20k\s*(?:бат|THB)\)"
                 ),
             ),
+            CurrencyRule(
+                currency="USDTTHB",
+                category="usdt_thb",
+                # 💲 USDT // THB < 32.40 - (от10k THB)
+                pattern=(
+                    r"USDT\s*//\s*THB\s*<\s*(?P<rate>\d+(?:[.,]\d+)?)"
+                    r"\s*-\s*\(\s*от\s*10k\s*THB\s*\)"
+                ),
+            ),
         ),
         city="",
         summary_note="от 20000 THB",

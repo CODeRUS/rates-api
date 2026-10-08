@@ -52,15 +52,32 @@ def rub_per_thb_from_pair(pair: Dict[str, Any]) -> float:
     return ratio
 
 
-def _find_pair(data: Dict[str, Any]) -> Dict[str, Any]:
+def thb_per_base_from_pair(pair: Dict[str, Any]) -> float:
+    """THB за 1 единицу базовой валюты. При is_client_base: THB = base * ratio."""
+    try:
+        ratio = float(pair["ratio"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise RuntimeError(f"Senate: нет ratio в {pair!r}") from e
+    if ratio <= 0:
+        raise RuntimeError(f"Senate: невалидный ratio={ratio}")
+    if pair.get("is_client_base"):
+        return ratio
+    return 1.0 / ratio
+
+
+def find_pair_by_title(data: Dict[str, Any], title: str) -> Dict[str, Any]:
     payload = data.get("data")
     pairs = payload.get("currency_pairs") if isinstance(payload, dict) else None
     if not isinstance(pairs, list):
         raise RuntimeError("Senate: нет data.currency_pairs")
     for pair in pairs:
-        if isinstance(pair, dict) and pair.get("title") == PAIR_TITLE:
+        if isinstance(pair, dict) and pair.get("title") == title:
             return pair
-    raise RuntimeError(f"Senate: нет пары {PAIR_TITLE}")
+    raise RuntimeError(f"Senate: нет пары {title}")
+
+
+def _find_pair(data: Dict[str, Any]) -> Dict[str, Any]:
+    return find_pair_by_title(data, PAIR_TITLE)
 
 
 def fetch_rates(*, timeout: float = 20.0) -> Dict[str, Any]:

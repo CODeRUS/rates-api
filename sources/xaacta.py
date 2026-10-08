@@ -70,16 +70,30 @@ def _error_message(body: str) -> str:
     return body[:200]
 
 
+def thb_per_usdt_from_calc(data: Dict[str, Any]) -> float:
+    """``amountTo / amountFrom`` при обмене USDT→THB: баты за 1 USDT."""
+    try:
+        amount_from = float(data["amountFrom"])
+        amount_to = float(data["amountTo"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise RuntimeError(f"XAACTA: нет amountFrom/amountTo в {data!r}") from e
+    if amount_from <= 0 or amount_to <= 0:
+        raise RuntimeError(f"XAACTA: невалидные суммы from={amount_from} to={amount_to}")
+    return amount_to / amount_from
+
+
 def fetch_calc(
     amount: float,
     amount_side: str = "TO",
     *,
     timeout: float = 20.0,
+    from_code: str = "RUB",
+    to_code: str = "THB",
 ) -> Dict[str, Any]:
     qs = urllib.parse.urlencode(
         {
-            "from": "RUB",
-            "to": "THB",
+            "from": from_code,
+            "to": to_code,
             "amount": _amount_param(amount),
             "amountSide": amount_side,
         }

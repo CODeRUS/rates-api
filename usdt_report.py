@@ -74,6 +74,9 @@ _USDT_BRANCH_KEYS: Tuple[str, ...] = (
     "fly",
     "it_obmen",
     "bereza_usdt",
+    "senate",
+    "xaacta",
+    "exasia",
 )
 
 _BEREZA_TG_URL = "https://t.me/bereza_exchange/1631"
@@ -294,6 +297,105 @@ def _fetch_bereza_telegram_text(*, timeout: float = 20.0) -> str:
     raise RuntimeError("Bereza TG: пустой ответ")
 
 
+_XAACTA_USDT_AMOUNT = 1000.0
+_EXASIA_TG_URL = "https://t.me/s/exthailand"
+
+
+def _parse_exasia_usdt_from_text(text: str) -> Optional[float]:
+    """Строка ``USDT // THB < 32.40 - (от10k THB)``."""
+    if not text:
+        return None
+    from userbot.sources_config import USERBOT_SOURCES
+
+    cfg = next(s for s in USERBOT_SOURCES if s.source_id == "exasia_exthailand")
+    rule = next(r for r in cfg.currencies if r.currency == "USDTTHB")
+    m = re.search(rule.pattern, text, flags=re.IGNORECASE)
+    if not m:
+        return None
+    try:
+        v = float(m.group("rate").replace(",", "."))
+    except (ValueError, IndexError):
+        return None
+    return v if v > 0 else None
+
+
+def _fetch_exasia_telegram_text(*, timeout: float = 20.0) -> str:
+    req = urllib.request.Request(
+        _EXASIA_TG_URL,
+        headers={
+            "User-Agent": _BEREZA_TG_UA,
+            "Accept": "text/html,application/xhtml+xml",
+        },
+    )
+    with urlopen_retriable(req, timeout=timeout, context=ssl.create_default_context()) as resp:
+        return resp.read().decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
+
+
+def _usdt_fetch_senate_branch() -> _UsdtParallelBranch:
+    """USDT/THB из senateexchange.org, пара USDT-THB."""
+    import rates_sources  # noqa: F401  # senate импортирует rates_sources на старте пакета
+    from sources.senate import fetch_rates, find_pair_by_title, thb_per_base_from_pair
+
+    thb: Dict[str, Optional[float]] = {"senate_bid": None}
+    w: List[str] = []
+    try:
+        pair = find_pair_by_title(fetch_rates(), "USDT-THB")
+        v = thb_per_base_from_pair(pair)
+    except Exception as e:
+        w.append(f"Senate USDT: {e}")
+        return {}, thb, w
+    if v <= 0:
+        w.append("Senate USDT: невалидный курс USDT-THB")
+        return {}, thb, w
+    thb["senate_bid"] = v
+    return {}, thb, w
+
+
+def _usdt_fetch_xaacta_branch() -> _UsdtParallelBranch:
+    """USDT/THB из публичного calc XAACTA, 1000 USDT."""
+    import rates_sources  # noqa: F401
+    from sources.xaacta import fetch_calc, thb_per_usdt_from_calc
+
+    thb: Dict[str, Optional[float]] = {"xaacta_bid": None}
+    w: List[str] = []
+    try:
+        data = fetch_calc(
+            _XAACTA_USDT_AMOUNT,
+            "FROM",
+            from_code="USDT",
+            to_code="THB",
+        )
+        v = thb_per_usdt_from_calc(data)
+    except Exception as e:
+        w.append(f"XAACTA USDT: {e}")
+        return {}, thb, w
+    if v <= 0:
+        w.append("XAACTA USDT: невалидный курс USDT→THB")
+        return {}, thb, w
+    thb["xaacta_bid"] = v
+    return {}, thb, w
+
+
+def _usdt_fetch_exasia_branch() -> _UsdtParallelBranch:
+    """USDT/THB из публичной ленты @exthailand, ступень от 10k THB."""
+    import html as html_lib
+
+    thb: Dict[str, Optional[float]] = {"exasia_bid": None}
+    w: List[str] = []
+    try:
+        raw = _fetch_exasia_telegram_text()
+    except Exception as e:
+        w.append(f"Exasia USDT: {e}")
+        return {}, thb, w
+    text = html_lib.unescape(re.sub(r"<[^>]+>", " ", raw))
+    v = _parse_exasia_usdt_from_text(text)
+    if v is None:
+        w.append("Exasia USDT: нет строки USDT // THB от 10k THB в @exthailand")
+        return {}, thb, w
+    thb["exasia_bid"] = v
+    return {}, thb, w
+
+
 def _usdt_fetch_bereza_usdt_branch() -> _UsdtParallelBranch:
     """
     USDT/THB из telegram @bereza_exchange, пост 1631 (редактируется).
@@ -343,6 +445,12 @@ def _usdt_parallel_worker(branch: str) -> _UsdtParallelBranch:
         return _usdt_fetch_it_obmen_branch()
     if branch == "bereza_usdt":
         return _usdt_fetch_bereza_usdt_branch()
+    if branch == "senate":
+        return _usdt_fetch_senate_branch()
+    if branch == "xaacta":
+        return _usdt_fetch_xaacta_branch()
+    if branch == "exasia":
+        return _usdt_fetch_exasia_branch()
     raise ValueError(branch)
 
 
@@ -367,6 +475,9 @@ def fetch_usdt_payload(
         "fly_bid": None,
         "it_obmen_bid": None,
         "bereza_bid": None,
+        "senate_bid": None,
+        "xaacta_bid": None,
+        "exasia_bid": None,
     }
 
     def _work(branch: str) -> _UsdtParallelBranch:
@@ -426,6 +537,9 @@ def _empty_usdt_data() -> Dict[str, Any]:
             "fly_bid": None,
             "it_obmen_bid": None,
             "bereza_bid": None,
+            "senate_bid": None,
+            "xaacta_bid": None,
+            "exasia_bid": None,
         },
     }
 
@@ -586,6 +700,9 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     fly = thb.get("fly_bid")
     it_obmen = thb.get("it_obmen_bid")
     bereza = thb.get("bereza_bid")
+    senate = thb.get("senate_bid")
+    xaacta = thb.get("xaacta_bid")
+    exasia = thb.get("exasia_bid")
 
     rub_rows: List[Tuple[str, Optional[float]]] = [
         ("Bybit (наличные)", float(rub["bybit_cash"]) if isinstance(rub.get("bybit_cash"), (int, float)) else None),
@@ -599,6 +716,9 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
         ("Fly Currency (минимальная сумма)", float(fly) if isinstance(fly, (int, float)) and fly and fly > 0 else None),
         ("IT Обмен (до 1000 USDT)", float(it_obmen) if isinstance(it_obmen, (int, float)) and it_obmen and it_obmen > 0 else None),
         ("Bereza Exchange (Telegram)", float(bereza) if isinstance(bereza, (int, float)) and bereza and bereza > 0 else None),
+        ("Senate", float(senate) if isinstance(senate, (int, float)) and senate and senate > 0 else None),
+        ("XAACTA (1000 USDT)", float(xaacta) if isinstance(xaacta, (int, float)) and xaacta and xaacta > 0 else None),
+        ("Exasia (от 10k THB)", float(exasia) if isinstance(exasia, (int, float)) and exasia and exasia > 0 else None),
     ]
 
     lines: List[str] = [

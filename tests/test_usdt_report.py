@@ -61,6 +61,29 @@ class TestUsdtReport(unittest.TestCase):
 
         self.assertIn("test warning", text)
 
+    def test_parse_exasia_usdt_10k_tier(self):
+        sample = (
+            "🇷🇺 RUB // THB - 2.75 < (от20k THB)\n"
+            "💲 USDT // THB < 32.30 - (от 1000 THB)\n"
+            "💲 USDT // THB < 32.40 - (от10k THB)\n"
+            "💲 USDT // THB < 32.55 - (от100k THB/best)\n"
+        )
+        self.assertEqual(usdt_report._parse_exasia_usdt_from_text(sample), 32.40)
+
+    def test_format_includes_exchanger_usdt_rows(self):
+        data = {
+            "rub_per_usdt": {},
+            "thb_per_usdt": {
+                "senate_bid": 32.67,
+                "xaacta_bid": 32.73,
+                "exasia_bid": 32.40,
+            },
+        }
+        text = usdt_report.format_usdt_report_text(data, [])
+        self.assertIn("32.67 | Senate", text)
+        self.assertIn("32.73 | XAACTA (1000 USDT)", text)
+        self.assertIn("32.40 | Exasia (от 10k THB)", text)
+
 
 if __name__ == "__main__":
     unittest.main()

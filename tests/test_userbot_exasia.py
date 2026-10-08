@@ -53,6 +53,14 @@ class TestUserbotExasia(unittest.TestCase):
         self.assertEqual(rows[0].category, "exchanger")
         self.assertAlmostEqual(rows[0].rate, 2.49)
 
+    def test_exasia_config_parses_usdt_10k_thb(self):
+        text = _EXASIA_SAMPLE_THB + "\n💲 USDT // THB < 32.40 - (от10k THB)🇹🇭\n"
+        rows = _parse_exasia(text)
+        usdt = [r for r in rows if r.currency == "USDTTHB"]
+        self.assertEqual(len(usdt), 1)
+        self.assertEqual(usdt[0].category, "usdt_thb")
+        self.assertAlmostEqual(usdt[0].rate, 32.40)
+
     def test_exasia_config_parses_current_20k_thb(self):
         rows = _parse_exasia(_EXASIA_SAMPLE_THB)
         self.assertEqual(len(rows), 1)

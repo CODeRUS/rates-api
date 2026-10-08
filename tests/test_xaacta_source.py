@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 
 from rates_sources import FetchContext, SourceCategory
-from sources.xaacta import parse_rub_per_thb, summary
+from sources.xaacta import parse_rub_per_thb, summary, thb_per_usdt_from_calc
 
 
 def _ctx(*, receiving_thb: float | None = 30_000.0) -> FetchContext:
@@ -32,6 +32,12 @@ class TestXaactaSource(unittest.TestCase):
             }
         )
         self.assertAlmostEqual(rate, 82367.16 / 30000.0)
+
+    def test_parse_thb_per_usdt(self) -> None:
+        self.assertAlmostEqual(
+            thb_per_usdt_from_calc({"amountFrom": 1000.0, "amountTo": 32727.8}),
+            32.7278,
+        )
 
     def test_parse_rejects_bad_payload(self) -> None:
         with self.assertRaises(RuntimeError):

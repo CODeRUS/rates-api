@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 
 from rates_sources import FetchContext, SourceCategory
-from sources.senate import rub_per_thb_from_pair, summary
+from sources.senate import rub_per_thb_from_pair, summary, thb_per_base_from_pair
 
 
 def _ctx(*, receiving_thb: float | None = 30_000.0) -> FetchContext:
@@ -40,6 +40,12 @@ class TestSenateSource(unittest.TestCase):
         self.assertAlmostEqual(
             rub_per_thb_from_pair({"ratio": 2.5, "is_client_base": False}),
             2.5,
+        )
+
+    def test_usdt_thb_is_ratio_when_client_is_base(self) -> None:
+        self.assertAlmostEqual(
+            thb_per_base_from_pair({"ratio": 32.6676375, "is_client_base": True}),
+            32.6676375,
         )
 
     def test_ratio_inverts_when_client_is_base(self) -> None:
