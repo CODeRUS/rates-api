@@ -251,27 +251,48 @@ def _usdt_fetch_it_obmen_branch() -> _UsdtParallelBranch:
 
 def _parse_bereza_usdt_from_text(text: str) -> Optional[float]:
     """
-    Вытаскивает USDT→THB из строки вида:
-    ``USDT (₮) -➡️ THB (฿) = 31.33``.
+    USDT→THB из поста курса.
+
+    Старый вид: ``USDT (₮) -➡️ THB (฿) = 31.33``.
+    Текущий: ``USD (Online) -➡️ THB (฿) = 32.76``.
     """
     if not text:
         return None
-    m = re.search(
+    patterns = (
         r"USDT[^\n\r=]{0,120}=\s*([0-9]+(?:[.,][0-9]+)?)",
-        text,
-        flags=re.IGNORECASE,
+        r"USD\s*\(\s*Online\s*\)[^\n\r=]{0,80}=\s*([0-9]+(?:[.,][0-9]+)?)",
+    )
+    for pattern in patterns:
+        m = re.search(pattern, text, flags=re.IGNORECASE)
+        if not m:
+            continue
+        try:
+            v = float(m.group(1).replace(",", "."))
+        except ValueError:
+            continue
+        if v > 0:
+            return v
+    return None
+
+
+def _bereza_post_plain(raw: str, post_id: str = "1631") -> str:
+    """Текст одного поста из ленты t.me/s. Пустая оболочка t.me/.../1631 не подходит."""
+    import html as html_lib
+
+    m = re.search(
+        rf'data-post="bereza_exchange/{post_id}"[\s\S]*?'
+        r'class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)</div>',
+        raw,
     )
     if not m:
-        return None
-    try:
-        v = float(m.group(1).replace(",", "."))
-    except ValueError:
-        return None
-    return v if v > 0 else None
+        return ""
+    html = re.sub(r"<br\s*/?>", "\n", m.group(1), flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", html)
+    return html_lib.unescape(text)
 
 
 def _fetch_bereza_telegram_text(*, timeout: float = 20.0) -> str:
-    urls = (_BEREZA_TG_URL, _BEREZA_TG_URL_FALLBACK)
+    urls = (_BEREZA_TG_URL_FALLBACK, _BEREZA_TG_URL)
     last_err: Optional[Exception] = None
     for url in urls:
         req = urllib.request.Request(
@@ -287,11 +308,12 @@ def _fetch_bereza_telegram_text(*, timeout: float = 20.0) -> str:
                     resp.headers.get_content_charset() or "utf-8",
                     errors="replace",
                 )
-            if raw.strip():
-                return raw
         except Exception as e:
             last_err = e
             continue
+        text = _bereza_post_plain(raw)
+        if text.strip():
+            return text
     if last_err is not None:
         raise RuntimeError(f"Bereza TG: {last_err}")
     raise RuntimeError("Bereza TG: пустой ответ")
@@ -409,7 +431,9 @@ def _usdt_fetch_bereza_usdt_branch() -> _UsdtParallelBranch:
         return {}, thb, w
     v = _parse_bereza_usdt_from_text(text)
     if v is None:
-        w.append("Bereza USDT: не найдена строка 'USDT ... = <rate>' в посте @bereza_exchange/1631")
+        w.append(
+            "Bereza USDT: не найдена строка USDT или USD (Online) в посте @bereza_exchange/1631"
+        )
         return {}, thb, w
     thb["bereza_bid"] = v
     return {}, thb, w

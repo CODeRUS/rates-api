@@ -15,6 +15,24 @@ class TestUsdtReport(unittest.TestCase):
         )
         self.assertEqual(usdt_report._parse_bereza_usdt_from_text(sample), 31.33)
 
+    def test_parse_bereza_usd_online_line(self):
+        sample = (
+            "💶  RUB (₽) -➡️ THB (฿) = 2.7\n"
+            "💲 USD (Online) -➡️ THB (฿) = 32.76\n"
+            "ПРИМЕР: 270.000₽ ≈ 100.000 бат\n"
+        )
+        self.assertEqual(usdt_report._parse_bereza_usdt_from_text(sample), 32.76)
+
+    def test_bereza_post_plain_ignores_other_messages(self):
+        raw = (
+            '<div class="tgme_widget_message" data-post="bereza_exchange/1620">'
+            '<div class="tgme_widget_message_text">USDT = 10.00</div></div>'
+            '<div class="tgme_widget_message" data-post="bereza_exchange/1631">'
+            '<div class="tgme_widget_message_text">USD (Online) -➡️ THB = 32.76</div></div>'
+        )
+        text = usdt_report._bereza_post_plain(raw)
+        self.assertEqual(usdt_report._parse_bereza_usdt_from_text(text), 32.76)
+
     def test_format_usdt_report_text(self):
         data = {
             "rub_per_usdt": {
