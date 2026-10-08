@@ -68,6 +68,34 @@ class TestRatesHttp(unittest.TestCase):
                 )
         self.assertEqual(m.call_count, 1)
 
+    def test_urlopen_retriable_retries_unexpected_eof(self) -> None:
+        ctx = ssl.create_default_context()
+        req = urllib.request.Request("https://example.com/test")
+        eof = urllib.error.URLError(
+            ssl.SSLError(
+                "[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1010)"
+            )
+        )
+        ok = mock.MagicMock()
+        ok.__enter__ = mock.Mock(return_value=ok)
+        ok.__exit__ = mock.Mock(return_value=False)
+        with mock.patch("urllib.request.urlopen", side_effect=[eof, ok]) as m:
+            out = rates_http.urlopen_retriable(
+                req,
+                timeout=5.0,
+                context=ctx,
+                max_attempts_override=4,
+                backoff_override=0.01,
+            )
+        self.assertIs(out, ok)
+        self.assertEqual(m.call_count, 2)
+        self.assertTrue(rates_http.is_retryable_exception(eof))
+        self.assertFalse(
+            rates_http.is_retryable_exception(
+                urllib.error.URLError(ssl.SSLError("certificate verify failed"))
+            )
+        )
+
     def test_is_retryable_http_status(self) -> None:
         self.assertTrue(
             isinstance(

@@ -58,9 +58,21 @@ def _sleep_backoff(attempt_index: int, *, base: float) -> None:
     time.sleep(delay)
 
 
+def _ssl_reason_retryable(reason: ssl.SSLError) -> bool:
+    """Обрыв TLS при чтении повторяем. Ошибку сертификата — нет."""
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return False
+    text = str(reason).lower()
+    if "certificate" in text or "cert_" in text or "hostname mismatch" in text:
+        return False
+    if isinstance(reason, (ssl.SSLEOFError, ssl.SSLSyscallError, ssl.SSLZeroReturnError)):
+        return True
+    return "unexpected_eof" in text or "eof occurred" in text
+
+
 def _urllib_reason_non_retryable(reason: object) -> bool:
     if isinstance(reason, ssl.SSLError):
-        return True
+        return not _ssl_reason_retryable(reason)
     return False
 
 
