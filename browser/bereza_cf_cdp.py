@@ -359,10 +359,30 @@ def _read_title_and_status(cdp, timeout_sec: float) -> tuple:
     return title, status
 
 
+def _reload_page(cdp, timeout_sec: float) -> str:
+    """Сбросить кэш документа. Иначе мёртвая сессия остаётся с заголовком сайта и без галочки."""
+    cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=timeout_sec)
+    return _wait_ready(cdp, min(15.0, timeout_sec))
+
+
 def _pass_cloudflare_stub(cdp, title: str, status: int, timeout_sec: float) -> tuple:
     """Если открыта заглушка — кликнуть галочку и дождаться сайта. Иначе не трогать страницу."""
     if title and not is_cloudflare_stub(title) and status == 200:
         return title, status
+    # Сессия Chrome восстанавливает документ с заголовком Bereza Exchange,
+    # а /api/access-token уже 403 и виджета на странице нет.
+    if title and not is_cloudflare_stub(title) and status != 200:
+        print("cloudflare: API %s, обновляю вкладку" % status, file=sys.stderr)
+        try:
+            title = _reload_page(cdp, timeout_sec)
+        except RuntimeError as exc:
+            print("cloudflare: reload failed: %s" % exc, file=sys.stderr)
+        else:
+            status = 0
+            if title and not is_cloudflare_stub(title):
+                status = _probe_access_token(cdp, timeout_sec)
+                if status == 200:
+                    return title, status
     for _attempt in range(2):
         if title and not is_cloudflare_stub(title) and status == 200:
             break
@@ -478,7 +498,7 @@ def main() -> int:
         description="Export Bereza cf_clearance from the Chromium profile into .rates_cache."
     )
     parser.add_argument("--debug-url", default=DEFAULT_DEBUG_URL)
-    parser.add_argument("--timeout-ms", type=int, default=45000)
+    parser.add_argument("--timeout-ms", type=int, default=70000)
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--origin", default=None)
     parser.add_argument("--start-browser", action="store_true")

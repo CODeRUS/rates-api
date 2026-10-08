@@ -93,6 +93,16 @@ class TestBerezaCfExport(unittest.TestCase):
         self.assertEqual(status, 200)
         clicks = [params for method, params in cdp.calls if method == "Input.dispatchMouseEvent" and params.get("type") == "mousePressed"]
         self.assertEqual(len(clicks), 1)
+        self.assertFalse(any(method == "Page.reload" for method, _params in cdp.calls))
+
+    def test_cached_title_reloads_before_click(self) -> None:
+        cdp = _TurnstileCDP(after_click_title="Bereza Exchange", token_status="200")
+        title, status = _pass_cloudflare_stub(cdp, "Bereza Exchange", 403, timeout_sec=5.0)
+        self.assertEqual(title, "Bereza Exchange")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(method == "Page.reload" for method, _params in cdp.calls))
+        clicks = [params for method, params in cdp.calls if method == "Input.dispatchMouseEvent" and params.get("type") == "mousePressed"]
+        self.assertEqual(len(clicks), 1)
 
 
 class _TurnstileCDP:
@@ -101,6 +111,7 @@ class _TurnstileCDP:
         self.after_click_title = after_click_title
         self.token_status = token_status
         self.clicked = False
+        self.reloaded = False
 
     def call(self, method, params=None, timeout_sec=30.0):
         params = params or {}
@@ -125,6 +136,9 @@ class _TurnstileCDP:
             return {"model": {"content": [511.5, 304, 811.5, 304, 811.5, 369, 511.5, 369]}}
         if method == "DOM.discardSearchResults":
             return {}
+        if method == "Page.reload":
+            self.reloaded = True
+            return {}
         if method == "Input.dispatchMouseEvent":
             if params.get("type") == "mouseReleased":
                 self.clicked = True
@@ -135,6 +149,11 @@ class _TurnstileCDP:
                 return {"result": {"value": '{"x":0,"y":0}'}}
             if "await fetch" in expr:
                 return {"result": {"value": self.token_status}}
-            title = self.after_click_title if self.clicked else "Just a moment..."
+            if self.clicked:
+                title = self.after_click_title
+            elif self.reloaded:
+                title = "Just a moment..."
+            else:
+                title = "Bereza Exchange"
             return {"result": {"value": '{"title":"%s","ready":"complete"}' % title}}
         return {}
