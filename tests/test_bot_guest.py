@@ -90,6 +90,14 @@ class TestPrepareGuestCommand(unittest.TestCase):
         self.assertEqual(cmd.kind, "error")
         self.assertIn("/calc", cmd.reply)
 
+    def test_sources_returns_category_list(self) -> None:
+        from bot.sources_catalog import format_sources_message
+
+        cmd = prepare_guest_command("@RatesBot /sources", BOT)
+        self.assertEqual(cmd.kind, "sources")
+        self.assertEqual(cmd.reply, format_sources_message())
+        self.assertTrue(cmd.reply.startswith("Переводы\n• "))
+
     def test_cash_format_error(self) -> None:
         cmd = prepare_guest_command("@RatesBot /cash abc", BOT)
         self.assertEqual(cmd.kind, "error")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Telegram-бот (Telethon): /rates, /usdt, /cash, /exchange, /calc.
+Telegram-бот (Telethon): /rates, /usdt, /cash, /exchange, /calc, /sources.
 
 Переменные можно задать в файле ``.env`` в корне репозитория (подхватывается при старте).
 
@@ -49,6 +49,7 @@ from bot.guest import handle_guest_update
 from bot.rates_tokens import parse_rates_command_tokens
 from bot.calc_args import parse_calc_command_args
 from bot.rshb_args import parse_rshb_command_args
+from bot.sources_catalog import format_sources_message
 import cash_report as _cash_report
 
 from bot.summary_adapter import (
@@ -567,6 +568,7 @@ async def _main_async() -> None:
             "/exchange — топ филиалов TT по USD/EUR/CNY→THB (опц. число: /exchange 5)\n"
             "/rshb — THB/RUB РСХБ; /rshb THB [ATM_FEE] или несколько сумм, последнее — комиссия ATM\n"
             "/calc — сравнение каналов RUB→THB; /calc RUB usd|eur|cny КУРС (₽ за 1 ед. валюты для TT)\n"
+            "/sources — источники по категориям\n"
             "/gpt - запрос доступа к ИИ ассистенту.\n"
             "\n"
             "Новости и обновления бота: @PattayaRatesNews"
@@ -643,6 +645,10 @@ async def _main_async() -> None:
                 return
             top_n = min(top_n, 50)
         await _send_exchange_report(event, top_n=top_n)
+
+    @client.on(events.NewMessage(pattern=r"(?i)^/sources(?:@\S+)?$"))
+    async def on_sources(event: events.NewMessage.Event) -> None:
+        await event.respond(format_sources_message(), link_preview=False)
 
     @client.on(events.NewMessage(pattern=r"(?i)^/usdt(?:@\S+)?$"))
     async def on_usdt(event: events.NewMessage.Event) -> None:

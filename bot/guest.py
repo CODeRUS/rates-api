@@ -30,6 +30,7 @@ _KNOWN = frozenset(
         "exchange",
         "calc",
         "rshb",
+        "sources",
         "refresh",
         "gpt",
         "gpt_add",
@@ -123,6 +124,10 @@ def prepare_guest_command(text: str, bot_username: str) -> GuestCommand:
         return _prepare_cash(norm_tokens)
     if name == "exchange":
         return _prepare_exchange(norm_tokens)
+    if name == "sources":
+        from bot.sources_catalog import format_sources_message
+
+        return GuestCommand(kind="sources", reply=format_sources_message())
     if name == "calc":
         try:
             budget_rub, fiat_code, rub_per_fiat = parse_calc_command_args(normalized)
