@@ -53,22 +53,50 @@ class TestTildaMskCash(unittest.TestCase):
         self.assertAlmostEqual(by_cur["EUR"].rate, 89.0)
         self.assertAlmostEqual(by_cur["CNY"].rate, 11.4)
 
-    @mock.patch("sources.tilda_msk_cash.fetch_page_html")
-    def test_vernadsky_summary_writes_chatcash(self, fetch_mock):
+    @mock.patch("sources.vernadsky_msk.fetch_rates_payload")
+    @mock.patch("sources.vernadsky_msk.fetch_page_html")
+    def test_vernadsky_summary_writes_chatcash(self, fetch_mock, rates_mock):
         from rates_sources import FetchContext
         from sources.vernadsky_msk import summary
 
-        fetch_mock.return_value = _PROFIKASSA_SNIPPET
+        fetch_mock.return_value = "var API = 'https://script.google.com/macros/s/abc/exec';"
+        rates_mock.return_value = {
+            "ok": True,
+            "rates": [
+                {"id": "usd2", "sell": 90.0, "on": True},
+                {"id": "usd3", "sell": 82.5, "on": True},
+                {"id": "eur3", "sell": 93.0, "on": True},
+                {"id": "cny", "sell": 12.8, "on": True},
+            ],
+        }
         doc: dict = {"l1": {}}
         ctx = FetchContext(30_000, 250, 0, 40_000, 10_000, None, None, unified_doc=doc)
         summary(ctx)
+        rates_mock.assert_called_once()
+        self.assertTrue(str(rates_mock.call_args[0][0]).endswith("/exec"))
         hit = doc["l1"].get("chatcash:vernadsky_msk")
         self.assertIsNotNone(hit)
         payload = hit["payload"]
         self.assertEqual(len(payload), 3)
         usd = next(r for r in payload if r["currency"] == "USD")
-        self.assertAlmostEqual(usd["rate"], 74.5)
+        self.assertAlmostEqual(usd["rate"], 82.5)
+        self.assertEqual(usd["category"], "cash_usd")
         self.assertEqual(usd["city"], "Москва")
+        self.assertEqual(ctx.warnings, [])
+
+    def test_vernadsky_sell_rows_skip_disabled(self):
+        from sources.vernadsky_msk import sell_rows_from_payload
+
+        rows = sell_rows_from_payload(
+            {
+                "ok": True,
+                "rates": [
+                    {"id": "usd3", "sell": 82.5, "on": False},
+                    {"id": "eur3", "sell": 93, "on": True},
+                ],
+            }
+        )
+        self.assertEqual([(r.currency, r.rate) for r in rows], [("EUR", 93.0)])
 
 
 if __name__ == "__main__":
