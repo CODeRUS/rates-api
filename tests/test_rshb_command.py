@@ -63,6 +63,41 @@ class TestRshbCommandArgs(unittest.TestCase):
             parse_rshb_command_args("/rshb 30000 x")
 
 
+class TestAtmIssuerFeeFloor(unittest.TestCase):
+    def test_cny_fee_is_percent_above_minimum(self) -> None:
+        _base, fee, _total = cfx.atm_cny_debit_rshb(30_000, 250, 0.19860218)
+        self.assertAlmostEqual(fee, 6007.715945 * 0.04, places=4)
+
+    def test_cny_fee_uses_minimum_on_small_amount(self) -> None:
+        _base, fee, total = cfx.atm_cny_debit_rshb(100, 0, 0.2, issuer_fee_on_cny_base=0.04)
+        self.assertAlmostEqual(fee, 70.0)
+        self.assertAlmostEqual(total, 20.0 + 70.0)
+
+    def test_rub_fee_is_two_percent_above_minimum(self) -> None:
+        self.assertAlmostEqual(cfx.RUB_CARD_ATM_PCT, 0.02)
+        rub, _rate = cfx.atm_rub_from_cny_path(
+            30_000,
+            250,
+            0.2,
+            12.0,
+            issuer_fee_on_cny_base=0.0,
+            extra_rub_pct_of_base=cfx.RUB_CARD_ATM_PCT,
+        )
+        base_rub = 30250 * 0.2 * 12.0
+        self.assertAlmostEqual(rub, base_rub * 1.02)
+
+    def test_rub_fee_uses_minimum_on_small_amount(self) -> None:
+        rub, _rate = cfx.atm_rub_from_cny_path(
+            100,
+            0,
+            0.2,
+            10.0,
+            issuer_fee_on_cny_base=0.0,
+            extra_rub_pct_of_base=0.02,
+        )
+        self.assertAlmostEqual(rub, 200.0 + 299.0)
+
+
 class TestMaxThbForBudget(unittest.TestCase):
     def test_monotonic_and_fits_budget(self) -> None:
         budget = 80_000.0

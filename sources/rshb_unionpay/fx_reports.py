@@ -39,8 +39,8 @@ class ReportContext:
     rshb_app_cny_rub: float = 12.08
     atb_cny: float = 12.21
     atb_rub: float = 12.247
-    flat_cny: float = 17.0
-    flat_rub: float = 199.0
+    flat_cny: float = cfx.ISSUER_CNY_ATM_MIN
+    flat_rub: float = cfx.RUB_CARD_ATM_MIN
     issuer_atm_cny_pct: float = cfx.ISSUER_CNY_ATM_PCT
     # Комиссия при снятии рублёвой картой: доля от базы в RUB после CNY→RUB (см. RATES_RUB_CARD_ATM_PCT).
     rub_card_atm_pct: float = cfx.RUB_CARD_ATM_PCT
@@ -158,10 +158,13 @@ def section5(ctx: ReportContext, thb: float, atm_fee: float) -> None:
     up = ctx.unionpay_cache
     cpt = ctx.cny_per_thb
     pay_cny = thb * cpt
-    gross_thb = thb + atm_fee
-    base_cny = gross_thb * cpt
-    fee_cny = base_cny * ctx.issuer_atm_cny_pct
-    tot_cny = base_cny + fee_cny
+    base_cny, fee_cny, tot_cny = cfx.atm_cny_debit_rshb(
+        thb,
+        atm_fee,
+        cpt,
+        issuer_fee_on_cny_base=ctx.issuer_atm_cny_pct,
+        issuer_fee_min_cny=ctx.flat_cny,
+    )
 
     def up_get(a: str, b: str) -> float:
         return unionpay_rates.rate_trans_to_base(a, b, cache=up)
@@ -197,13 +200,21 @@ def section5(ctx: ReportContext, thb: float, atm_fee: float) -> None:
         ("РСХБ CNY (UnionPay CNY→THB)", ctx.rshb_app_cny_rub),
     ]:
         rub, _ = cfx.atm_rub_from_cny_path(
-            thb, atm_fee, cpt, cny_rub, issuer_fee_on_cny_base=ctx.issuer_atm_cny_pct
+            thb,
+            atm_fee,
+            cpt,
+            cny_rub,
+            issuer_fee_on_cny_base=ctx.issuer_atm_cny_pct,
+            issuer_fee_min_cny=ctx.flat_cny,
+            extra_rub_min=0.0,
         )
         comm_rub = fee_cny * cny_rub
         print(f"• {rub:,.2f} RUB (комиссия: {comm_rub:,.2f} RUB) | {label}")
 
     base_rub_rubcard = base_cny * ctx.rshb_cny_rur_sell
     comm_rub_pct = base_rub_rubcard * ctx.rub_card_atm_pct
+    if ctx.rub_card_atm_pct > 0 and ctx.flat_rub > 0:
+        comm_rub_pct = max(comm_rub_pct, ctx.flat_rub)
     rub_rc, _ = cfx.atm_rub_from_cny_path(
         thb,
         atm_fee,
@@ -211,6 +222,8 @@ def section5(ctx: ReportContext, thb: float, atm_fee: float) -> None:
         ctx.rshb_cny_rur_sell,
         issuer_fee_on_cny_base=0.0,
         extra_rub_pct_of_base=ctx.rub_card_atm_pct,
+        issuer_fee_min_cny=0.0,
+        extra_rub_min=ctx.flat_rub,
     )
     print(
         f"• {rub_rc:,.2f} RUB (комиссия: {comm_rub_pct:,.2f} RUB, "
@@ -230,10 +243,22 @@ def section5(ctx: ReportContext, thb: float, atm_fee: float) -> None:
 
     pay_rubc = cfx.payment_rub(thb, cpt, ctx.rshb_cny_rur_sell)
     rub_br, _ = cfx.atm_rub_from_cny_path(
-        thb, atm_fee, cpt, ctx.broker_cny_rub, issuer_fee_on_cny_base=ctx.issuer_atm_cny_pct
+        thb,
+        atm_fee,
+        cpt,
+        ctx.broker_cny_rub,
+        issuer_fee_on_cny_base=ctx.issuer_atm_cny_pct,
+        issuer_fee_min_cny=ctx.flat_cny,
+        extra_rub_min=0.0,
     )
     rub_app, _ = cfx.atm_rub_from_cny_path(
-        thb, atm_fee, cpt, ctx.rshb_app_cny_rub, issuer_fee_on_cny_base=ctx.issuer_atm_cny_pct
+        thb,
+        atm_fee,
+        cpt,
+        ctx.rshb_app_cny_rub,
+        issuer_fee_on_cny_base=ctx.issuer_atm_cny_pct,
+        issuer_fee_min_cny=ctx.flat_cny,
+        extra_rub_min=0.0,
     )
     print()
     print("RUB (оценка по курсу карточных операций):")
