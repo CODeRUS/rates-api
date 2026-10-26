@@ -16,13 +16,15 @@ from chat_agent.app.services.orchestrator import (
     _planner_history_suffix,
     _strip_json_fence,
 )
-from chat_agent.app.prompts.commands_catalog import PLANNER_TOOLS_SNIPPET
+from chat_agent.app.prompts.commands_catalog import PLANNER_TOOLS_SNIPPET, REGISTERED_TOOL_NAMES
 from chat_agent.app.prompts.planner_system import build_planner_system
 from chat_agent.app.services.tools import (
+    TOOL_HANDLERS,
     CashArgs,
     _cash_report_argv_suffix,
     _match_city_name_to_n,
     _parse_cash_city_menu,
+    bybit_bitkub_quote_tail,
 )
 
 
@@ -161,6 +163,50 @@ def test_planner_snippet_includes_cash_cities_from_cash_report() -> None:
 def test_planner_snippet_receiving_thb_forces_think_false() -> None:
     assert 'arguments: {"receiving_thb": N}' in PLANNER_TOOLS_SNIPPET
     assert "think=false" in PLANNER_TOOLS_SNIPPET
+
+
+def test_planner_bybit_bitkub_is_not_rates_summary() -> None:
+    prompt = build_planner_system(extra_env_system="")
+    assert "butkub" in prompt
+    assert "биткуб" in prompt
+    assert "get_bybit_bitkub_report" in prompt
+    assert "не get_rates_summary" in PLANNER_TOOLS_SNIPPET
+    assert "Этот инструмент и think=false" in PLANNER_TOOLS_SNIPPET
+    assert "get_bybit_bitkub_report" in REGISTERED_TOOL_NAMES
+    assert "get_bybit_bitkub_report" in TOOL_HANDLERS
+
+
+def test_bybit_bitkub_quote_tail_matches_cli() -> None:
+    assert bybit_bitkub_quote_tail({"receiving_thb": 800}) == [
+        "bybit_bitkub",
+        "quote",
+        "--receiving-thb",
+        "800",
+    ]
+    assert bybit_bitkub_quote_tail({"sending_rub": 2000, "leg": "cash"}) == [
+        "bybit_bitkub",
+        "quote",
+        "--sending-rub",
+        "2000",
+        "--leg",
+        "cash",
+    ]
+    assert bybit_bitkub_quote_tail({}) == ["bybit_bitkub", "quote"]
+    with pytest.raises(ValidationError):
+        bybit_bitkub_quote_tail({"receiving_thb": 800, "sending_rub": 100})
+
+
+def test_execution_steps_accepts_bybit_bitkub_report() -> None:
+    plan = PlannerOutput(
+        tool="get_bybit_bitkub_report",
+        arguments={"receiving_thb": 800},
+        needs_tool=True,
+        think=False,
+        out_of_scope=False,
+    )
+    assert _execution_steps(plan) == [
+        ("get_bybit_bitkub_report", {"receiving_thb": 800})
+    ]
 
 
 def test_planner_snippet_lists_generic_exchange_phrases_for_summary() -> None:

@@ -639,6 +639,14 @@ def parse_rshb_cli_args(argv: List[str]) -> Tuple[List[float], float]:
     return amounts, fee
 
 
+def _argv_after(argv: List[str], token: str) -> Optional[List[str]]:
+    try:
+        i = argv.index(token)
+    except ValueError:
+        return None
+    return list(argv[i + 1 :])
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_arg_parser(add_help=False)
@@ -921,6 +929,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                 )
                 return 2
             return print_single_source_summary(mod, args)
+        if head == "bybit_bitkub" and tail and tail[0] == "quote":
+            # --receiving-thb съедает общий парсер и не попадает в rest.
+            raw = _argv_after(argv, "bybit_bitkub")
+            if raw and raw[0] == "quote":
+                tail = raw
+            if getattr(args, "readonly", False) and "--readonly" not in tail:
+                tail = list(tail) + ["--readonly"]
         return mod.command(tail)
 
     if head in _RESERVED:

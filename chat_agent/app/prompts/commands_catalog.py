@@ -35,7 +35,8 @@ PLANNER_TOOLS_SNIPPET = (
   `arguments`: `receiving_thb?` (int > 0).
   Общие запросы «курс», «курс валюты», «какой курс», «курс бата», «курсы обмена», «курсы валют», «обменные курсы», «курс обмена валют» => именно этот инструмент с `arguments: {{}}` и `think=false`.
   Если в реплике нет ни города, ни валюты, ни суммы — это generic-фраза для сводки, ни в коем случае не выбирай `get_cash_report` или `get_exchange_report`.
-  Запросы вида «сколько рублей нужно для получения N бат/THB» => `get_rates_summary` с `arguments: {"receiving_thb": N}` и `think=false` (однозначный прямой отчёт).
+  Запросы вида «сколько рублей нужно для получения N бат/THB» без конкретного сервиса => `get_rates_summary` с `arguments: {"receiving_thb": N}` и `think=false` (однозначный прямой отчёт).
+  Если названы и Bybit, и Bitkub (bitkub, butkub, биткуб) — `get_bybit_bitkub_report`, не get_rates_summary.
   Если в реплике есть сумма рублей, а не бат,, то нужен `think=true`
   Если в реплике есть вопрос о том «сколько получу бат с N рублей», то нужен `think=true`
 
@@ -88,6 +89,12 @@ PLANNER_TOOLS_SNIPPET = (
   `arguments`: `rub?` (int).
   Запросы про askmoney/аскмани по конкретной сумме.
 
+- `get_bybit_bitkub_report` (`rates.py bybit_bitkub quote ...`):
+  `arguments`: не больше одного из `receiving_thb` или `sending_rub`; опционально `leg` (`cash`|`transfer`). Оба числа можно не передавать.
+  Запросы про маршрут Bybit → Bitkub (bitkub, butkub, биткуб): «сколько рублей чтобы через bybit получить N бат», «сколько бат с N рублей через bybit bitkub», «курс bybit bitkub». Этот инструмент и think=false. Не вызывай get_rates_summary.
+  Нога не названа — не передавай `leg`. «наличные/cash/кэш» → `leg=cash`. «перевод» → `leg=transfer`.
+  «получить N бат» → `receiving_thb`. «с N рублей» / «отправить N рублей» → `sending_rub`.
+
 Если кеш пустой, это видно в stderr от rates.py; цифры не выдумывай.
 """
 ).strip()
@@ -107,5 +114,6 @@ REGISTERED_TOOL_NAMES = frozenset(
         "get_ex24_report",
         "get_kwikpay_report",
         "get_askmoney_report",
+        "get_bybit_bitkub_report",
     }
 )

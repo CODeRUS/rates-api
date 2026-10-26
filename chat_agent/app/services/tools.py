@@ -209,6 +209,42 @@ class AskmoneyArgs(BaseModel):
     rub: Optional[int] = Field(default=None, ge=1)
 
 
+class BybitBitkubArgs(BaseModel):
+    receiving_thb: Optional[int] = Field(default=None, ge=1)
+    sending_rub: Optional[int] = Field(default=None, ge=1)
+    leg: Optional[Literal["cash", "transfer"]] = None
+
+    @field_validator("leg", mode="before")
+    @classmethod
+    def _norm_leg(cls, v: Any) -> Any:
+        if v is None or v == "":
+            return None
+        s = str(v).strip().lower()
+        if s in ("cash", "наличные", "нал"):
+            return "cash"
+        if s in ("transfer", "перевод", "bank"):
+            return "transfer"
+        return s
+
+    @model_validator(mode="after")
+    def _at_most_one_amount(self) -> BybitBitkubArgs:
+        if self.receiving_thb is not None and self.sending_rub is not None:
+            raise ValueError("укажите не больше одного из: sending_rub или receiving_thb")
+        return self
+
+
+def bybit_bitkub_quote_tail(arguments: dict[str, Any]) -> list[str]:
+    m = BybitBitkubArgs.model_validate(arguments or {})
+    tail = ["bybit_bitkub", "quote"]
+    if m.receiving_thb is not None:
+        tail.extend(["--receiving-thb", str(int(m.receiving_thb))])
+    if m.sending_rub is not None:
+        tail.extend(["--sending-rub", str(int(m.sending_rub))])
+    if m.leg:
+        tail.extend(["--leg", m.leg])
+    return tail
+
+
 async def _run_rates(settings: Settings, tail: list[str]) -> str:
     repo = settings.repo_root.resolve()
     script = repo / "rates.py"
@@ -383,6 +419,10 @@ async def tool_get_askmoney_report(settings: Settings, arguments: dict[str, Any]
     return await _run_rates(settings, tail)
 
 
+async def tool_get_bybit_bitkub_report(settings: Settings, arguments: dict[str, Any]) -> str:
+    return await _run_rates(settings, bybit_bitkub_quote_tail(arguments))
+
+
 ToolFn = Callable[[Settings, dict[str, Any]], Coroutine[Any, Any, str]]
 
 TOOL_HANDLERS: Dict[str, ToolFn] = {
@@ -397,6 +437,7 @@ TOOL_HANDLERS: Dict[str, ToolFn] = {
     "get_ex24_report": tool_get_ex24_report,
     "get_kwikpay_report": tool_get_kwikpay_report,
     "get_askmoney_report": tool_get_askmoney_report,
+    "get_bybit_bitkub_report": tool_get_bybit_bitkub_report,
 }
 
 
