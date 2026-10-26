@@ -50,6 +50,7 @@ def get_summary_text(
             len(rows),
         )
     rows = rates_mod._maybe_apply_output_filter(args, rows)
+    warnings = rates_mod._maybe_apply_warning_filter(args, warnings)
     buf = io.StringIO()
     rates_mod.print_summary_text(rows, baseline, warnings, buf)
     get_summary_text._needs_background_refresh = bool(

@@ -56,7 +56,7 @@ from rates_sources import (
 from sources.korona.koronapay_tariffs import RUB_MIN_SENDING_FOR_BEST_TIER
 from sources import plugin_by_id, registered_source_ids
 
-from rates_output_filters import apply_summary_row_filter
+from rates_output_filters import apply_summary_row_filter, apply_summary_warning_filter
 
 # Не показывать в текстовой сводке (CLI, save, бот) блоки наличных USD/E/CNY→THB.
 _SUMMARY_OMIT_CASH_FX = frozenset(
@@ -421,13 +421,26 @@ def compute_summary_rows(args: argparse.Namespace) -> Tuple[List[RateRow], float
     return rows, baseline, warnings
 
 
+def _output_filter_name(args: argparse.Namespace) -> str:
+    return (getattr(args, "output_filter", None) or "").strip()
+
+
 def _maybe_apply_output_filter(
     args: argparse.Namespace, rows: List[RateRow]
 ) -> List[RateRow]:
-    fn = (getattr(args, "output_filter", None) or "").strip()
+    fn = _output_filter_name(args)
     if not fn:
         return rows
     return apply_summary_row_filter(rows, fn)
+
+
+def _maybe_apply_warning_filter(
+    args: argparse.Namespace, warnings: List[str]
+) -> List[str]:
+    fn = _output_filter_name(args)
+    if not fn:
+        return warnings
+    return apply_summary_warning_filter(warnings, fn)
 
 
 def _cash_section_title(cat: SourceCategory) -> str:
@@ -727,6 +740,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not rest:
         rows, baseline, warnings = compute_summary_rows(args)
         rows = _maybe_apply_output_filter(args, rows)
+        warnings = _maybe_apply_warning_filter(args, warnings)
         if getattr(args, "readonly", False) and not rows:
             print(
                 "--readonly: нет данных сводки в кеше.",
@@ -784,6 +798,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 setattr(args, k, v)
         rows, baseline, warnings = compute_summary_rows(args)
         rows = _maybe_apply_output_filter(args, rows)
+        warnings = _maybe_apply_warning_filter(args, warnings)
         if getattr(args, "readonly", False) and not rows:
             print(
                 "--readonly: нет данных сводки в кеше.",

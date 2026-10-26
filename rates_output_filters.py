@@ -8,7 +8,11 @@ from typing import Dict, List, Optional, Pattern, Sequence, Tuple
 
 from rates_sources import RateRow
 
-__all__ = ["PRESET_NAMES", "apply_summary_row_filter"]
+__all__ = [
+    "PRESET_NAMES",
+    "apply_summary_row_filter",
+    "apply_summary_warning_filter",
+]
 
 
 @dataclass(frozen=True)
@@ -30,7 +34,7 @@ _PRESETS_RAW: Dict[str, _OutputFilterPreset] = {
             "IT Обмен",
             "Fly Currency",
             "Korona",
-            "Avosend RUB",
+            "Avosend",
             "Bybit",
             "Unired",
             "Ex24",
@@ -39,6 +43,10 @@ _PRESETS_RAW: Dict[str, _OutputFilterPreset] = {
             "Мультитрансфер",
             "Bereza",
             "Exasia",
+            "XAACTA",
+            "Senate",
+            "Moreta",
+            "KwikPay",
         ),
     ),
 }
@@ -61,6 +69,27 @@ def _row_haystack(row: RateRow) -> str:
     return " ".join(parts)
 
 
+def _preset_for(filter_name: Optional[str]) -> Optional[Tuple[_OutputFilterPreset, Tuple[Pattern[str], ...]]]:
+    name = (filter_name or "").strip().lower()
+    if not name:
+        return None
+    preset = _PRESETS_RAW.get(name)
+    if preset is None:
+        return None
+    return preset, _PRESET_REGEX_COMPILED[name]
+
+
+def _text_matches_preset(text: str, preset: _OutputFilterPreset, rx: Tuple[Pattern[str], ...]) -> bool:
+    hay = text.casefold()
+    for s in preset.substrings:
+        if s and s.casefold() in hay:
+            return True
+    for pat in rx:
+        if pat.search(text):
+            return True
+    return False
+
+
 def apply_summary_row_filter(
     rows: Sequence[RateRow], filter_name: Optional[str]
 ) -> List[RateRow]:
@@ -68,31 +97,26 @@ def apply_summary_row_filter(
     Убирает строки по пресету (подстроки и regex). Forex (``is_baseline``) не трогаем.
     Неизвестное имя пресета — без изменений, без предупреждений.
     """
-    name = (filter_name or "").strip().lower()
-    if not name:
+    found = _preset_for(filter_name)
+    if found is None:
         return list(rows)
-    preset = _PRESETS_RAW.get(name)
-    if preset is None:
-        return list(rows)
-    rx = _PRESET_REGEX_COMPILED[name]
-    subs = preset.substrings
+    preset, rx = found
     out: List[RateRow] = []
     for row in rows:
         if row.is_baseline:
             out.append(row)
             continue
-        text = _row_haystack(row)
-        hay = text.casefold()
-        drop = False
-        for s in subs:
-            if s and s.casefold() in hay:
-                drop = True
-                break
-        if not drop:
-            for pat in rx:
-                if pat.search(text):
-                    drop = True
-                    break
-        if not drop:
+        if not _text_matches_preset(_row_haystack(row), preset, rx):
             out.append(row)
     return out
+
+
+def apply_summary_warning_filter(
+    warnings: Sequence[str], filter_name: Optional[str]
+) -> List[str]:
+    """Те же подстроки, что у строк сводки. Неизвестный пресет — список без изменений."""
+    found = _preset_for(filter_name)
+    if found is None:
+        return list(warnings)
+    preset, rx = found
+    return [w for w in warnings if not _text_matches_preset(w, preset, rx)]
