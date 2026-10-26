@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-Парсер курсов «Продажа» с сайтов обменников на Tilda (profikassa.ru, vernadka-kassa.ru).
+Курсы «Продажа» обменников на Tilda (profikassa.ru, vernadka-kassa.ru).
 
-Курсы в HTML: элементы с классом ``rate-*-sell`` / ``rate-*-buy`` (см. ``getVal('rate-usd-old')`` в странице).
-Для сводки наличных в Москве берём продажу серии USD 1996–2006, EUR 2002, CNY.
+Живые страницы больше не содержат ``rate-*-sell``: виджет читает Apps Script
+``action=rates``. HTML-парсер оставлен для старых страниц и тестов.
+Для сводки наличных в Москве: USD старого образца (usd3), EUR 2002 (eur3), CNY.
 """
 from __future__ import annotations
 
+import json
 import re
 import ssl
 import time
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from rates_http import urlopen_retriable
 
@@ -23,6 +26,18 @@ _CASH_SELL_SPECS: Tuple[Tuple[str, str, str], ...] = (
     ("USD", "cash_usd", "rate-usd-old-sell"),
     ("EUR", "cash_eur", "rate-eur2002-sell"),
     ("CNY", "cash_cny", "rate-cny-sell"),
+)
+
+# id в ответе Apps Script. usd3 — старый USD (бывший rate-usd-old-sell).
+API_CASH_SELL_SPECS: Tuple[Tuple[str, str, str], ...] = (
+    ("USD", "cash_usd", "usd3"),
+    ("EUR", "cash_eur", "eur3"),
+    ("CNY", "cash_cny", "cny"),
+)
+
+_APPS_SCRIPT_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
 _RATE_CLASS_INLINE_RE = re.compile(
@@ -98,6 +113,59 @@ def cash_sell_rows_from_html(html: str) -> List[CashSellRow]:
             continue
         out.append(CashSellRow(currency=currency, category=category, rate=v))
     return out
+
+
+def sell_rows_from_rate_items(
+    data: Any,
+    specs: Sequence[Tuple[str, str, str]] = API_CASH_SELL_SPECS,
+) -> List[CashSellRow]:
+    """Продажа из ``{ok, rates:[{id, sell, on}]}``. Строки с ``on is False`` пропускаются."""
+    if not isinstance(data, dict) or not data.get("ok"):
+        return []
+    rates = data.get("rates")
+    if not isinstance(rates, list):
+        return []
+    by_id: Dict[str, float] = {}
+    for item in rates:
+        if not isinstance(item, dict) or item.get("on") is False:
+            continue
+        rate_id = item.get("id")
+        try:
+            sell = float(item.get("sell"))
+        except (TypeError, ValueError):
+            continue
+        if isinstance(rate_id, str) and sell > 0:
+            by_id[rate_id] = sell
+    out: List[CashSellRow] = []
+    for currency, category, rate_id in specs:
+        sell = by_id.get(rate_id)
+        if sell is None:
+            continue
+        out.append(CashSellRow(currency=currency, category=category, rate=sell))
+    return out
+
+
+def fetch_apps_script_rates(
+    api_url: str,
+    *,
+    loc: Optional[str] = None,
+    timeout: float = 25.0,
+) -> Any:
+    params: Dict[str, Any] = {"action": "rates", "t": int(time.time() * 1000)}
+    if loc:
+        params["loc"] = loc
+    query = urllib.parse.urlencode(params)
+    sep = "&" if "?" in api_url else "?"
+    req = urllib.request.Request(
+        api_url + sep + query,
+        headers={"Accept": "application/json", "User-Agent": _APPS_SCRIPT_UA},
+    )
+    with urlopen_retriable(req, timeout=timeout, context=ssl.create_default_context()) as resp:
+        raw = resp.read().decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"не JSON: {raw[:120]!r}") from exc
 
 
 def chatcash_payload_rows(

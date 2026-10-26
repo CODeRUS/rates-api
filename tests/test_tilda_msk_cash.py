@@ -7,6 +7,7 @@ from unittest import mock
 from sources.tilda_msk_cash import (
     cash_sell_rows_from_html,
     parse_tilda_sell_rates,
+    sell_rows_from_rate_items,
 )
 
 _PROFIKASSA_SNIPPET = """
@@ -53,22 +54,83 @@ class TestTildaMskCash(unittest.TestCase):
         self.assertAlmostEqual(by_cur["EUR"].rate, 89.0)
         self.assertAlmostEqual(by_cur["CNY"].rate, 11.4)
 
-    @mock.patch("sources.tilda_msk_cash.fetch_page_html")
-    def test_vernadsky_summary_writes_chatcash(self, fetch_mock):
+    def test_sell_rows_from_rate_items_skip_disabled_and_ignore_usd2(self):
+        rows = sell_rows_from_rate_items(
+            {
+                "ok": True,
+                "rates": [
+                    {"id": "usd2", "sell": 90.0, "on": True},
+                    {"id": "usd3", "sell": 82.5, "on": False},
+                    {"id": "eur3", "sell": 93, "on": True},
+                    {"id": "cny", "sell": 12.8, "on": True},
+                ],
+            }
+        )
+        self.assertEqual([(r.currency, r.rate) for r in rows], [("EUR", 93.0), ("CNY", 12.8)])
+
+    @mock.patch("sources.vernadsky_msk.fetch_apps_script_rates")
+    @mock.patch("sources.vernadsky_msk.fetch_page_html")
+    def test_vernadsky_summary_writes_chatcash(self, fetch_mock, rates_mock):
         from rates_sources import FetchContext
         from sources.vernadsky_msk import summary
 
-        fetch_mock.return_value = _PROFIKASSA_SNIPPET
+        fetch_mock.return_value = "var API = 'https://script.google.com/macros/s/abc/exec';"
+        rates_mock.return_value = {
+            "ok": True,
+            "rates": [
+                {"id": "usd2", "sell": 90.0, "on": True},
+                {"id": "usd3", "sell": 82.5, "on": True},
+                {"id": "eur3", "sell": 93.0, "on": True},
+                {"id": "cny", "sell": 12.8, "on": True},
+            ],
+        }
         doc: dict = {"l1": {}}
         ctx = FetchContext(30_000, 250, 0, 40_000, 10_000, None, None, unified_doc=doc)
         summary(ctx)
+        rates_mock.assert_called_once()
+        self.assertEqual(rates_mock.call_args.kwargs.get("loc"), "v")
+        self.assertTrue(str(rates_mock.call_args.args[0]).endswith("/exec"))
         hit = doc["l1"].get("chatcash:vernadsky_msk")
         self.assertIsNotNone(hit)
         payload = hit["payload"]
         self.assertEqual(len(payload), 3)
         usd = next(r for r in payload if r["currency"] == "USD")
-        self.assertAlmostEqual(usd["rate"], 74.5)
+        self.assertAlmostEqual(usd["rate"], 82.5)
+        self.assertEqual(usd["category"], "cash_usd")
         self.assertEqual(usd["city"], "Москва")
+        self.assertEqual(ctx.warnings, [])
+
+    @mock.patch("sources.obuv_city_msk.fetch_apps_script_rates")
+    @mock.patch("sources.obuv_city_msk.fetch_page_html")
+    def test_obuv_summary_writes_chatcash_without_loc(self, fetch_mock, rates_mock):
+        from rates_sources import FetchContext
+        from sources.obuv_city_msk import summary
+
+        fetch_mock.return_value = (
+            "window.VK_HIST_URL='https://script.google.com/macros/s/hist/exec';\n"
+            "window.VK_API_URL='https://script.google.com/macros/s/rates/exec';\n"
+            "var API=(window.VK_API_URL||'');"
+        )
+        rates_mock.return_value = {
+            "ok": True,
+            "rates": [
+                {"id": "usd3", "sell": 83.2, "on": True},
+                {"id": "eur3", "sell": 93.2, "on": True},
+                {"id": "cny", "sell": 12.8, "on": True},
+            ],
+        }
+        doc: dict = {"l1": {}}
+        ctx = FetchContext(30_000, 250, 0, 40_000, 10_000, None, None, unified_doc=doc)
+        summary(ctx)
+        rates_mock.assert_called_once_with(
+            "https://script.google.com/macros/s/rates/exec"
+        )
+        hit = doc["l1"].get("chatcash:obuv_city_msk")
+        self.assertIsNotNone(hit)
+        by_cur = {r["currency"]: r["rate"] for r in hit["payload"]}
+        self.assertEqual(by_cur, {"USD": 83.2, "EUR": 93.2, "CNY": 12.8})
+        self.assertEqual(hit["payload"][0]["source_name"], "Обувь-Сити")
+        self.assertEqual(ctx.warnings, [])
 
 
 if __name__ == "__main__":

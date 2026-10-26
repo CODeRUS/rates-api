@@ -10,7 +10,7 @@
 
 Cron (со сдвигом от multitransfer, тот же профиль нельзя открывать одновременно)::
 
-    30 */2 * * * cd /home/coderus/rates-api && /usr/bin/python3.7 browser/bereza_cf_cdp.py --start-browser
+    30 * * * * cd /home/coderus/rates-api && /usr/bin/python3.7 browser/bereza_cf_cdp.py --start-browser
 """
 from __future__ import annotations
 
