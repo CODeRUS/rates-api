@@ -51,7 +51,6 @@ _ENTRIES: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
     ("exchanger", "Exasia", ("https://t.me/exthailand",)),
     ("exchanger", "Fly Currency", ("https://t.me/ThaiExchangee",)),
     ("exchanger", "IT Обмен", ("https://t.me/it_obmen_pattaya",)),
-    ("exchanger", "Senate", ("https://senateexchange.com/",)),
     ("exchanger", "XAACTA", ("https://t.me/XAACTAExchange",)),
     ("cash_rub", "Bereza", ("https://bereza-exchange.com/",)),
     ("cash_rub", "Ex24", ("https://ex24.pro/",)),

@@ -74,7 +74,7 @@ _USDT_BRANCH_KEYS: Tuple[str, ...] = (
     "fly",
     "it_obmen",
     "bereza_usdt",
-    "senate",
+    # senate временно исключён (нет публичного exchange_prices); CLI/плагин sources.senate остаётся.
     "xaacta",
     "exasia",
 )
@@ -354,7 +354,7 @@ def _fetch_exasia_telegram_text(*, timeout: float = 20.0) -> str:
 
 
 def _usdt_fetch_senate_branch() -> _UsdtParallelBranch:
-    """USDT/THB ATM из senateexchange.com (excenge.store exchange_prices)."""
+    """USDT/THB ATM: exchange_prices (Tilda / кеш senate_prices.json)."""
     import rates_sources  # noqa: F401  # senate импортирует rates_sources на старте пакета
     from sources.senate import fetch_prices, thb_per_usdt_atm_from_prices
 

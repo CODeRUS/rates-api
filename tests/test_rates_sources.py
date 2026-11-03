@@ -50,7 +50,6 @@ class TestRatesSources(unittest.TestCase):
                 "payscan",
                 "bereza",
                 "xaacta",
-                "senate",
                 "ttexchange",
                 "rbc_ttexchange",
                 "tbank",
@@ -63,10 +62,10 @@ class TestRatesSources(unittest.TestCase):
         )
         cats = {s.id: s.category for s in rs.DEFAULT_SOURCES}
         self.assertEqual(cats["ttexchange"].name, "TRANSFER")
-        for sid in ("ex24", "askmoney", "bereza", "xaacta", "senate"):
+        for sid in ("ex24", "askmoney", "bereza", "xaacta"):
             self.assertEqual(cats[sid].name, "EXCHANGER")
         for sid in ids:
-            if sid in {"ex24", "askmoney", "bereza", "xaacta", "senate"}:
+            if sid in {"ex24", "askmoney", "bereza", "xaacta"}:
                 continue
             self.assertEqual(cats[sid].name, "TRANSFER")
 

@@ -20,7 +20,7 @@ PLUGIN_ORDER = (
     "payscan",
     "bereza",
     "xaacta",
-    "senate",
+    # senate временно исключён из сводки (CRM staff-only / excenge.store NXDOMAIN); CLI rates.py senate доступен.
     "ttexchange",
     "rbc_ttexchange",
     "tbank",
