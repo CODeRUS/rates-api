@@ -354,15 +354,14 @@ def _fetch_exasia_telegram_text(*, timeout: float = 20.0) -> str:
 
 
 def _usdt_fetch_senate_branch() -> _UsdtParallelBranch:
-    """USDT/THB из senateexchange.org, пара USDT-THB."""
+    """USDT/THB ATM из senateexchange.com (excenge.store exchange_prices)."""
     import rates_sources  # noqa: F401  # senate импортирует rates_sources на старте пакета
-    from sources.senate import fetch_rates, find_pair_by_title, thb_per_base_from_pair
+    from sources.senate import fetch_prices, thb_per_usdt_atm_from_prices
 
     thb: Dict[str, Optional[float]] = {"senate_bid": None}
     w: List[str] = []
     try:
-        pair = find_pair_by_title(fetch_rates(), "USDT-THB")
-        v = thb_per_base_from_pair(pair)
+        v = thb_per_usdt_atm_from_prices(fetch_prices())
     except Exception as e:
         w.append(f"Senate USDT: {e}")
         return {}, thb, w

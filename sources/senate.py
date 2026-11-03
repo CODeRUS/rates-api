@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Senate Exchange: RUB→THB из калькулятора senateexchange.org."""
+"""Senate Exchange: RUB→THB и USDT→THB по калькулятору senateexchange.com."""
 from __future__ import annotations
 
 import json
+import os
 import ssl
 import urllib.error
 import urllib.request
@@ -16,24 +17,65 @@ EMOJI = "🤑"
 IS_BASELINE = False
 CATEGORY = SourceCategory.EXCHANGER
 
-RATES_URL = "https://senateexchange.org/wp-json/my-proxy/v1/rates"
+SITE_URL = "https://senateexchange.com/"
+DEFAULT_PRICES_URL = "https://excenge.store/api/exchange_prices"
 PAIR_TITLE = "RUB-THB"
 # Сайт: при получении меньше этой суммы курс хуже и в API его нет.
 MIN_PUBLISHED_THB = 10_000.0
+# income_percents["RUB-online__THB-nal"] на главной Tilda.
+RUB_ONLINE_THB_NAL_PERCENT = 2.5
+# withdraw_methods_percents["USDT_THB_atm"].
+USDT_THB_ATM_PERCENT = -2.5
 _UA = "rates-senate-source/1.0 (python)"
+
+
+def prices_url() -> str:
+    raw = (os.environ.get("SENATE_PRICES_URL") or "").strip()
+    return raw or DEFAULT_PRICES_URL
 
 
 def help_text() -> str:
     return (
-        "Senate Exchange RUB→THB: GET "
-        f"{RATES_URL}. Пара {PAIR_TITLE}, ratio — RUB за 1 THB "
-        f"(если is_client_base=false). Курс опубликован от {MIN_PUBLISHED_THB:.0f} THB."
+        "Senate Exchange: GET "
+        f"{prices_url()}. RUB→THB: RUB-online/THB-nal (+{RUB_ONLINE_THB_NAL_PERCENT:g}%). "
+        f"USDT→THB ATM: thb_for_usdt_sell ({USDT_THB_ATM_PERCENT:g}%). "
+        f"Курс RUB→THB опубликован от {MIN_PUBLISHED_THB:.0f} THB."
     )
 
 
 def command(argv: list[str]) -> int:
     print(help_text())
     return 0
+
+
+def add_percent(value: float, percent: float) -> float:
+    """Как add_percent() в inline-скрипте калькулятора на сайте."""
+    return round(value * (1 + percent / 100), 5)
+
+
+def _price_field(data: Dict[str, Any], key: str) -> float:
+    block = data.get(key)
+    if not isinstance(block, dict):
+        raise RuntimeError(f"Senate: нет {key!r}")
+    try:
+        price = float(block["price"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise RuntimeError(f"Senate: нет price в {key!r}") from e
+    if price <= 0:
+        raise RuntimeError(f"Senate: невалидный price в {key!r}={price}")
+    return price
+
+
+def rub_per_thb_from_prices(data: Dict[str, Any]) -> float:
+    rub_usdt_buy = _price_field(data, "rub_for_usdt_buy")
+    thb_usdt_sell = _price_field(data, "thb_for_usdt_sell")
+    rub_thb = rub_usdt_buy / thb_usdt_sell
+    return add_percent(rub_thb, RUB_ONLINE_THB_NAL_PERCENT)
+
+
+def thb_per_usdt_atm_from_prices(data: Dict[str, Any]) -> float:
+    thb_usdt_sell = _price_field(data, "thb_for_usdt_sell")
+    return add_percent(thb_usdt_sell, USDT_THB_ATM_PERCENT)
 
 
 def rub_per_thb_from_pair(pair: Dict[str, Any]) -> float:
@@ -76,13 +118,9 @@ def find_pair_by_title(data: Dict[str, Any], title: str) -> Dict[str, Any]:
     raise RuntimeError(f"Senate: нет пары {title}")
 
 
-def _find_pair(data: Dict[str, Any]) -> Dict[str, Any]:
-    return find_pair_by_title(data, PAIR_TITLE)
-
-
-def fetch_rates(*, timeout: float = 20.0) -> Dict[str, Any]:
+def fetch_prices(*, timeout: float = 20.0) -> Dict[str, Any]:
     req = urllib.request.Request(
-        RATES_URL,
+        prices_url(),
         headers={"Accept": "application/json", "User-Agent": _UA},
     )
     try:
@@ -94,7 +132,9 @@ def fetch_rates(*, timeout: float = 20.0) -> Dict[str, Any]:
             )
     except urllib.error.HTTPError as e:
         detail = e.read()[:200].decode("utf-8", errors="replace")
-        raise RuntimeError(f"Senate HTTP {e.code}: {detail}") from e
+        if detail.lstrip().startswith("<"):
+            detail = f"{detail[:80].strip()}…"
+        raise RuntimeError(f"Senate prices HTTP {e.code}: {detail}") from e
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
@@ -116,8 +156,7 @@ def summary(ctx: FetchContext) -> Optional[list]:
             f"запрошено {target_thb:g}"
         )
     try:
-        pair = _find_pair(fetch_rates())
-        rate = rub_per_thb_from_pair(pair)
+        rate = rub_per_thb_from_prices(fetch_prices())
     except Exception as e:
         ctx.warnings.append(f"senate: {e}")
         return None
