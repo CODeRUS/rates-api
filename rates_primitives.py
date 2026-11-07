@@ -48,12 +48,12 @@ TTL_PRIM_MORETA = _env_int("RATES_UNIFIED_TTL_PRIM_MORETA", 600)
 
 # Источник -> какие примитивы нужны (порядок не важен)
 PRIMITIVE_KEYS_BY_SOURCE_ID: Dict[str, Tuple[str, ...]] = {
-    "bybit_bitkub": (PRIM_BYBIT_P2P_RUB, PRIM_BITKUB_USDT_THB),
-    "bybit_binanceth": (PRIM_BYBIT_P2P_RUB, PRIM_BINANCE_TH_USDT_BID),
+    "bybit_bitkub": (PRIM_BYBIT_P2P_RUB, PRIM_BITKUB_USDT_THB, PRIM_HTX_P2P_RUB),
+    "bybit_binanceth": (PRIM_BYBIT_P2P_RUB, PRIM_BINANCE_TH_USDT_BID, PRIM_HTX_P2P_RUB),
     "htx_bitkub": (PRIM_HTX_P2P_RUB, PRIM_BITKUB_USDT_THB),
     "htx_binanceth": (PRIM_HTX_P2P_RUB, PRIM_BINANCE_TH_USDT_BID),
-    "bybit_novawallet": (PRIM_BYBIT_P2P_RUB, PRIM_NOVAWALLET_LEDGER),
-    "bybit_moreta": (PRIM_BYBIT_P2P_RUB, PRIM_MORETA_EXCHANGE_RATES),
+    "bybit_novawallet": (PRIM_BYBIT_P2P_RUB, PRIM_NOVAWALLET_LEDGER, PRIM_HTX_P2P_RUB),
+    "bybit_moreta": (PRIM_BYBIT_P2P_RUB, PRIM_MORETA_EXCHANGE_RATES, PRIM_HTX_P2P_RUB),
     "sberbank_qr": (PRIM_SBER_QR_TRANSFER,),
 }
 

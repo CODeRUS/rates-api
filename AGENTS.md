@@ -195,6 +195,11 @@ Run a narrower module while iterating (`python3.9 -m unittest tests.test_rates_s
 
 `python3 rates.py env-status` prints whether expected variables are set, not their values. `python3 rates.py sources` prints registered source ids. `python3 rates.py --readonly` renders a summary from cache only.
 
+## Git and pull requests
+
+- **Never** `git commit`, `git push`, or open/update a pull request unless the user **explicitly** asks (e.g. “commit”, “push”, “open a PR”). Local edits, tests, and container restarts when requested are fine without a commit.
+- When the user does ask to commit: use clear English commit messages; do not commit secrets, sessions, or cache artifacts (see below).
+
 ## Conventions
 
 - User-facing bot and CLI strings are Russian. Identifiers, this file, and commit messages are English.

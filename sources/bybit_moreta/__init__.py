@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 from typing import List, Optional
 
-from rates_primitives import read_bybit_p2p, read_moreta_thb_per_usdt
+from rates_primitives import read_moreta_thb_per_usdt
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
 from ..bybit_bitkub import bybit_p2p_usdt_rub as bp
@@ -66,27 +66,31 @@ def _min_bybit_rub_per_usdt(items: list) -> Optional[float]:
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
+    from rates_p2p_rub_summary import (
+        fetch_summary_p2p_rub_legs_live,
+        min_rub_per_usdt,
+        read_summary_p2p_rub_legs,
+    )
+
     doc = ctx.unified_doc
 
     if doc is not None:
-        c_p, t_p, w_bp = read_bybit_p2p(doc)
-        ctx.warnings.extend(w_bp)
-        opts = [x for x in (c_p, t_p) if x is not None and x > 0]
-        p_min = min(opts) if opts else None
+        legs = read_summary_p2p_rub_legs(doc)
+        ctx.warnings.extend(legs.warnings)
+        p_min, _via_htx = min_rub_per_usdt(legs)
         r_thb, w_mt = read_moreta_thb_per_usdt(doc)
         ctx.warnings.extend(w_mt)
     else:
-        items = bp.fetch_all_online_items(size=20, verification_filter=0)
-        items = bp.filter_by_target_usdt(items, target_usdt=bp.DEFAULT_TARGET_USDT)
-        p_min = _min_bybit_rub_per_usdt(items)
+        legs = fetch_summary_p2p_rub_legs_live()
+        ctx.warnings.extend(legs.warnings)
+        p_min, _via_htx = min_rub_per_usdt(legs)
         r_thb, w_rate = fetch_thb_per_usdt()
         if w_rate:
             ctx.warnings.append(w_rate)
 
     if p_min is None:
         ctx.warnings.append(
-            "Bybit→Moreta: нет объявлений (18 или 14 без 18) с completion≥99 "
-            f"({bp.DEFAULT_TARGET_USDT:g} USDT, minAmount≥{bp.DEFAULT_TARGET_USDT:g}·price)"
+            "P2P RUB/USDT (Bybit/HTX): нет подходящих объявлений под фильтры сводки"
         )
         return None
 

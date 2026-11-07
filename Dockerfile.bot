@@ -9,7 +9,8 @@ RUN apt-get update \
 
 COPY requirements.txt requirements-bot.txt /tmp/
 RUN pip install --no-cache-dir -r /tmp/requirements.txt -r /tmp/requirements-bot.txt \
-    && rm -rf /tmp
+    && rm -rf /tmp/* \
+    && mkdir -p /tmp && chmod 1777 /tmp
 
 COPY . /app
 

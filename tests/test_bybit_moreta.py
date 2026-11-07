@@ -47,10 +47,10 @@ class TestBybitMoretaSummary(unittest.TestCase):
         ctx = self._ctx(doc)
         out = bm.summary(ctx)
         assert out is not None
-        self.assertEqual(len(out), 1)
-        self.assertEqual(out[0].label, bm._LABEL)
-        usdt_20k = 20_000.0 / 32.0 + bm._TRANSFER_FEE_USD
-        self.assertAlmostEqual(out[0].rate, usdt_20k * 88.0 / 20_000.0, places=6)
+        self.assertEqual(len(out), 2)
+        self.assertEqual(out[0].label, f"{bm._LABEL_BUSINESS} (≈ {int(bm._BUSINESS_TARGET_THB)} THB)")
+        usdt_business = bm._BUSINESS_TARGET_THB * (1.0 + bm._BUSINESS_COMMISSION_RATE) / 32.0 + bm._TRANSFER_FEE_USD
+        self.assertAlmostEqual(out[0].rate, usdt_business * 88.0 / bm._BUSINESS_TARGET_THB, places=6)
 
 
 class TestMoretaApiParse(unittest.TestCase):

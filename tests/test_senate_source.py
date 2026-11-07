@@ -1,17 +1,25 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from rates_sources import FetchContext, SourceCategory
 from sources.senate import (
     add_percent,
+    fetch_prices,
+    prices_urls,
     rub_per_thb_from_pair,
     rub_per_thb_from_prices,
+    save_prices_cache,
     summary,
     thb_per_base_from_pair,
     thb_per_usdt_atm_from_prices,
+    validate_prices_payload,
+    LEGACY_PRICES_URL,
 )
 
 
@@ -38,6 +46,44 @@ _PRICES_PAYLOAD = {
 class TestSenateSource(unittest.TestCase):
     def test_add_percent_matches_site_formula(self) -> None:
         self.assertAlmostEqual(add_percent(100.0, 2.5), 102.5)
+
+    def test_validate_prices_payload(self) -> None:
+        validate_prices_payload(_PRICES_PAYLOAD)
+
+    @mock.patch.dict(os.environ, {}, clear=False)
+    def test_prices_urls_legacy_first_without_auth(self) -> None:
+        with mock.patch.dict(
+            os.environ, {"SENATE_AUTHORIZATION": "", "SENATE_PRICES_URL": ""}, clear=False
+        ):
+            self.assertEqual(prices_urls(), [LEGACY_PRICES_URL])
+
+    @mock.patch.dict(
+        os.environ,
+        {"SENATE_AUTHORIZATION": "Bearer x", "SENATE_PRICES_URL": ""},
+        clear=False,
+    )
+    def test_prices_urls_includes_crm_with_auth(self) -> None:
+        urls = prices_urls()
+        self.assertEqual(urls[0], LEGACY_PRICES_URL)
+        self.assertEqual(len(urls), 2)
+
+    @mock.patch("sources.senate._fetch_prices_url", side_effect=RuntimeError("403"))
+    @mock.patch("sources.senate._load_prices_cache", return_value=_PRICES_PAYLOAD)
+    def test_fetch_prices_uses_cache_after_http_failures(
+        self, _cache, _fetch
+    ) -> None:
+        self.assertEqual(fetch_prices(), _PRICES_PAYLOAD)
+
+    def test_save_and_load_cache_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "senate_prices.json"
+            save_prices_cache(_PRICES_PAYLOAD, path=path)
+            with mock.patch("sources.senate._cache_file", return_value=path):
+                with mock.patch("sources.senate._cache_max_age_sec", return_value=86400.0):
+                    from sources import senate as senate_mod
+
+                    loaded = senate_mod._load_prices_cache()
+            self.assertEqual(loaded, _PRICES_PAYLOAD)
 
     def test_rub_per_thb_from_prices(self) -> None:
         base = 92.5 / 32.65

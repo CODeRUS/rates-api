@@ -59,7 +59,7 @@ def command(argv: list[str]) -> int:
 
 
 def _live_prices() -> tuple[Optional[float], Optional[float], float]:
-    """RUB/USDT cash, RUB/USDT перевод, THB/USDT. Тот же отбор, что у summary()."""
+    """RUB/USDT cash, RUB/USDT перевод, THB/USDT (только Bybit; quote CLI)."""
     from . import bitkub_usdt_thb as bk
     from . import bybit_p2p_usdt_rub as bp
 
@@ -78,40 +78,55 @@ def _live_prices() -> tuple[Optional[float], Optional[float], float]:
 
 def _summary_quotes(
     ctx: FetchContext,
-    cash_p: Optional[float],
-    tr_p: Optional[float],
+    legs,
     thb_usdt: Optional[float],
 ) -> Optional[List[SourceQuote]]:
+    from rates_p2p_rub_summary import cash_label, cash_merge_key, transfer_label, transfer_merge_key
+
     if thb_usdt is None or thb_usdt <= 0:
         ctx.warnings.append(WARN_NO_BID)
         return None
     out: List[SourceQuote] = []
+    cash_p = legs.cash_rub_per_usdt
+    tr_p = legs.transfer_rub_per_usdt
     if cash_p is not None and cash_p > 0:
-        out.append(SourceQuote(cash_p / thb_usdt, _LABEL_CASH, merge_key="bybit_cash"))
-    else:
-        ctx.warnings.append(WARN_NO_CASH)
+        out.append(
+            SourceQuote(
+                cash_p / thb_usdt,
+                cash_label(via_htx=legs.cash_via_htx, dest="Bitkub"),
+                merge_key=cash_merge_key(legs.cash_via_htx),
+            )
+        )
     if tr_p is not None and tr_p > 0:
         out.append(
-            SourceQuote(tr_p / thb_usdt, _LABEL_TRANSFER, merge_key="bybit_transfer")
+            SourceQuote(
+                tr_p / thb_usdt,
+                transfer_label(via_htx=legs.transfer_via_htx, dest="Bitkub"),
+                merge_key=transfer_merge_key(legs.transfer_via_htx),
+            )
         )
-    else:
-        ctx.warnings.append(WARN_NO_TRANSFER)
     return out or None
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
-    from rates_primitives import read_bitkub_bid, read_bybit_p2p
+    from rates_p2p_rub_summary import fetch_summary_p2p_rub_legs_live, read_summary_p2p_rub_legs
+    from rates_primitives import read_bitkub_bid
 
     doc = ctx.unified_doc
     if doc is not None:
         thb_usdt, w_bk = read_bitkub_bid(doc)
-        cash_p, tr_p, w_bp = read_bybit_p2p(doc)
+        legs = read_summary_p2p_rub_legs(doc)
         ctx.warnings.extend(w_bk)
-        ctx.warnings.extend(w_bp)
-        return _summary_quotes(ctx, cash_p, tr_p, thb_usdt)
+        ctx.warnings.extend(legs.warnings)
+        return _summary_quotes(ctx, legs, thb_usdt)
 
-    cash_p, tr_p, thb_usdt = _live_prices()
-    return _summary_quotes(ctx, cash_p, tr_p, thb_usdt if thb_usdt > 0 else None)
+    legs = fetch_summary_p2p_rub_legs_live()
+    from . import bitkub_usdt_thb as bk
+
+    tk = bk.fetch_ticker()
+    thb_usdt = float(tk.get("highestBid") or 0)
+    ctx.warnings.extend(legs.warnings)
+    return _summary_quotes(ctx, legs, thb_usdt if thb_usdt > 0 else None)
 
 
 @dataclass(frozen=True)

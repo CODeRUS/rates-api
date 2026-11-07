@@ -55,8 +55,8 @@ class TestBybitNovaWalletSummary(unittest.TestCase):
         out = bn.summary(ctx)
         assert out is not None
         self.assertEqual(len(out), 2)
-        self.assertEqual(out[0].label, bn._LABEL_PLAIN)
-        self.assertEqual(out[1].label, bn._LABEL_CASH_20K)
+        self.assertEqual(out[0].label, "Bybit P2P → NovaWallet")
+        self.assertEqual(out[1].label, "Bybit P2P → NovaWallet cash (20 000 THB)")
         self.assertAlmostEqual(out[0].rate, 88.0 / 32.0, places=6)
         usd_20k = 20_000.0 / 32.0 + 1.5 + 10.0 / 32.0
         self.assertAlmostEqual(out[1].rate, usd_20k * 88.0 / 20_000.0, places=6)
@@ -70,8 +70,14 @@ class TestBybitNovaWalletSummary(unittest.TestCase):
         usd_20k = 20_000.0 / 32.0 + bn._FALLBACK_CASHOUT_USD + 10.0 / 32.0
         self.assertAlmostEqual(out[1].rate, usd_20k * 90.0 / 20_000.0, places=6)
 
-    @mock.patch.object(bn.bp, "fetch_all_online_items", return_value=[])
-    def test_no_bybit_legacy_without_doc(self, _fi) -> None:
+    @mock.patch(
+        "rates_p2p_rub_summary.fetch_summary_p2p_rub_legs_live",
+        return_value=__import__("rates_p2p_rub_summary", fromlist=["SummaryP2pRubLegs"]).SummaryP2pRubLegs(
+            None, None, warnings=("P2P empty",)
+        ),
+    )
+    @mock.patch.object(bn, "fetch_thb_per_usdt", return_value=(32.0, ""))
+    def test_no_p2p_legacy_without_doc(self, _thb, _legs) -> None:
         ctx = self._ctx(None)
         self.assertIsNone(bn.summary(ctx))
         self.assertTrue(ctx.warnings)

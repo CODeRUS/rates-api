@@ -13,7 +13,7 @@ from typing import List, Optional
 
 from rates_sources import FetchContext, SourceCategory, SourceQuote
 
-from rates_primitives import read_bybit_p2p, read_novawallet_bundle
+from rates_primitives import read_novawallet_bundle
 
 from ..bybit_bitkub import bybit_p2p_usdt_rub as bp
 from .novawallet_api import fetch_cashout_fee_usd, fetch_thb_per_usdt
@@ -63,21 +63,28 @@ def _min_bybit_rub_per_usdt(items: list) -> Optional[float]:
 
 
 def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
+    from rates_p2p_rub_summary import (
+        combo_p2p_label,
+        fetch_summary_p2p_rub_legs_live,
+        min_rub_per_usdt,
+        read_summary_p2p_rub_legs,
+    )
+
     doc = ctx.unified_doc
     fee_usd: Optional[float] = None
     w_fee = ""
+    via_htx_min = False
 
     if doc is not None:
-        c_p, t_p, w_bp = read_bybit_p2p(doc)
-        ctx.warnings.extend(w_bp)
-        opts = [x for x in (c_p, t_p) if x is not None and x > 0]
-        p_min = min(opts) if opts else None
+        legs = read_summary_p2p_rub_legs(doc)
+        ctx.warnings.extend(legs.warnings)
+        p_min, via_htx_min = min_rub_per_usdt(legs)
         r_thb, fee_usd, w_nw = read_novawallet_bundle(doc)
         ctx.warnings.extend(w_nw)
     else:
-        items = bp.fetch_all_online_items(size=20, verification_filter=0)
-        items = bp.filter_by_target_usdt(items, target_usdt=bp.DEFAULT_TARGET_USDT)
-        p_min = _min_bybit_rub_per_usdt(items)
+        legs = fetch_summary_p2p_rub_legs_live()
+        ctx.warnings.extend(legs.warnings)
+        p_min, via_htx_min = min_rub_per_usdt(legs)
         r_thb, w_rate = fetch_thb_per_usdt()
         if w_rate:
             ctx.warnings.append(w_rate)
@@ -86,8 +93,7 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
 
     if p_min is None:
         ctx.warnings.append(
-            "Bybit→NovaWallet: нет объявлений (18 или 14 без 18) с completion≥99 "
-            f"({bp.DEFAULT_TARGET_USDT:g} USDT, minAmount≥{bp.DEFAULT_TARGET_USDT:g}·price)"
+            "P2P RUB/USDT (Bybit/HTX): нет подходящих объявлений под фильтры сводки"
         )
         return None
 
@@ -111,11 +117,15 @@ def summary(ctx: FetchContext) -> Optional[List[SourceQuote]]:
     )
     usd_for_target = target_thb / r_thb + f_usd + _EXTRA_THB / r_thb
     rub_cash = (usd_for_target * p_min) / target_thb
-    cash_label = _LABEL_CASH_20K
+    plain_label = combo_p2p_label(via_htx=via_htx_min, suffix="NovaWallet")
+    cash_label = combo_p2p_label(via_htx=via_htx_min, suffix="NovaWallet cash (20 000 THB)")
     if target_thb != _CASH_THB:
-        cash_label = f"Bybit P2P → NovaWallet cash (≈ {int(target_thb)} THB)"
+        cash_label = combo_p2p_label(
+            via_htx=via_htx_min,
+            suffix=f"NovaWallet cash (≈ {int(target_thb)} THB)",
+        )
 
     return [
-        SourceQuote(rub_plain, _LABEL_PLAIN),
+        SourceQuote(rub_plain, plain_label),
         SourceQuote(rub_cash, cash_label),
     ]
