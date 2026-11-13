@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import io
+import json
 import unittest
+from unittest import mock
 
 import usdt_report
 
@@ -123,6 +126,64 @@ class TestUsdtReport(unittest.TestCase):
         self.assertNotIn("Senate", text)
         self.assertIn("32.73 | XAACTA (1000 USDT)", text)
         self.assertIn("32.40 | Exasia (от 10k THB)", text)
+
+    def test_format_includes_truemoney_rows(self):
+        data = {
+            "rub_per_usdt": {
+                "bybit_cash": 90.0,
+                "bybit_transfer": 88.0,
+                "htx_cash": 91.0,
+                "htx_no_cash": 87.0,
+            },
+            "thb_per_usdt": {
+                "truemoney_usdt_thb": 30.0,
+                "truemoney_usdc_thb": 33.0,
+            },
+        }
+        text = usdt_report.format_usdt_report_text(data, [])
+        self.assertIn("30.00 | TrueMoney (USDT → THBT)", text)
+        self.assertIn("33.00 | TrueMoney (USDC → THBT, Bybit ask)", text)
+        self.assertIn("3.00 | Bybit P2P (наличные) → TrueMoney USDT", text)
+        self.assertIn("2.73 | Bybit P2P (наличные) → TrueMoney USDC", text)
+        self.assertIn("2.64 | HTX P2P (перевод) → TrueMoney USDC", text)
+        buf = io.StringIO()
+        usdt_report.print_usdt_report_json(data, [], buf)
+        payload = json.loads(buf.getvalue())
+        by_label = {row["label"]: row["rub_per_thb"] for row in payload["full_paths_rub_per_thb"]}
+        self.assertEqual(by_label["Bybit P2P (перевод) → TrueMoney USDT"], 2.93)
+        self.assertEqual(by_label["HTX P2P (наличные) → TrueMoney USDT"], 3.03)
+
+    @mock.patch(
+        "sources.bybit_truemoney.bybit_usdc_usdt.fetch_ask_payload",
+        return_value={"ask_usdt_per_usdc": "0.9997", "warnings": []},
+    )
+    @mock.patch(
+        "sources.bybit_truemoney.bahtswap_quote.fetch_thbt_quote_payload",
+        return_value={
+            "usdt_amount_out": 33844833,
+            "usdc_amount_out": 33447281,
+            "warnings": [],
+        },
+    )
+    def test_truemoney_branch_converts_usdc_via_ask(self, _quote, _ask):
+        _rub, thb, warnings = usdt_report._usdt_fetch_truemoney_branch()
+        self.assertFalse(warnings)
+        self.assertAlmostEqual(thb["truemoney_usdt_thb"], 33.844833, places=6)
+        self.assertAlmostEqual(thb["truemoney_usdc_thb"], 33.447281 / 0.9997, places=6)
+
+    @mock.patch(
+        "sources.bybit_truemoney.bybit_usdc_usdt.fetch_ask_payload",
+        return_value={"ask_usdt_per_usdc": None, "warnings": ["Bybit USDCUSDT: нет ask1Price"]},
+    )
+    @mock.patch(
+        "sources.bybit_truemoney.bahtswap_quote.fetch_thbt_quote_payload",
+        return_value={"usdt_amount_out": 33844833, "usdc_amount_out": 33447281, "warnings": []},
+    )
+    def test_truemoney_branch_without_ask_drops_usdc(self, _quote, _ask):
+        _rub, thb, warnings = usdt_report._usdt_fetch_truemoney_branch()
+        self.assertAlmostEqual(thb["truemoney_usdt_thb"], 33.844833, places=6)
+        self.assertIsNone(thb["truemoney_usdc_thb"])
+        self.assertEqual(warnings, ["Bybit USDCUSDT: нет ask1Price"])
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Отчёт USDT: P2P RUB/USDT (Bybit, HTX) и котировки USDT/THB (Bitkub, Binance TH).
+"""Отчёт USDT: P2P RUB/USDT (Bybit, HTX) и котировки USDT/THB (Bitkub, Binance TH, TrueMoney).
 
 Кеш по умолчанию отдельный от сводки ``rates.py`` (переменная ``RATES_USDT_CACHE_FILE``).
 TTL задаётся :data:`USDT_CACHE_TTL_SEC`. В боте админ может сбросить кеш USDT: ``/refresh usdt``.
@@ -71,6 +71,7 @@ _USDT_BRANCH_KEYS: Tuple[str, ...] = (
     "htx",
     "bitkub",
     "binance",
+    "truemoney",
     "fly",
     "it_obmen",
     "bereza_usdt",
@@ -234,6 +235,34 @@ def _usdt_fetch_askmoney_branch() -> _UsdtParallelBranch:
         w.append(f"askmoney: невалидный transfer.USD.rate={usd.get('rate')!r}")
         return {}, thb, w
     thb["askmoney_usd_thb"] = rate
+    return {}, thb, w
+
+
+def _usdt_fetch_truemoney_branch() -> _UsdtParallelBranch:
+    """THBT за 1 USDT: прямой quoter и USDC→THBT после ask Bybit USDCUSDT."""
+    from sources.bybit_truemoney.bahtswap_quote import fetch_thbt_quote_payload, thbt_per_token
+    from sources.bybit_truemoney.bybit_usdc_usdt import fetch_ask_payload, parse_ask
+
+    thb: Dict[str, Optional[float]] = {
+        "truemoney_usdt_thb": None,
+        "truemoney_usdc_thb": None,
+    }
+    w: List[str] = []
+    quote = fetch_thbt_quote_payload()
+    w.extend(str(item) for item in (quote.get("warnings") or []) if item)
+    spot = fetch_ask_payload()
+    w.extend(str(item) for item in (spot.get("warnings") or []) if item)
+    usdt_out = quote.get("usdt_amount_out")
+    usdc_out = quote.get("usdc_amount_out")
+    if isinstance(usdt_out, int) and not isinstance(usdt_out, bool) and usdt_out > 0:
+        thb["truemoney_usdt_thb"] = float(thbt_per_token(usdt_out))
+    if isinstance(usdc_out, int) and not isinstance(usdc_out, bool) and usdc_out > 0:
+        ask = parse_ask(spot.get("ask_usdt_per_usdc"))
+        if ask is None:
+            if not any("USDCUSDT" in item for item in w):
+                w.append("Bybit: нет ask USDCUSDT")
+        else:
+            thb["truemoney_usdc_thb"] = float(thbt_per_token(usdc_out) / ask)
     return {}, thb, w
 
 
@@ -532,6 +561,8 @@ def _usdt_parallel_worker(branch: str) -> _UsdtParallelBranch:
         return _usdt_fetch_bitkub_branch()
     if branch == "binance":
         return _usdt_fetch_binance_branch()
+    if branch == "truemoney":
+        return _usdt_fetch_truemoney_branch()
     if branch == "fly":
         return _usdt_fetch_fly_branch()
     if branch == "it_obmen":
@@ -577,6 +608,8 @@ def fetch_usdt_payload(
         "askmoney_usd_thb": None,
         "xaacta_bid": None,
         "exasia_bid": None,
+        "truemoney_usdt_thb": None,
+        "truemoney_usdc_thb": None,
     }
 
     def _work(branch: str) -> _UsdtParallelBranch:
@@ -641,6 +674,8 @@ def _empty_usdt_data() -> Dict[str, Any]:
             "askmoney_usd_thb": None,
             "xaacta_bid": None,
             "exasia_bid": None,
+            "truemoney_usdt_thb": None,
+            "truemoney_usdc_thb": None,
         },
     }
 
@@ -793,6 +828,34 @@ def _pipe_lines(rows: List[Tuple[str, Optional[float]]]) -> List[str]:
     return [f"  {s:>{w}} | {lab}" for s, lab in cells]
 
 
+def _full_path_specs(
+    rub: Dict[str, Any],
+    thb: Dict[str, Any],
+) -> List[Tuple[str, Any, Any]]:
+    bk = thb.get("bitkub_highest_bid")
+    bn = thb.get("binance_bid")
+    tm_usdt = thb.get("truemoney_usdt_thb")
+    tm_usdc = thb.get("truemoney_usdc_thb")
+    return [
+        ("Bybit P2P (наличные) → Bitkub", rub.get("bybit_cash"), bk),
+        ("Bybit P2P (наличные) → Binance TH", rub.get("bybit_cash"), bn),
+        ("Bybit P2P (наличные) → TrueMoney USDT", rub.get("bybit_cash"), tm_usdt),
+        ("Bybit P2P (наличные) → TrueMoney USDC", rub.get("bybit_cash"), tm_usdc),
+        ("Bybit P2P (перевод) → Bitkub", rub.get("bybit_transfer"), bk),
+        ("Bybit P2P (перевод) → Binance TH", rub.get("bybit_transfer"), bn),
+        ("Bybit P2P (перевод) → TrueMoney USDT", rub.get("bybit_transfer"), tm_usdt),
+        ("Bybit P2P (перевод) → TrueMoney USDC", rub.get("bybit_transfer"), tm_usdc),
+        ("HTX P2P (наличные) → Bitkub", rub.get("htx_cash"), bk),
+        ("HTX P2P (наличные) → Binance TH", rub.get("htx_cash"), bn),
+        ("HTX P2P (наличные) → TrueMoney USDT", rub.get("htx_cash"), tm_usdt),
+        ("HTX P2P (наличные) → TrueMoney USDC", rub.get("htx_cash"), tm_usdc),
+        ("HTX P2P (перевод) → Bitkub", rub.get("htx_no_cash"), bk),
+        ("HTX P2P (перевод) → Binance TH", rub.get("htx_no_cash"), bn),
+        ("HTX P2P (перевод) → TrueMoney USDT", rub.get("htx_no_cash"), tm_usdt),
+        ("HTX P2P (перевод) → TrueMoney USDC", rub.get("htx_no_cash"), tm_usdc),
+    ]
+
+
 def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     rub = data.get("rub_per_usdt") or {}
     thb = data.get("thb_per_usdt") or {}
@@ -806,6 +869,8 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     askmoney_usd = thb.get("askmoney_usd_thb")
     xaacta = thb.get("xaacta_bid")
     exasia = thb.get("exasia_bid")
+    tm_usdt = thb.get("truemoney_usdt_thb")
+    tm_usdc = thb.get("truemoney_usdc_thb")
 
     rub_rows: List[Tuple[str, Optional[float]]] = [
         ("Bybit (наличные)", float(rub["bybit_cash"]) if isinstance(rub.get("bybit_cash"), (int, float)) else None),
@@ -838,6 +903,14 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
         ),
         ("XAACTA (1000 USDT)", float(xaacta) if isinstance(xaacta, (int, float)) and xaacta and xaacta > 0 else None),
         ("Exasia (от 10k THB)", float(exasia) if isinstance(exasia, (int, float)) and exasia and exasia > 0 else None),
+        (
+            "TrueMoney (USDT → THBT)",
+            float(tm_usdt) if isinstance(tm_usdt, (int, float)) and tm_usdt and tm_usdt > 0 else None,
+        ),
+        (
+            "TrueMoney (USDC → THBT, Bybit ask)",
+            float(tm_usdc) if isinstance(tm_usdc, (int, float)) and tm_usdc and tm_usdc > 0 else None,
+        ),
     ]
 
     lines: List[str] = [
@@ -852,16 +925,7 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
         "Полные пути: RUB за 1 THB (P2P × площадка TH)",
     ]
 
-    paths = [
-        ("Bybit P2P (наличные) → Bitkub", rub.get("bybit_cash"), bk),
-        ("Bybit P2P (наличные) → Binance TH", rub.get("bybit_cash"), bn),
-        ("Bybit P2P (перевод) → Bitkub", rub.get("bybit_transfer"), bk),
-        ("Bybit P2P (перевод) → Binance TH", rub.get("bybit_transfer"), bn),
-        ("HTX P2P (наличные) → Bitkub", rub.get("htx_cash"), bk),
-        ("HTX P2P (наличные) → Binance TH", rub.get("htx_cash"), bn),
-        ("HTX P2P (перевод) → Bitkub", rub.get("htx_no_cash"), bk),
-        ("HTX P2P (перевод) → Binance TH", rub.get("htx_no_cash"), bn),
-    ]
+    paths = _full_path_specs(rub, thb)
     path_rows: List[Tuple[str, Optional[float]]] = []
     for label, rpu, tpu in paths:
         rpv = float(rpu) if isinstance(rpu, (int, float)) else None
@@ -888,20 +952,7 @@ def print_usdt_report_json(data: Dict[str, Any], warnings: List[str], file: Text
     }
     rub = data.get("rub_per_usdt") or {}
     thb = data.get("thb_per_usdt") or {}
-    bk = thb.get("bitkub_highest_bid")
-    bn = thb.get("binance_bid")
-    fly = thb.get("fly_bid")
-    it_obmen = thb.get("it_obmen_bid")
-    paths = [
-        ("Bybit P2P (наличные) → Bitkub", rub.get("bybit_cash"), bk),
-        ("Bybit P2P (наличные) → Binance TH", rub.get("bybit_cash"), bn),
-        ("Bybit P2P (перевод) → Bitkub", rub.get("bybit_transfer"), bk),
-        ("Bybit P2P (перевод) → Binance TH", rub.get("bybit_transfer"), bn),
-        ("HTX P2P (наличные) → Bitkub", rub.get("htx_cash"), bk),
-        ("HTX P2P (наличные) → Binance TH", rub.get("htx_cash"), bn),
-        ("HTX P2P (перевод) → Bitkub", rub.get("htx_no_cash"), bk),
-        ("HTX P2P (перевод) → Binance TH", rub.get("htx_no_cash"), bn),
-    ]
+    paths = _full_path_specs(rub, thb)
     full_paths: List[Dict[str, Any]] = []
     for label, rpu, tpu in paths:
         rc = rpu if isinstance(rpu, (int, float)) else None
@@ -922,7 +973,7 @@ def print_usdt_report_json(data: Dict[str, Any], warnings: List[str], file: Text
 
 def usdt_subcommand_help() -> str:
     return (
-        "usdt — отчёт P2P RUB/USDT и USDT/THB (Bitkub, Binance TH); "
+        "usdt — отчёт P2P RUB/USDT и USDT/THB (Bitkub, Binance TH, TrueMoney THBT); "
         "кеш в RATES_USDT_CACHE_FILE или .rates_usdt_cache.json (TTL 1 мин); "
         "опции: --refresh, --json, --cache-file <путь>.\n"
         "  Параллельные блоки API: RATES_PARALLEL_MAX_WORKERS."
