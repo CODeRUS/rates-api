@@ -563,12 +563,85 @@ class CDPSession:
 
 # Raw-инпут виджета не получает name и data-testid: оба остаются на React-пропсах.
 # Видимый узел — input внутри transfer_amount_debit-field.
+# Поле «Сумма отправления» (RUB). Соседнее credit-поле — сумма получения в THB.
 _AMOUNT_INPUT_QUERY_JS = """
   const inp = document.querySelector('[data-testid="transfer_amount_debit-field"] input')
     || document.querySelector('[data-testid="transfer_amount_debit-field_input"]')
-    || document.querySelector('[data-testid="transfer_widget_debit-amount-field_input"]')
-    || document.querySelector('input[name="amount"]');
+    || document.querySelector('[data-testid="transfer_widget_debit-amount-field_input"]');
 """
+
+
+def _commissions_hold_js(amount: str) -> str:
+    """Не выпускать автоматический commissions, пока не введена наша сумма.
+
+    Виджет на загрузке страны сам вызывает расчёт на 1000 RUB. Ответ 423
+    открывает баннер, хотя поле ещё не трогали. Чужой amount остаётся висеть
+    на XHR, пока страница не отменит его следующим вводом.
+    """
+    digits = "".join(ch for ch in str(amount) if ch.isdigit()) or "0"
+    return """
+(() => {
+  if (window.__mtHoldInstalled) return;
+  window.__mtHoldInstalled = true;
+  window.__mtHeld = 0;
+  window.__mtAmount = %s;
+  function commissionAmount(body) {
+    try {
+      const data = typeof body === 'string' ? JSON.parse(body) : null;
+      const money = data && data.money;
+      if (!money) return null;
+      const accepted = money.acceptedMoney && money.acceptedMoney.amount;
+      const withdraw = money.withdrawMoney && money.withdrawMoney.amount;
+      if (accepted != null && accepted !== '') return Number(accepted);
+      if (withdraw != null && withdraw !== '') return Number(withdraw);
+    } catch (e) {}
+    return null;
+  }
+  function allowed(body) {
+    const want = Number(window.__mtAmount);
+    return !!want && commissionAmount(body) === want;
+  }
+  function isCommissions(method, url) {
+    const u = String(url || '');
+    return String(method || '').toUpperCase() === 'POST'
+      && u.indexOf('multitransfer-fee-calc') !== -1
+      && u.indexOf('commissions') !== -1;
+  }
+  const origOpen = XMLHttpRequest.prototype.open;
+  const origSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    this.__mtMethod = method;
+    this.__mtUrl = url;
+    return origOpen.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function(body) {
+    if (isCommissions(this.__mtMethod, this.__mtUrl) && !allowed(body)) {
+      window.__mtHeld += 1;
+      return;
+    }
+    return origSend.apply(this, arguments);
+  };
+  const origFetch = window.fetch;
+  if (typeof origFetch === 'function') {
+    window.fetch = function(input, init) {
+      const url = typeof input === 'string' ? input : (input && input.url) || '';
+      const method = ((init && init.method) || (typeof input !== 'string' && input && input.method) || 'GET');
+      const body = init && init.body;
+      if (isCommissions(method, url) && !allowed(typeof body === 'string' ? body : '')) {
+        window.__mtHeld += 1;
+        const signal = (init && init.signal) || (typeof input !== 'string' && input && input.signal);
+        return new Promise((resolve, reject) => {
+          const abort = () => reject(new DOMException('Aborted', 'AbortError'));
+          if (!signal) return;
+          if (signal.aborted) abort();
+          else signal.addEventListener('abort', abort);
+        });
+      }
+      return origFetch.apply(this, arguments);
+    };
+  }
+})();
+""" % digits
 
 _FIELD_RECT_JS = (
     "(() => {\n"
@@ -652,9 +725,9 @@ def _key_down_up(
         cdp.call("Input.dispatchKeyEvent", params, timeout_sec=10.0)
 
 
-# Комиссии уходят из addToQueue(amount, "RUB", currency).
-# onChange с debounce пропускает запрос, если значение уже записано в форму,
-# а blur сбрасывает очередь.
+# onChange дебетового поля сам ставит сумму в форму и ставит commissions в очередь.
+# Прямой addToQueue этого не делает и бьёт в API мимо значения в поле.
+# blur сбрасывает очередь, поэтому поле не снимаем с фокуса.
 _AMOUNT_ONCHANGE_JS = (
     """
 ((digits) => {
@@ -665,17 +738,9 @@ _AMOUNT_ONCHANGE_JS = (
   inp.focus();
   const fiberKey = Object.keys(inp).find((k) => k.indexOf('__reactFiber') === 0);
   let fiber = fiberKey ? inp[fiberKey] : null;
-  let queue = null;
   let handler = null;
   while (fiber) {
     const props = fiber.memoizedProps || null;
-    if (props && !queue && typeof props.addToQueue === 'function') queue = props.addToQueue;
-    const ctx = props && props.value;
-    if (
-      props && !queue && ctx
-      && typeof ctx.addToQueue === 'function'
-      && typeof ctx.chooseCommission === 'function'
-    ) queue = ctx.addToQueue;
     if (props && !handler && typeof props.onChange === 'function') {
       const testid = props['data-testid'];
       if (
@@ -685,15 +750,9 @@ _AMOUNT_ONCHANGE_JS = (
     }
     fiber = fiber.return;
   }
-  if (queue) {
-    queue(Number(digits), 'RUB', 'THB');
-    return {ok: true, via: 'addToQueue', value: inp.value || '', digits: String(digits)};
-  }
-  if (handler) {
-    handler(String(digits));
-    return {ok: true, via: 'onChange', value: inp.value || '', digits: String(digits)};
-  }
-  return {ok: false, reason: 'no addToQueue', value: inp.value || ''};
+  if (!handler) return {ok: false, reason: 'no debit onChange', value: inp.value || ''};
+  handler(String(digits));
+  return {ok: true, via: 'onChange', value: inp.value || '', digits: String(digits)};
 })
 """
 )
@@ -742,8 +801,40 @@ def _type_digit(cdp: "CDPSession", ch: str) -> None:
     )
 
 
+def _wait_to_enter_amount(cdp: "CDPSession", amount: str, timeout_sec: float) -> None:
+    """Дождаться поля отправления и сессии FACCT, не вводя сумму раньше."""
+    digits = "".join(ch for ch in str(amount) if ch.isdigit())
+    if not digits:
+        raise RuntimeError(f"Invalid amount: {amount!r}")
+    try:
+        _wait_amount_field_center(cdp, timeout_sec=min(20.0, timeout_sec))
+    except RuntimeError:
+        pass
+    try:
+        _eval_value(cdp, "window.__mtAmount = %d; true" % int(digits), timeout_sec=5.0)
+    except Exception:
+        pass
+    deadline = time.monotonic() + min(8.0, max(1.0, timeout_sec))
+    while time.monotonic() < deadline:
+        try:
+            state = _eval_value(
+                cdp,
+                "({held: window.__mtHeld || 0, gib: !!window.gibSessionId,"
+                " fl: (performance.getEntriesByType('resource')||[]).some(function(e){"
+                " return e.name.indexOf('/flsafety') !== -1 && e.responseEnd > 0; })})",
+                timeout_sec=3.0,
+            )
+        except Exception:
+            state = None
+        held = isinstance(state, dict) and state.get("held")
+        ready = isinstance(state, dict) and (state.get("gib") or state.get("fl"))
+        if held and ready:
+            return
+        cdp.recv_event(timeout_sec=0.2)
+
+
 def _enter_amount(cdp: "CDPSession", amount: str, timeout_sec: float) -> Dict[str, Any]:
-    """Фокус на поле суммы и React onChange, без blur: иначе виджет отменяет commissions."""
+    """Ввод в «Сумма отправления» через onChange этого поля, без blur."""
     try:
         cdp.call("Page.bringToFront", timeout_sec=5.0)
     except Exception:
@@ -809,18 +900,17 @@ def run(
         if tab is None:
             print("opening tab %s" % target_url, file=sys.stderr)
             try:
-                tab = _create_new_tab(debug_url, target_url)
+                # URL вешаем после скрипта, который держит ранний commissions.
+                tab = _create_new_tab(debug_url, "about:blank")
             except urllib.error.HTTPError as exc:
                 raise RuntimeError(
                     "No page tabs in Chromium and cannot create one via /json/new "
                     f"(HTTP {exc.code}). Open any page in the browser or pass --start-browser."
                 ) from exc
             action = "open"
-            navigate = False
         else:
             print("tab already open: %s" % (tab.get("url") or target_url), file=sys.stderr)
             action = "use-existing"
-            navigate = False
 
         ws_url = tab.get("webSocketDebuggerUrl")
         if not ws_url:
@@ -848,23 +938,17 @@ def run(
         cdp.call("Network.enable", timeout_sec=timeout_sec)
         cdp.call("Page.enable", timeout_sec=timeout_sec)
         cdp.call("Runtime.enable", timeout_sec=timeout_sec)
-
-        if navigate:
-            if action == "open":
-                pass  # /json/new already opened target_url
-            else:
-                cdp.call("Page.navigate", {"url": target_url}, timeout_sec=timeout_sec)
-            # Wait for transfer form; flsafety must finish before commissions fires.
-            try:
-                _wait_amount_field_center(cdp, timeout_sec=min(25.0, timeout_sec * 0.6))
-            except RuntimeError:
-                pass
-            settle_until = time.monotonic() + 3.0
-            while time.monotonic() < settle_until:
-                cdp.recv_event(timeout_sec=0.2)
-            page_ready_at = time.monotonic()
-        else:
-            page_ready_at = time.monotonic() + 1.0
+        cdp.call(
+            "Page.addScriptToEvaluateOnNewDocument",
+            {"source": _commissions_hold_js(amount)},
+            timeout_sec=timeout_sec,
+        )
+        print("opening %s" % target_url, file=sys.stderr)
+        cdp.call("Page.navigate", {"url": target_url}, timeout_sec=timeout_sec)
+        action = "open"
+        print("waiting for the transfer form before entering the amount", file=sys.stderr)
+        _wait_to_enter_amount(cdp, amount, timeout_sec)
+        page_ready_at = time.monotonic()
 
         deadline = time.monotonic() + timeout_sec
         settle_sec = max(0.0, settle_ms / 1000.0)
@@ -920,13 +1004,7 @@ def run(
                 cdp.call("Page.enable", timeout_sec=timeout_sec)
                 cdp.call("Runtime.enable", timeout_sec=timeout_sec)
                 cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=min(20.0, timeout_sec))
-            try:
-                _wait_amount_field_center(cdp, timeout_sec=min(25.0, timeout_sec))
-            except RuntimeError:
-                pass
-            settle_until = time.monotonic() + 3.0
-            while time.monotonic() < settle_until:
-                cdp.recv_event(timeout_sec=0.2)
+            _wait_to_enter_amount(cdp, amount, timeout_sec)
             action = "reload"
             page_ready_at = time.monotonic()
             deadline = time.monotonic() + timeout_sec
@@ -962,7 +1040,7 @@ def run(
         def _build_out(rid: str, merged: Dict[str, Any]) -> Dict[str, Any]:
             return {
                 "action": action,
-                "page_url": tab.get("url"),
+                "page_url": target_url,
                 "commissions_url": commissions_url_by_id.get(rid, ""),
                 "amount": amount,
                 "fhprequestid": merged.get("fhprequestid"),
@@ -989,6 +1067,26 @@ def run(
                 pending_emit_out = None
                 return None
             print(json.dumps(pending_emit_out, ensure_ascii=False, indent=2))
+            try:
+                snap = _eval_value(
+                    cdp,
+                    "({debit: (document.querySelector('[data-testid=\"transfer_amount_debit-field\"] input')||{}).value || '',"
+                    " held: window.__mtHeld || 0, installed: !!window.__mtHoldInstalled, amount: window.__mtAmount || 0,"
+                    " text: (document.body && document.body.innerText || '').indexOf('Не удалось') !== -1})",
+                    timeout_sec=5.0,
+                )
+                print(
+                    "debit=%s held=%s installed=%s mtAmount=%s error_banner=%s" % (
+                        (snap or {}).get("debit"),
+                        (snap or {}).get("held"),
+                        (snap or {}).get("installed"),
+                        (snap or {}).get("amount"),
+                        (snap or {}).get("text"),
+                    ),
+                    file=sys.stderr,
+                )
+            except Exception as exc:
+                print("form snapshot failed: %s" % exc, file=sys.stderr)
             if save_headers_file is not None:
                 _save_headers(save_headers_file, pending_emit_out)
             if keep_open:
@@ -1011,6 +1109,16 @@ def run(
 
             method = event.get("method")
             params = event.get("params", {})
+
+            if method == "Network.responseReceived":
+                resp = params.get("response") or {}
+                url = resp.get("url") or ""
+                if _is_commissions_request(url) and str(resp.get("status") or "") not in ("", "0"):
+                    # OPTIONS preflight is also this URL and is always 200.
+                    mime = str((resp.get("headers") or {}).get("content-type") or (resp.get("mimeType") or ""))
+                    if "json" in mime.lower() or str(resp.get("status")) not in ("200", "204"):
+                        print("commissions HTTP %s" % resp.get("status"), file=sys.stderr)
+                return
 
             if method == "Network.requestWillBeSentExtraInfo":
                 req_id_raw = params.get("requestId")

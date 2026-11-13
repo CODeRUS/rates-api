@@ -183,8 +183,9 @@ class TestChromiumStartCmd(unittest.TestCase):
     def test_amount_onchange_keeps_focus(self) -> None:
         text = _SRC.read_text(encoding="utf-8")
         self.assertIn('data-testid="transfer_amount_debit-field"] input', text)
-        self.assertIn("chooseCommission", text)
-        self.assertIn("addToQueue", text)
+        self.assertIn("transfer_amount_debit-field_input", text)
+        self.assertIn("__mtAmount", text)
+        self.assertNotIn("queue(Number(digits), 'RUB', 'THB')", text)
         self.assertNotIn("FocusEvent('blur'", text)
         self.assertIn("functionality did not fire, reloading tab", text)
         self.assertIn("Page.reload", text)
