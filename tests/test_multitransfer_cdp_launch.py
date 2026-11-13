@@ -73,13 +73,9 @@ class TestChromiumStartCmd(unittest.TestCase):
         self.assertIn("--hide-profile-picker-on-startup", cmd)
         self.assertIn("--disable-features=ProfilePickerOnStartup", cmd)
         self.assertIn("--profile-directory=Default", cmd)
-        self.assertTrue(
-            any(
-                a.startswith("--user-data-dir=")
-                and a.endswith("/snap/chromium/common/chromium-multitransfer")
-                for a in cmd
-            )
-        )
+        self.assertIn("--user-data-dir=%s" % ns["DEFAULT_USER_DATA_DIR"], cmd)
+        self.assertTrue(str(ns["DEFAULT_USER_DATA_DIR"]).endswith("/snap/chromium/common/chromium"))
+        self.assertFalse(str(ns["DEFAULT_USER_DATA_DIR"]).endswith("chromium-multitransfer"))
         self.assertIn("--remote-debugging-port=9222", cmd)
         self.assertEqual(cmd[-1], "https://multitransfer.ru/transfer/thailand")
 
@@ -180,15 +176,37 @@ class TestChromiumStartCmd(unittest.TestCase):
         )
         self.assertEqual(ns["debug_url_from_cmdline"](raw), "http://127.0.0.1:9222")
 
-    def test_amount_onchange_keeps_focus(self) -> None:
+    def test_plain_start_matches_manual_snap_launch(self) -> None:
+        ns = _load_launch_helpers()
+        cmd = ns["_chromium_start_cmd"](
+            chromium_binary="/snap/bin/chromium",
+            debug_url="http://127.0.0.1:9222",
+            start_url=ns["TARGET_URL"],
+            user_data_dir=ns["DEFAULT_USER_DATA_DIR"],
+            profile_directory="Default",
+            plain=True,
+        )
+        self.assertEqual(
+            cmd,
+            [
+                "/snap/bin/chromium",
+                "--window-position=0,0",
+                "--window-size=1920,1080",
+                "--remote-debugging-port=9222",
+                "https://multitransfer.ru/transfer/thailand",
+            ],
+        )
+
+    def test_amount_is_typed_into_debit_field(self) -> None:
         text = _SRC.read_text(encoding="utf-8")
         self.assertIn('data-testid="transfer_amount_debit-field"] input', text)
-        self.assertIn("transfer_amount_debit-field_input", text)
-        self.assertIn("__mtAmount", text)
+        self.assertIn('"via": "keyboard"', text)
+        self.assertNotIn("Page.addScriptToEvaluateOnNewDocument", text)
         self.assertNotIn("queue(Number(digits), 'RUB', 'THB')", text)
         self.assertNotIn("FocusEvent('blur'", text)
         self.assertIn("functionality did not fire, reloading tab", text)
         self.assertIn("Page.reload", text)
+        self.assertIn("_INPUT_DELAY_SEC = 20.0", text)
 
 
 if __name__ == "__main__":

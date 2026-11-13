@@ -36,11 +36,10 @@ except Exception as exc:  # pragma: no cover
 
 
 TARGET_URL = "https://multitransfer.ru/transfer/thailand"
-# Отдельный порт: пользовательский snap Chromium часто уже слушает 9222.
-DEFAULT_DEBUG_URL = "http://127.0.0.1:9224"
+# Ручной запуск слушает 9222 и пишет профиль в SNAP_USER_COMMON/chromium.
+DEFAULT_DEBUG_URL = "http://127.0.0.1:9222"
 DEFAULT_HEADERS_FILE = Path(__file__).resolve().parents[1] / ".rates_cache" / "multitransfer_headers.json"
-# Отдельный профиль внутри snap data: snap не пишет SingletonLock в ~/.config.
-DEFAULT_USER_DATA_DIR = Path.home() / "snap" / "chromium" / "common" / "chromium-multitransfer"
+DEFAULT_USER_DATA_DIR = Path.home() / "snap" / "chromium" / "common" / "chromium"
 DEFAULT_PROFILE_DIRECTORY = "Default"
 SNAP_CHROMIUM = "/snap/bin/chromium"
 
@@ -65,6 +64,7 @@ def _chromium_start_cmd(
     user_data_dir: Path,
     profile_directory: str,
     proxy_server: Optional[str] = None,
+    plain: bool = False,
 ) -> list[str]:
     """
     Запуск с явным профилем, без guest и без окна выбора профилей.
@@ -72,8 +72,25 @@ def _chromium_start_cmd(
     ``--profile-directory`` + URL на командной строке и
     ``--hide-profile-picker-on-startup`` отключают Profile Picker.
     ``--guest`` не используем: он открывает Guest Profile, а не cookies Default.
+
+    ``plain=True`` повторяет ручной snap-запуск: без ``--user-data-dir`` и без
+    флагов профиля. Wrapper сам добавляет password-store, gtk-version и
+    TFLiteLanguageDetectionEnabled. Отдельный ``--user-data-dir`` даёт другой
+    профиль, и commissions отвечает 423.
     """
     port = _debug_port_from_url(debug_url)
+    if plain:
+        cmd = [
+            chromium_binary,
+            "--window-position=0,0",
+            "--window-size=1920,1080",
+            f"--remote-debugging-port={port}",
+        ]
+        if proxy_server:
+            cmd.append("--proxy-server=%s" % proxy_server)
+        if start_url:
+            cmd.append(start_url)
+        return cmd
     cmd = [
         chromium_binary,
         f"--user-data-dir={str(user_data_dir)}",
@@ -321,10 +338,12 @@ def _start_chromium_browser(
     user_data_dir: Path,
     profile_directory: str,
     proxy_server: Optional[str] = None,
+    plain: bool = False,
 ) -> subprocess.Popen:
     env = os.environ.copy()
     env["DISPLAY"] = display
-    _prefer_named_profile(user_data_dir, profile_directory)
+    if not plain:
+        _prefer_named_profile(user_data_dir, profile_directory)
     _clear_stale_chromium_singleton(user_data_dir)
     cmd = _chromium_start_cmd(
         chromium_binary=chromium_binary,
@@ -333,6 +352,7 @@ def _start_chromium_browser(
         user_data_dir=user_data_dir,
         profile_directory=profile_directory,
         proxy_server=proxy_server,
+        plain=plain,
     )
     return subprocess.Popen(
         cmd,
@@ -571,78 +591,6 @@ _AMOUNT_INPUT_QUERY_JS = """
 """
 
 
-def _commissions_hold_js(amount: str) -> str:
-    """Не выпускать автоматический commissions, пока не введена наша сумма.
-
-    Виджет на загрузке страны сам вызывает расчёт на 1000 RUB. Ответ 423
-    открывает баннер, хотя поле ещё не трогали. Чужой amount остаётся висеть
-    на XHR, пока страница не отменит его следующим вводом.
-    """
-    digits = "".join(ch for ch in str(amount) if ch.isdigit()) or "0"
-    return """
-(() => {
-  if (window.__mtHoldInstalled) return;
-  window.__mtHoldInstalled = true;
-  window.__mtHeld = 0;
-  window.__mtAmount = %s;
-  function commissionAmount(body) {
-    try {
-      const data = typeof body === 'string' ? JSON.parse(body) : null;
-      const money = data && data.money;
-      if (!money) return null;
-      const accepted = money.acceptedMoney && money.acceptedMoney.amount;
-      const withdraw = money.withdrawMoney && money.withdrawMoney.amount;
-      if (accepted != null && accepted !== '') return Number(accepted);
-      if (withdraw != null && withdraw !== '') return Number(withdraw);
-    } catch (e) {}
-    return null;
-  }
-  function allowed(body) {
-    const want = Number(window.__mtAmount);
-    return !!want && commissionAmount(body) === want;
-  }
-  function isCommissions(method, url) {
-    const u = String(url || '');
-    return String(method || '').toUpperCase() === 'POST'
-      && u.indexOf('multitransfer-fee-calc') !== -1
-      && u.indexOf('commissions') !== -1;
-  }
-  const origOpen = XMLHttpRequest.prototype.open;
-  const origSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open = function(method, url) {
-    this.__mtMethod = method;
-    this.__mtUrl = url;
-    return origOpen.apply(this, arguments);
-  };
-  XMLHttpRequest.prototype.send = function(body) {
-    if (isCommissions(this.__mtMethod, this.__mtUrl) && !allowed(body)) {
-      window.__mtHeld += 1;
-      return;
-    }
-    return origSend.apply(this, arguments);
-  };
-  const origFetch = window.fetch;
-  if (typeof origFetch === 'function') {
-    window.fetch = function(input, init) {
-      const url = typeof input === 'string' ? input : (input && input.url) || '';
-      const method = ((init && init.method) || (typeof input !== 'string' && input && input.method) || 'GET');
-      const body = init && init.body;
-      if (isCommissions(method, url) && !allowed(typeof body === 'string' ? body : '')) {
-        window.__mtHeld += 1;
-        const signal = (init && init.signal) || (typeof input !== 'string' && input && input.signal);
-        return new Promise((resolve, reject) => {
-          const abort = () => reject(new DOMException('Aborted', 'AbortError'));
-          if (!signal) return;
-          if (signal.aborted) abort();
-          else signal.addEventListener('abort', abort);
-        });
-      }
-      return origFetch.apply(this, arguments);
-    };
-  }
-})();
-""" % digits
-
 _FIELD_RECT_JS = (
     "(() => {\n"
     + _AMOUNT_INPUT_QUERY_JS
@@ -725,57 +673,6 @@ def _key_down_up(
         cdp.call("Input.dispatchKeyEvent", params, timeout_sec=10.0)
 
 
-# onChange дебетового поля сам ставит сумму в форму и ставит commissions в очередь.
-# Прямой addToQueue этого не делает и бьёт в API мимо значения в поле.
-# blur сбрасывает очередь, поэтому поле не снимаем с фокуса.
-_AMOUNT_ONCHANGE_JS = (
-    """
-((digits) => {
-"""
-    + _AMOUNT_INPUT_QUERY_JS
-    + """
-  if (!inp) return {ok: false, reason: 'no amount input'};
-  inp.focus();
-  const fiberKey = Object.keys(inp).find((k) => k.indexOf('__reactFiber') === 0);
-  let fiber = fiberKey ? inp[fiberKey] : null;
-  let handler = null;
-  while (fiber) {
-    const props = fiber.memoizedProps || null;
-    if (props && !handler && typeof props.onChange === 'function') {
-      const testid = props['data-testid'];
-      if (
-        testid === 'transfer_amount_debit-field_input'
-        || testid === 'transfer_widget_debit-amount-field_input'
-      ) handler = props.onChange;
-    }
-    fiber = fiber.return;
-  }
-  if (!handler) return {ok: false, reason: 'no debit onChange', value: inp.value || ''};
-  handler(String(digits));
-  return {ok: true, via: 'onChange', value: inp.value || '', digits: String(digits)};
-})
-"""
-)
-
-
-def _amount_onchange_js(digits: str) -> str:
-    return _AMOUNT_ONCHANGE_JS.strip() + f"({json.dumps(digits)})"
-
-
-def _trigger_amount_onchange(cdp: "CDPSession", digits: str, timeout_sec: float) -> Dict[str, Any]:
-    result = cdp.call(
-        "Runtime.evaluate",
-        {"expression": _amount_onchange_js(digits), "returnByValue": True},
-        timeout_sec=timeout_sec,
-    )
-    if result.get("exceptionDetails"):
-        raise RuntimeError(f"CDP evaluate failed: {result['exceptionDetails']}")
-    value = result.get("result", {}).get("value")
-    if not isinstance(value, dict):
-        raise RuntimeError("Failed to trigger amount onChange")
-    return value
-
-
 def _type_digit(cdp: "CDPSession", ch: str) -> None:
     vk = ord(ch)
     cdp.call(
@@ -801,40 +698,12 @@ def _type_digit(cdp: "CDPSession", ch: str) -> None:
     )
 
 
-def _wait_to_enter_amount(cdp: "CDPSession", amount: str, timeout_sec: float) -> None:
-    """Дождаться поля отправления и сессии FACCT, не вводя сумму раньше."""
-    digits = "".join(ch for ch in str(amount) if ch.isdigit())
-    if not digits:
-        raise RuntimeError(f"Invalid amount: {amount!r}")
-    try:
-        _wait_amount_field_center(cdp, timeout_sec=min(20.0, timeout_sec))
-    except RuntimeError:
-        pass
-    try:
-        _eval_value(cdp, "window.__mtAmount = %d; true" % int(digits), timeout_sec=5.0)
-    except Exception:
-        pass
-    deadline = time.monotonic() + min(8.0, max(1.0, timeout_sec))
-    while time.monotonic() < deadline:
-        try:
-            state = _eval_value(
-                cdp,
-                "({held: window.__mtHeld || 0, gib: !!window.gibSessionId,"
-                " fl: (performance.getEntriesByType('resource')||[]).some(function(e){"
-                " return e.name.indexOf('/flsafety') !== -1 && e.responseEnd > 0; })})",
-                timeout_sec=3.0,
-            )
-        except Exception:
-            state = None
-        held = isinstance(state, dict) and state.get("held")
-        ready = isinstance(state, dict) and (state.get("gib") or state.get("fl"))
-        if held and ready:
-            return
-        cdp.recv_event(timeout_sec=0.2)
+# Страница сама шлёт commissions на старте. Ввод раньше этого ответа даёт 423.
+_INPUT_DELAY_SEC = 20.0
 
 
 def _enter_amount(cdp: "CDPSession", amount: str, timeout_sec: float) -> Dict[str, Any]:
-    """Ввод в «Сумма отправления» через onChange этого поля, без blur."""
+    """Клик в «Сумма отправления» и набор цифр клавиатурой. onChange мимо поля даёт 423."""
     try:
         cdp.call("Page.bringToFront", timeout_sec=5.0)
     except Exception:
@@ -850,7 +719,6 @@ def _enter_amount(cdp: "CDPSession", amount: str, timeout_sec: float) -> Dict[st
     if not isinstance(state, dict):
         raise RuntimeError("Amount field not found after click")
     if not state.get("active"):
-        # Second click if MUI did not focus on first click.
         _mouse_click(cdp, x, y, click_count=1)
         time.sleep(0.2)
 
@@ -858,22 +726,14 @@ def _enter_amount(cdp: "CDPSession", amount: str, timeout_sec: float) -> Dict[st
     if not digits:
         raise RuntimeError(f"Invalid --amount: {amount!r}")
 
-    deadline = time.monotonic() + min(8.0, timeout_sec)
-    last: Dict[str, Any] = {}
-    while time.monotonic() < deadline:
-        last = _trigger_amount_onchange(cdp, digits, timeout_sec=10.0)
-        if last.get("ok"):
-            return {"ok": True, "value": last.get("value"), "digits": digits, "via": last.get("via")}
-        time.sleep(0.25)
-
     _key_down_up(cdp, key="a", code="KeyA", vk=65, modifiers=2)
     time.sleep(0.05)
     _key_down_up(cdp, key="Backspace", code="Backspace", vk=8)
-    time.sleep(0.1)
+    time.sleep(0.15)
     for ch in digits:
         _type_digit(cdp, ch)
-        time.sleep(0.07)
-    return {"ok": True, "value": digits, "digits": digits, "fallback": "keyboard"}
+        time.sleep(0.12)
+    return {"ok": True, "value": digits, "digits": digits, "via": "keyboard"}
 
 
 def run(
@@ -938,17 +798,19 @@ def run(
         cdp.call("Network.enable", timeout_sec=timeout_sec)
         cdp.call("Page.enable", timeout_sec=timeout_sec)
         cdp.call("Runtime.enable", timeout_sec=timeout_sec)
-        cdp.call(
-            "Page.addScriptToEvaluateOnNewDocument",
-            {"source": _commissions_hold_js(amount)},
-            timeout_sec=timeout_sec,
+        current_url = tab.get("url") or ""
+        if _url_contains(current_url, target_url):
+            print("tab already open: %s" % current_url, file=sys.stderr)
+            action = "use-existing"
+        else:
+            print("opening %s" % target_url, file=sys.stderr)
+            cdp.call("Page.navigate", {"url": target_url}, timeout_sec=timeout_sec)
+            action = "open"
+        print(
+            "waiting %ss for page requests before entering the amount" % int(_INPUT_DELAY_SEC),
+            file=sys.stderr,
         )
-        print("opening %s" % target_url, file=sys.stderr)
-        cdp.call("Page.navigate", {"url": target_url}, timeout_sec=timeout_sec)
-        action = "open"
-        print("waiting for the transfer form before entering the amount", file=sys.stderr)
-        _wait_to_enter_amount(cdp, amount, timeout_sec)
-        page_ready_at = time.monotonic()
+        page_ready_at = time.monotonic() + _INPUT_DELAY_SEC
 
         deadline = time.monotonic() + timeout_sec
         settle_sec = max(0.0, settle_ms / 1000.0)
@@ -1004,9 +866,8 @@ def run(
                 cdp.call("Page.enable", timeout_sec=timeout_sec)
                 cdp.call("Runtime.enable", timeout_sec=timeout_sec)
                 cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=min(20.0, timeout_sec))
-            _wait_to_enter_amount(cdp, amount, timeout_sec)
             action = "reload"
-            page_ready_at = time.monotonic()
+            page_ready_at = time.monotonic() + _INPUT_DELAY_SEC
             deadline = time.monotonic() + timeout_sec
             return True
 
@@ -1402,16 +1263,18 @@ def main() -> int:
                 debug_url = existing
                 print("browser already running: %s exe %s" % (debug_url, exe), file=sys.stderr)
             else:
-                # Без URL в командной строке: не открывать вкладку до проверки сессии.
+                profile_directory = (args.profile_directory or DEFAULT_PROFILE_DIRECTORY).strip() or DEFAULT_PROFILE_DIRECTORY
+                # Профиль по умолчанию — тот же, что у ручного /snap/bin/chromium, без --user-data-dir.
+                plain = user_data == DEFAULT_USER_DATA_DIR and profile_directory == DEFAULT_PROFILE_DIRECTORY
                 print("starting %s" % args.chromium_binary, file=sys.stderr)
                 browser_proc = _start_chromium_browser(
                     chromium_binary=args.chromium_binary,
                     display=args.display,
                     debug_url=debug_url,
-                    start_url="",
+                    start_url=args.start_url if plain else "",
                     user_data_dir=user_data,
-                    profile_directory=(args.profile_directory or DEFAULT_PROFILE_DIRECTORY).strip()
-                    or DEFAULT_PROFILE_DIRECTORY,
+                    profile_directory=profile_directory,
+                    plain=plain,
                 )
                 try:
                     _wait_cdp_ready(debug_url, timeout_sec=args.browser_ready_timeout)
