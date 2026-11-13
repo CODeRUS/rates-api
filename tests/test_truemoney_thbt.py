@@ -7,7 +7,6 @@ from typing import Optional
 from unittest import mock
 
 import rates_unified_cache as ucc
-from rates_p2p_rub_summary import SummaryP2pRubLegs
 from rates_primitives import (
     PRIM_BYBIT_P2P_RUB,
     PRIM_BYBIT_USDC_USDT,
@@ -220,21 +219,13 @@ class TestBybitTrueMoneySummary(unittest.TestCase):
         self.assertEqual(
             set(by_label),
             {
-                "Bybit P2P (cash) → TrueMoney USDT",
                 "Bybit P2P (перевод) → TrueMoney USDT",
-                "Bybit P2P (cash) → TrueMoney USDC",
                 "Bybit P2P (перевод) → TrueMoney USDC",
             },
         )
-        self.assertAlmostEqual(by_label["Bybit P2P (cash) → TrueMoney USDT"].rate, float(Decimal(90) / thbt_usdt), places=8)
         self.assertAlmostEqual(
             by_label["Bybit P2P (перевод) → TrueMoney USDT"].rate,
             float(Decimal(88) / thbt_usdt),
-            places=8,
-        )
-        self.assertAlmostEqual(
-            by_label["Bybit P2P (cash) → TrueMoney USDC"].rate,
-            float(Decimal(90) * ask / thbt_usdc),
             places=8,
         )
         self.assertAlmostEqual(
@@ -260,17 +251,14 @@ class TestBybitTrueMoneySummary(unittest.TestCase):
         assert out is not None
         self.assertEqual(
             [q.label for q in out],
-            [
-                "Bybit P2P (cash) → TrueMoney USDT",
-                "Bybit P2P (перевод) → TrueMoney USDT",
-            ],
+            ["Bybit P2P (перевод) → TrueMoney USDT"],
         )
         self.assertEqual(ctx.warnings, ["TrueMoney THBT: пустой ответ USDC→THBT"])
 
     def test_missing_ask_drops_usdc_rows(self) -> None:
         doc = _doc(
             cash=90.0,
-            transfer=None,
+            transfer=88.0,
             usdt_out=_USDT_OUT,
             usdc_out=_USDC_OUT,
             ask=None,
@@ -279,37 +267,37 @@ class TestBybitTrueMoneySummary(unittest.TestCase):
         ctx = _ctx(doc)
         out = tm.summary(ctx)
         assert out is not None
-        self.assertEqual([q.label for q in out], ["Bybit P2P (cash) → TrueMoney USDT"])
+        self.assertEqual([q.label for q in out], ["Bybit P2P (перевод) → TrueMoney USDT"])
         self.assertEqual(ctx.warnings, ["Bybit USDCUSDT: нет ask1Price"])
 
-    def test_htx_cash_fallback_label(self) -> None:
+    def test_cash_and_htx_are_not_shown(self) -> None:
         doc = _doc(
-            cash=None,
-            transfer=88.0,
+            cash=90.0,
+            transfer=None,
             usdt_out=_USDT_OUT,
             usdc_out=_USDC_OUT,
             ask=_ASK,
             htx_cash=91.0,
+            htx_transfer=80.0,
         )
         ctx = _ctx(doc)
-        out = tm.summary(ctx)
-        assert out is not None
-        labels = {q.label for q in out}
-        self.assertIn("HTX P2P (наличные) → TrueMoney USDT", labels)
-        self.assertIn("HTX P2P (наличные) → TrueMoney USDC", labels)
-        self.assertIn("Bybit P2P (перевод) → TrueMoney USDT", labels)
-        self.assertNotIn("Bybit P2P (cash) → TrueMoney USDT", labels)
+        self.assertIsNone(tm.summary(ctx))
 
     def test_direct_formula_helper(self) -> None:
-        legs = SummaryP2pRubLegs(cash_rub_per_usdt=90.0, transfer_rub_per_usdt=None)
-        out = tm.quotes_from_legs(
-            legs,
+        out = tm.quotes_from_transfer(
+            88.0,
             usdt_amount_out=_USDT_OUT,
             usdc_amount_out=_USDC_OUT,
             ask_usdt_per_usdc=_ASK,
         )
         assert out is not None
-        self.assertEqual(len(out), 2)
+        self.assertEqual(
+            [q.label for q in out],
+            [
+                "Bybit P2P (перевод) → TrueMoney USDT",
+                "Bybit P2P (перевод) → TrueMoney USDC",
+            ],
+        )
 
 
 if __name__ == "__main__":

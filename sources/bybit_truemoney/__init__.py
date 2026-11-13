@@ -11,13 +11,7 @@ from decimal import Decimal
 from typing import Optional
 
 from rates_categories import SourceCategory
-from rates_p2p_rub_summary import (
-    SummaryP2pRubLegs,
-    cash_label,
-    fetch_summary_p2p_rub_legs_live,
-    read_summary_p2p_rub_legs,
-    transfer_label,
-)
+from rates_p2p_rub_summary import transfer_label
 
 from .bahtswap_quote import fetch_thbt_quote_payload, thbt_per_token
 from .bybit_usdc_usdt import fetch_ask_payload, parse_ask
@@ -33,7 +27,8 @@ _DEST_USDC = "TrueMoney USDC"
 
 def help_text() -> str:
     return (
-        "Bybit P2P USDT/RUB + TrueMoney THBT (Baht Swap, Base).\n"
+        "Bybit P2P перевод USDT/RUB + TrueMoney THBT (Baht Swap, Base).\n"
+        "Наличные и HTX в сводку не входят.\n"
         "  USDT→THBT — quoter Uniswap v4.\n"
         "  USDC→THBT — сначала ask Bybit USDCUSDT, затем quoter.\n"
         "Котировки сводки: rates.py bybit_truemoney summary"
@@ -51,12 +46,10 @@ def _pos_int(value: object) -> Optional[int]:
     return value if value > 0 else None
 
 
-def _append_leg(
+def _append_transfer(
     out: list,
     *,
     rub: float,
-    via_htx: bool,
-    kind: str,
     thbt_usdt: Optional[Decimal],
     thbt_usdc: Optional[Decimal],
     ask: Optional[Decimal],
@@ -64,52 +57,81 @@ def _append_leg(
     from rates_sources import SourceQuote
 
     rub_d = Decimal(str(rub))
-    label_for = cash_label if kind == "cash" else transfer_label
     if thbt_usdt is not None and thbt_usdt > 0:
-        out.append(SourceQuote(float(rub_d / thbt_usdt), label_for(via_htx=via_htx, dest=_DEST_USDT)))
+        out.append(
+            SourceQuote(
+                float(rub_d / thbt_usdt),
+                transfer_label(via_htx=False, dest=_DEST_USDT),
+            )
+        )
     if thbt_usdc is not None and thbt_usdc > 0 and ask is not None and ask > 0:
         out.append(
             SourceQuote(
                 float(rub_d * ask / thbt_usdc),
-                label_for(via_htx=via_htx, dest=_DEST_USDC),
+                transfer_label(via_htx=False, dest=_DEST_USDC),
             )
         )
 
 
-def quotes_from_legs(
-    legs: SummaryP2pRubLegs,
+def quotes_from_transfer(
+    transfer_rub: Optional[float],
     *,
     usdt_amount_out: object,
     usdc_amount_out: object,
     ask_usdt_per_usdc: object,
 ) -> Optional[list]:
+    if transfer_rub is None or transfer_rub <= 0:
+        return None
     usdt_raw = _pos_int(usdt_amount_out)
     usdc_raw = _pos_int(usdc_amount_out)
     thbt_usdt = thbt_per_token(usdt_raw) if usdt_raw is not None else None
     thbt_usdc = thbt_per_token(usdc_raw) if usdc_raw is not None else None
-    ask = parse_ask(ask_usdt_per_usdc)
     out: list = []
-    if legs.cash_rub_per_usdt is not None and legs.cash_rub_per_usdt > 0:
-        _append_leg(
-            out,
-            rub=float(legs.cash_rub_per_usdt),
-            via_htx=legs.cash_via_htx,
-            kind="cash",
-            thbt_usdt=thbt_usdt,
-            thbt_usdc=thbt_usdc,
-            ask=ask,
-        )
-    if legs.transfer_rub_per_usdt is not None and legs.transfer_rub_per_usdt > 0:
-        _append_leg(
-            out,
-            rub=float(legs.transfer_rub_per_usdt),
-            via_htx=legs.transfer_via_htx,
-            kind="transfer",
-            thbt_usdt=thbt_usdt,
-            thbt_usdc=thbt_usdc,
-            ask=ask,
-        )
+    _append_transfer(
+        out,
+        rub=float(transfer_rub),
+        thbt_usdt=thbt_usdt,
+        thbt_usdc=thbt_usdc,
+        ask=parse_ask(ask_usdt_per_usdc),
+    )
     return out or None
+
+
+def _transfer_warnings(warnings: list) -> list:
+    return [w for w in warnings if "Cash Deposit" not in w]
+
+
+def _read_bybit_transfer(doc) -> tuple:
+    from rates_primitives import read_bybit_p2p
+
+    _cash, transfer, warnings = read_bybit_p2p(doc)
+    return transfer, _transfer_warnings(warnings)
+
+
+def _fetch_bybit_transfer() -> tuple:
+    from sources.bybit_bitkub import bybit_p2p_usdt_rub as bp
+
+    try:
+        _cash, transfer = bp.fetch_best_cash_and_bank_transfer_items(
+            size=20,
+            verification_filter=0,
+            target_usdt=bp.DEFAULT_TARGET_USDT,
+            min_completion=99.0,
+        )
+    except RuntimeError as exc:
+        return None, [f"Bybit P2P: {exc}"]
+    if not transfer:
+        return None, [
+            "Bybit: нет объявлений только перевод (14, без 18) с completion≥99 "
+            f"({bp.DEFAULT_TARGET_USDT:g} USDT, minAmount≥{bp.DEFAULT_TARGET_USDT:g}·price)"
+        ]
+    try:
+        price = float(transfer["price"])
+    except (TypeError, ValueError, KeyError):
+        return None, ["Bybit P2P: нет цены перевода"]
+    if price <= 0:
+        return None, ["Bybit P2P: нет цены перевода"]
+    return price, []
 
 
 def _warn_if_silent(ctx, *, needle: str, text: str) -> None:
@@ -125,18 +147,18 @@ def summary(ctx) -> Optional[list]:
 
         usdt_out, usdc_out, w_tm = read_truemoney_thbt(doc)
         ask, w_ask = read_bybit_usdc_usdt_ask(doc)
-        legs = read_summary_p2p_rub_legs(doc)
+        transfer_rub, w_p2p = _read_bybit_transfer(doc)
         ctx.warnings.extend(w_tm)
         ctx.warnings.extend(w_ask)
-        ctx.warnings.extend(legs.warnings)
+        ctx.warnings.extend(w_p2p)
         ask_raw: object = ask
     else:
         tm = fetch_thbt_quote_payload()
         spot = fetch_ask_payload()
-        legs = fetch_summary_p2p_rub_legs_live()
+        transfer_rub, w_p2p = _fetch_bybit_transfer()
         ctx.warnings.extend(list(tm.get("warnings") or []))
         ctx.warnings.extend(list(spot.get("warnings") or []))
-        ctx.warnings.extend(legs.warnings)
+        ctx.warnings.extend(w_p2p)
         usdt_out = tm.get("usdt_amount_out")
         usdc_out = tm.get("usdc_amount_out")
         ask_raw = spot.get("ask_usdt_per_usdc")
@@ -148,8 +170,8 @@ def summary(ctx) -> Optional[list]:
     elif parse_ask(ask_raw) is None:
         _warn_if_silent(ctx, needle="USDCUSDT", text="Bybit: нет ask USDCUSDT")
 
-    return quotes_from_legs(
-        legs,
+    return quotes_from_transfer(
+        transfer_rub,
         usdt_amount_out=usdt_out,
         usdc_amount_out=usdc_out,
         ask_usdt_per_usdc=ask_raw,
