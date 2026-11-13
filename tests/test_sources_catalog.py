@@ -44,7 +44,6 @@ class TestSourcesCatalog(unittest.TestCase):
             text,
         )
         self.assertIn("• XAACTA\nhttps://t.me/XAACTAExchange", text)
-        self.assertIn("• Moreta\nhttps://moretapay.com/", text)
         self.assertIn("• Обувь-Сити\nhttps://vernadka-kassa.ru/", text)
         self.assertIn(
             "• TrueMoney\n"

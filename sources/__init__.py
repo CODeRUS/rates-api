@@ -9,7 +9,7 @@ PLUGIN_ORDER = (
     "rshb_unionpay",
     "bybit_bitkub",
     "bybit_novawallet",
-    "bybit_moreta",
+    # bybit_moreta временно исключён из сводки; CLI rates.py bybit_moreta доступен.
     "bybit_truemoney",
     # korona временно исключён из сводки/refresh (API 400/таймауты); CLI rates.py korona доступен.
     "avosend",

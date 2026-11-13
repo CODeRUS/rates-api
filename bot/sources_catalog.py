@@ -31,7 +31,6 @@ _ENTRIES: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
     ("transfer", "Forex", ("https://www.xe.com/",)),
     ("transfer", "HTX", ("https://www.htx.com/",)),
     ("transfer", "KwikPay", ("https://kwikpay.ru/",)),
-    ("transfer", "Moreta", ("https://moretapay.com/",)),
     ("transfer", "NovaWallet", ("https://novawallet.org/",)),
     ("transfer", "Payscan", ("https://payscan.ru/",)),
     ("transfer", "Unired", ("https://t.me/uniredmobile",)),
