@@ -49,6 +49,8 @@ class TestUsdtReport(unittest.TestCase):
         }
         warnings = ["test warning"]
         text = usdt_report.format_usdt_report_text(data, warnings)
+        self.assertIn("35.00 | Bitkub (продажа USDT → THB)", text)
+        self.assertNotIn("покупка USDT", text)
         self.assertIn("100.00 | Bybit (наличные)", text)
         self.assertIn("34.90 | Binance TH (bid)", text)
         self.assertIn("31.33 | Bereza Exchange (Telegram)", text)
@@ -88,6 +90,18 @@ class TestUsdtReport(unittest.TestCase):
         )
         self.assertEqual(usdt_report._parse_exasia_usdt_from_text(sample), 32.40)
 
+    def test_format_includes_novawallet_rows(self):
+        data = {
+            "rub_per_usdt": {},
+            "thb_per_usdt": {
+                "novawallet_thb": 31.5,
+                "novawallet_cash_thb": 31.2,
+            },
+        }
+        text = usdt_report.format_usdt_report_text(data, [])
+        self.assertIn("31.50 | NovaWallet", text)
+        self.assertIn("31.20 | NovaWallet cash (20 000 THB)", text)
+
     def test_format_includes_exchanger_usdt_rows(self):
         data = {
             "rub_per_usdt": {},
@@ -98,7 +112,7 @@ class TestUsdtReport(unittest.TestCase):
             },
         }
         text = usdt_report.format_usdt_report_text(data, [])
-        self.assertIn("32.67 | Senate", text)
+        self.assertNotIn("Senate", text)
         self.assertIn("32.73 | XAACTA (1000 USDT)", text)
         self.assertIn("32.40 | Exasia (от 10k THB)", text)
 

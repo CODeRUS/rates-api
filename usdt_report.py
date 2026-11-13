@@ -74,6 +74,7 @@ _USDT_BRANCH_KEYS: Tuple[str, ...] = (
     "fly",
     "it_obmen",
     "bereza_usdt",
+    "novawallet",
     # senate временно исключён (нет публичного exchange_prices); CLI/плагин sources.senate остаётся.
     "xaacta",
     "exasia",
@@ -163,7 +164,48 @@ def _usdt_fetch_bitkub_branch() -> _UsdtParallelBranch:
     if b > 0:
         thb["bitkub_highest_bid"] = b
     else:
-        w.append("Bitkub: нет highestBid для USDT")
+        w.append("Bitkub: нет курса продажи USDT")
+    return {}, thb, w
+
+
+_NOVAWALLET_CASH_THB = 20_000.0
+_NOVAWALLET_EXTRA_THB = 10.0
+_NOVAWALLET_FALLBACK_CASHOUT_USD = 1.5
+
+
+def _usdt_fetch_novawallet_branch() -> _UsdtParallelBranch:
+    """THB/USDT: курс ledger и эффективный курс снятия ~20 000 THB (как в сводке NovaWallet cash)."""
+    from sources.bybit_novawallet.novawallet_api import fetch_cashout_fee_usd, fetch_thb_per_usdt
+
+    thb: Dict[str, Optional[float]] = {
+        "novawallet_thb": None,
+        "novawallet_cash_thb": None,
+    }
+    w: List[str] = []
+    r_thb, w_rate = fetch_thb_per_usdt()
+    if w_rate:
+        w.append(w_rate)
+    if r_thb is None or r_thb <= 0:
+        return {}, thb, w
+
+    thb["novawallet_thb"] = float(r_thb)
+    fee_usd, w_fee = fetch_cashout_fee_usd()
+    if fee_usd is None or fee_usd < 0:
+        w.append(
+            (w_fee or "NovaWallet ledger: нет cashout")
+            + f" — для cash взят fallback {_NOVAWALLET_FALLBACK_CASHOUT_USD:g} USD"
+        )
+        fee_usd = _NOVAWALLET_FALLBACK_CASHOUT_USD
+
+    usd_for_target = (
+        _NOVAWALLET_CASH_THB / r_thb
+        + float(fee_usd)
+        + _NOVAWALLET_EXTRA_THB / r_thb
+    )
+    if usd_for_target > 0:
+        thb["novawallet_cash_thb"] = _NOVAWALLET_CASH_THB / usd_for_target
+    else:
+        w.append("NovaWallet cash: невалидный расчёт USDT на 20 000 THB")
     return {}, thb, w
 
 
@@ -468,6 +510,8 @@ def _usdt_parallel_worker(branch: str) -> _UsdtParallelBranch:
         return _usdt_fetch_it_obmen_branch()
     if branch == "bereza_usdt":
         return _usdt_fetch_bereza_usdt_branch()
+    if branch == "novawallet":
+        return _usdt_fetch_novawallet_branch()
     if branch == "senate":
         return _usdt_fetch_senate_branch()
     if branch == "xaacta":
@@ -498,7 +542,8 @@ def fetch_usdt_payload(
         "fly_bid": None,
         "it_obmen_bid": None,
         "bereza_bid": None,
-        "senate_bid": None,
+        "novawallet_thb": None,
+        "novawallet_cash_thb": None,
         "xaacta_bid": None,
         "exasia_bid": None,
     }
@@ -560,7 +605,8 @@ def _empty_usdt_data() -> Dict[str, Any]:
             "fly_bid": None,
             "it_obmen_bid": None,
             "bereza_bid": None,
-            "senate_bid": None,
+            "novawallet_thb": None,
+            "novawallet_cash_thb": None,
             "xaacta_bid": None,
             "exasia_bid": None,
         },
@@ -723,7 +769,8 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     fly = thb.get("fly_bid")
     it_obmen = thb.get("it_obmen_bid")
     bereza = thb.get("bereza_bid")
-    senate = thb.get("senate_bid")
+    nw = thb.get("novawallet_thb")
+    nw_cash = thb.get("novawallet_cash_thb")
     xaacta = thb.get("xaacta_bid")
     exasia = thb.get("exasia_bid")
 
@@ -734,12 +781,22 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
         ("HTX (перевод)", float(rub["htx_no_cash"]) if isinstance(rub.get("htx_no_cash"), (int, float)) else None),
     ]
     thb_rows: List[Tuple[str, Optional[float]]] = [
-        ("Bitkub (highestBid)", float(bk) if isinstance(bk, (int, float)) and bk and bk > 0 else None),
+        (
+            "Bitkub (продажа USDT → THB)",
+            float(bk) if isinstance(bk, (int, float)) and bk and bk > 0 else None,
+        ),
         ("Binance TH (bid)", float(bn) if isinstance(bn, (int, float)) and bn and bn > 0 else None),
         ("Fly Currency (минимальная сумма)", float(fly) if isinstance(fly, (int, float)) and fly and fly > 0 else None),
         ("IT Обмен (до 1000 USDT)", float(it_obmen) if isinstance(it_obmen, (int, float)) and it_obmen and it_obmen > 0 else None),
         ("Bereza Exchange (Telegram)", float(bereza) if isinstance(bereza, (int, float)) and bereza and bereza > 0 else None),
-        ("Senate", float(senate) if isinstance(senate, (int, float)) and senate and senate > 0 else None),
+        (
+            "NovaWallet",
+            float(nw) if isinstance(nw, (int, float)) and nw and nw > 0 else None,
+        ),
+        (
+            "NovaWallet cash (20 000 THB)",
+            float(nw_cash) if isinstance(nw_cash, (int, float)) and nw_cash and nw_cash > 0 else None,
+        ),
         ("XAACTA (1000 USDT)", float(xaacta) if isinstance(xaacta, (int, float)) and xaacta and xaacta > 0 else None),
         ("Exasia (от 10k THB)", float(exasia) if isinstance(exasia, (int, float)) and exasia and exasia > 0 else None),
     ]
