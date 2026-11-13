@@ -20,6 +20,14 @@ _ENTRIES: Tuple[Tuple[str, str, Tuple[str, ...]], ...] = (
     ("transfer", "Binance TH", ("https://www.binance.th/en/trade/USDT_THB",)),
     ("transfer", "Bitkub", ("https://www.bitkub.com/en/market/USDT_THB",)),
     ("transfer", "Bybit", ("https://www.bybit.com/fiat/trade/otc/",)),
+    (
+        "transfer",
+        "TrueMoney",
+        (
+            "https://www.truemoney.com/thai-baht-truemoney/",
+            "https://bahtswap.finance/main-page",
+        ),
+    ),
     ("transfer", "Forex", ("https://www.xe.com/",)),
     ("transfer", "HTX", ("https://www.htx.com/",)),
     ("transfer", "KwikPay", ("https://kwikpay.ru/",)),

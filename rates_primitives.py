@@ -23,6 +23,8 @@ PRIM_BITKUB_USDT_THB = "prim:bitkub:usdt_thb_highest_bid:v1"
 PRIM_BINANCE_TH_USDT_BID = "prim:binance_th:usdt_thb_bid:v1"
 PRIM_NOVAWALLET_LEDGER = "prim:novawallet:ledger_bundle:v1"
 PRIM_MORETA_EXCHANGE_RATES = "prim:moreta:exchange_rates:v1"
+PRIM_TRUEMONEY_THBT = "prim:truemoney:thbt_quote:v1"
+PRIM_BYBIT_USDC_USDT = "prim:bybit:spot_usdcusdt:v1"
 # Курс Сбер QR (cron → unified prim); без HTTP в ensure_primitives.
 PRIM_SBER_QR_TRANSFER = "prim:sber_qr_transfer"
 
@@ -31,6 +33,8 @@ TTL_PRIM_BYBIT = ucc.TTL_L1_RATE_SOURCE_BYBIT_SEC
 TTL_PRIM_HTX = ucc.TTL_L1_RATE_SOURCE_BYBIT_SEC
 TTL_PRIM_BITKUB = ucc.TTL_L1_RATE_SOURCE_BYBIT_SEC
 TTL_PRIM_BINANCE_TH = ucc.TTL_L1_RATE_SOURCE_BYBIT_SEC
+TTL_PRIM_TRUEMONEY = ucc.TTL_L1_RATE_SOURCE_BYBIT_SEC
+TTL_PRIM_BYBIT_USDC_USDT = ucc.TTL_L1_RATE_SOURCE_BYBIT_SEC
 
 
 def _env_int(name: str, default: int) -> int:
@@ -54,6 +58,12 @@ PRIMITIVE_KEYS_BY_SOURCE_ID: Dict[str, Tuple[str, ...]] = {
     "htx_binanceth": (PRIM_HTX_P2P_RUB, PRIM_BINANCE_TH_USDT_BID),
     "bybit_novawallet": (PRIM_BYBIT_P2P_RUB, PRIM_NOVAWALLET_LEDGER, PRIM_HTX_P2P_RUB),
     "bybit_moreta": (PRIM_BYBIT_P2P_RUB, PRIM_MORETA_EXCHANGE_RATES, PRIM_HTX_P2P_RUB),
+    "bybit_truemoney": (
+        PRIM_BYBIT_P2P_RUB,
+        PRIM_HTX_P2P_RUB,
+        PRIM_TRUEMONEY_THBT,
+        PRIM_BYBIT_USDC_USDT,
+    ),
     "sberbank_qr": (PRIM_SBER_QR_TRANSFER,),
 }
 
@@ -176,6 +186,28 @@ def _fetch_moreta_payload() -> Dict[str, Any]:
     return {"thb_per_usdt": r_thb, "warnings": w}
 
 
+def _fetch_truemoney_payload() -> Dict[str, Any]:
+    from sources.bybit_truemoney.bahtswap_quote import fetch_thbt_quote_payload
+
+    try:
+        return fetch_thbt_quote_payload()
+    except Exception as exc:
+        return {
+            "usdt_amount_out": None,
+            "usdc_amount_out": None,
+            "warnings": [f"TrueMoney THBT: {exc}"],
+        }
+
+
+def _fetch_bybit_usdc_usdt_payload() -> Dict[str, Any]:
+    from sources.bybit_truemoney.bybit_usdc_usdt import fetch_ask_payload
+
+    try:
+        return fetch_ask_payload()
+    except Exception as exc:
+        return {"ask_usdt_per_usdc": None, "warnings": [f"Bybit USDCUSDT: {exc}"]}
+
+
 _FETCHERS: Dict[str, Callable[[], Dict[str, Any]]] = {
     PRIM_BYBIT_P2P_RUB: _fetch_bybit_p2p_payload,
     PRIM_HTX_P2P_RUB: _fetch_htx_p2p_payload,
@@ -183,6 +215,8 @@ _FETCHERS: Dict[str, Callable[[], Dict[str, Any]]] = {
     PRIM_BINANCE_TH_USDT_BID: _fetch_binance_th_payload,
     PRIM_NOVAWALLET_LEDGER: _fetch_novawallet_payload,
     PRIM_MORETA_EXCHANGE_RATES: _fetch_moreta_payload,
+    PRIM_TRUEMONEY_THBT: _fetch_truemoney_payload,
+    PRIM_BYBIT_USDC_USDT: _fetch_bybit_usdc_usdt_payload,
 }
 
 _TTL_FOR_KEY: Dict[str, int] = {
@@ -192,6 +226,8 @@ _TTL_FOR_KEY: Dict[str, int] = {
     PRIM_BINANCE_TH_USDT_BID: TTL_PRIM_BINANCE_TH,
     PRIM_NOVAWALLET_LEDGER: TTL_PRIM_NOVAWALLET,
     PRIM_MORETA_EXCHANGE_RATES: TTL_PRIM_MORETA,
+    PRIM_TRUEMONEY_THBT: TTL_PRIM_TRUEMONEY,
+    PRIM_BYBIT_USDC_USDT: TTL_PRIM_BYBIT_USDC_USDT,
 }
 
 
@@ -369,6 +405,46 @@ def read_novawallet_bundle(
     r_f = float(r) if isinstance(r, (int, float)) and float(r) > 0 else None
     f_f = float(f) if isinstance(f, (int, float)) and f is not None and float(f) >= 0 else None
     return r_f, f_f, list(p.get("warnings") or [])
+
+
+def _pos_amount_out(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if value > 0 else None
+
+
+def read_truemoney_thbt(
+    doc: Optional[Dict[str, Any]],
+) -> Tuple[Optional[int], Optional[int], List[str]]:
+    """(raw amountOut USDT→THBT, raw amountOut USDC→THBT, warnings)."""
+    if not doc:
+        return None, None, []
+    hit = ucc.prim_get_valid(doc, PRIM_TRUEMONEY_THBT)
+    if hit is None:
+        return None, None, []
+    payload = hit[1]
+    if not isinstance(payload, dict):
+        return None, None, []
+    return (
+        _pos_amount_out(payload.get("usdt_amount_out")),
+        _pos_amount_out(payload.get("usdc_amount_out")),
+        list(payload.get("warnings") or []),
+    )
+
+
+def read_bybit_usdc_usdt_ask(
+    doc: Optional[Dict[str, Any]],
+) -> Tuple[Optional[Any], List[str]]:
+    """(ask USDT за 1 USDC как строка/число из примитива, warnings)."""
+    if not doc:
+        return None, []
+    hit = ucc.prim_get_valid(doc, PRIM_BYBIT_USDC_USDT)
+    if hit is None:
+        return None, []
+    payload = hit[1]
+    if not isinstance(payload, dict):
+        return None, []
+    return payload.get("ask_usdt_per_usdc"), list(payload.get("warnings") or [])
 
 
 def combined_bybit_min_rub_per_usdt(doc: Optional[Dict[str, Any]]) -> Optional[float]:

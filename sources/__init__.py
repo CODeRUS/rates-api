@@ -10,6 +10,7 @@ PLUGIN_ORDER = (
     "bybit_bitkub",
     "bybit_novawallet",
     "bybit_moreta",
+    "bybit_truemoney",
     # korona временно исключён из сводки/refresh (API 400/таймауты); CLI rates.py korona доступен.
     "avosend",
     "multitransfer",
@@ -43,6 +44,7 @@ def _mods() -> Dict[str, object]:
         from . import bybit_bitkub
         from . import bybit_moreta
         from . import bybit_novawallet
+        from . import bybit_truemoney
         from . import ex24
         from . import forex
         from . import htx_binanceth
@@ -71,6 +73,7 @@ def _mods() -> Dict[str, object]:
                 "bybit_bitkub": bybit_bitkub,
                 "bybit_novawallet": bybit_novawallet,
                 "bybit_moreta": bybit_moreta,
+                "bybit_truemoney": bybit_truemoney,
                 "htx_bitkub": htx_bitkub,
                 "bybit_binanceth": bybit_binanceth,
                 "htx_binanceth": htx_binanceth,

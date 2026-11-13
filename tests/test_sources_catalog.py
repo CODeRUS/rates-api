@@ -46,6 +46,12 @@ class TestSourcesCatalog(unittest.TestCase):
         self.assertIn("• XAACTA\nhttps://t.me/XAACTAExchange", text)
         self.assertIn("• Moreta\nhttps://moretapay.com/", text)
         self.assertIn("• Обувь-Сити\nhttps://vernadka-kassa.ru/", text)
+        self.assertIn(
+            "• TrueMoney\n"
+            "https://www.truemoney.com/thai-baht-truemoney/\n"
+            "https://bahtswap.finance/main-page",
+            text,
+        )
         self.assertLess(len(text), 4096)
 
 

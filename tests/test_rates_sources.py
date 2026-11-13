@@ -41,6 +41,7 @@ class TestRatesSources(unittest.TestCase):
                 "bybit_bitkub",
                 "bybit_novawallet",
                 "bybit_moreta",
+                "bybit_truemoney",
                 "avosend",
                 "multitransfer",
                 "avosend_bkb",

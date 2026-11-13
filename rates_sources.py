@@ -330,6 +330,8 @@ def _warn_source(src: RateSource, err: Exception, bucket: List[str]) -> None:
         bucket.append(f"Bybit/NovaWallet: {err}")
     elif src.id == "bybit_moreta":
         bucket.append(f"Bybit/Moreta: {err}")
+    elif src.id == "bybit_truemoney":
+        bucket.append(f"Bybit/TrueMoney: {err}")
     elif src.id == "ex24":
         bucket.append(f"ex24: {err}")
     elif src.id == "kwikpay":
