@@ -60,6 +60,7 @@ PRIMITIVE_KEYS_BY_SOURCE_ID: Dict[str, Tuple[str, ...]] = {
     "bybit_moreta": (PRIM_BYBIT_P2P_RUB, PRIM_MORETA_EXCHANGE_RATES, PRIM_HTX_P2P_RUB),
     "bybit_truemoney": (
         PRIM_BYBIT_P2P_RUB,
+        PRIM_HTX_P2P_RUB,
         PRIM_TRUEMONEY_THBT,
         PRIM_BYBIT_USDC_USDT,
     ),

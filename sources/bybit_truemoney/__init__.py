@@ -28,7 +28,7 @@ _DEST_USDC = "TrueMoney USDC"
 def help_text() -> str:
     return (
         "Bybit P2P перевод USDT/RUB + TrueMoney THBT (Baht Swap, Base).\n"
-        "Наличные и HTX в сводку не входят.\n"
+        "Наличные в сводку не входят. Пустой перевод Bybit заменяется переводом HTX.\n"
         "  USDT→THBT — quoter Uniswap v4.\n"
         "  USDC→THBT — сначала ask Bybit USDCUSDT, затем quoter.\n"
         "Котировки сводки: rates.py bybit_truemoney summary"
@@ -50,6 +50,7 @@ def _append_transfer(
     out: list,
     *,
     rub: float,
+    via_htx: bool,
     thbt_usdt: Optional[Decimal],
     thbt_usdc: Optional[Decimal],
     ask: Optional[Decimal],
@@ -61,14 +62,14 @@ def _append_transfer(
         out.append(
             SourceQuote(
                 float(rub_d / thbt_usdt),
-                transfer_label(via_htx=False, dest=_DEST_USDT),
+                transfer_label(via_htx=via_htx, dest=_DEST_USDT),
             )
         )
     if thbt_usdc is not None and thbt_usdc > 0 and ask is not None and ask > 0:
         out.append(
             SourceQuote(
                 float(rub_d * ask / thbt_usdc),
-                transfer_label(via_htx=False, dest=_DEST_USDC),
+                transfer_label(via_htx=via_htx, dest=_DEST_USDC),
             )
         )
 
@@ -76,6 +77,7 @@ def _append_transfer(
 def quotes_from_transfer(
     transfer_rub: Optional[float],
     *,
+    via_htx: bool = False,
     usdt_amount_out: object,
     usdc_amount_out: object,
     ask_usdt_per_usdc: object,
@@ -90,6 +92,7 @@ def quotes_from_transfer(
     _append_transfer(
         out,
         rub=float(transfer_rub),
+        via_htx=via_htx,
         thbt_usdt=thbt_usdt,
         thbt_usdc=thbt_usdc,
         ask=parse_ask(ask_usdt_per_usdc),
@@ -97,14 +100,30 @@ def quotes_from_transfer(
     return out or None
 
 
-def _read_bybit_transfer(doc) -> Optional[float]:
-    from rates_primitives import read_bybit_p2p
+def _price(offer: object) -> Optional[float]:
+    if not isinstance(offer, dict):
+        return None
+    try:
+        price = float(offer.get("price"))
+    except (TypeError, ValueError):
+        return None
+    return price if price > 0 else None
+
+
+def _read_transfer(doc) -> tuple:
+    """(RUB/USDT перевода, via_htx). Наличные не используются. Пустой Bybit → HTX."""
+    from rates_primitives import read_bybit_p2p, read_htx_p2p
 
     _cash, transfer, _warnings = read_bybit_p2p(doc)
-    return transfer
+    if transfer is not None and transfer > 0:
+        return float(transfer), False
+    _htx_cash, htx_transfer, _htx_warnings = read_htx_p2p(doc)
+    if htx_transfer is not None and htx_transfer > 0:
+        return float(htx_transfer), True
+    return None, False
 
 
-def _fetch_bybit_transfer() -> Optional[float]:
+def _fetch_transfer() -> tuple:
     from sources.bybit_bitkub import bybit_p2p_usdt_rub as bp
 
     try:
@@ -115,14 +134,21 @@ def _fetch_bybit_transfer() -> Optional[float]:
             min_completion=99.0,
         )
     except RuntimeError:
-        return None
-    if not transfer:
-        return None
+        transfer = None
+    price = _price(transfer)
+    if price is not None:
+        return price, False
+
+    from sources.htx_bitkub import htx_p2p_usdt_rub as hx
+
     try:
-        price = float(transfer["price"])
-    except (TypeError, ValueError, KeyError):
-        return None
-    return price if price > 0 else None
+        _cash, htx_transfer = hx.fetch_best_cash_and_non_cash_offers(max_pages=30)
+    except RuntimeError:
+        return None, False
+    htx_price = _price(htx_transfer)
+    if htx_price is None:
+        return None, False
+    return htx_price, True
 
 
 def _warn_if_silent(ctx, *, needle: str, text: str) -> None:
@@ -138,14 +164,14 @@ def summary(ctx) -> Optional[list]:
 
         usdt_out, usdc_out, w_tm = read_truemoney_thbt(doc)
         ask, w_ask = read_bybit_usdc_usdt_ask(doc)
-        transfer_rub = _read_bybit_transfer(doc)
+        transfer_rub, via_htx = _read_transfer(doc)
         ctx.warnings.extend(w_tm)
         ctx.warnings.extend(w_ask)
         ask_raw: object = ask
     else:
         tm = fetch_thbt_quote_payload()
         spot = fetch_ask_payload()
-        transfer_rub = _fetch_bybit_transfer()
+        transfer_rub, via_htx = _fetch_transfer()
         ctx.warnings.extend(list(tm.get("warnings") or []))
         ctx.warnings.extend(list(spot.get("warnings") or []))
         usdt_out = tm.get("usdt_amount_out")
@@ -161,6 +187,7 @@ def summary(ctx) -> Optional[list]:
 
     return quotes_from_transfer(
         transfer_rub,
+        via_htx=via_htx,
         usdt_amount_out=usdt_out,
         usdc_amount_out=usdc_out,
         ask_usdt_per_usdc=ask_raw,

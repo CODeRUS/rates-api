@@ -271,7 +271,7 @@ class TestBybitTrueMoneySummary(unittest.TestCase):
         self.assertEqual([q.label for q in out], ["Bybit P2P (перевод) → TrueMoney USDT"])
         self.assertEqual(ctx.warnings, ["Bybit USDCUSDT: нет ask1Price"])
 
-    def test_cash_and_htx_are_not_shown(self) -> None:
+    def test_htx_transfer_fallback_ignores_cash(self) -> None:
         doc = _doc(
             cash=90.0,
             transfer=None,
@@ -286,8 +286,39 @@ class TestBybitTrueMoneySummary(unittest.TestCase):
             ],
         )
         ctx = _ctx(doc)
-        self.assertIsNone(tm.summary(ctx))
+        out = tm.summary(ctx)
+        assert out is not None
+        thbt_usdt = Decimal(_USDT_OUT) / Decimal(EXACT_RAW)
+        by_label = {q.label: q for q in out}
+        self.assertEqual(
+            set(by_label),
+            {
+                "HTX P2P (перевод) → TrueMoney USDT",
+                "HTX P2P (перевод) → TrueMoney USDC",
+            },
+        )
+        self.assertAlmostEqual(
+            by_label["HTX P2P (перевод) → TrueMoney USDT"].rate,
+            float(Decimal(80) / thbt_usdt),
+            places=8,
+        )
+        self.assertFalse(any("наличные" in q.label for q in out))
         self.assertFalse(any("Bybit" in w for w in ctx.warnings))
+
+    def test_bybit_transfer_wins_over_htx(self) -> None:
+        doc = _doc(
+            cash=90.0,
+            transfer=88.0,
+            usdt_out=_USDT_OUT,
+            usdc_out=None,
+            ask=_ASK,
+            htx_cash=91.0,
+            htx_transfer=80.0,
+        )
+        ctx = _ctx(doc)
+        out = tm.summary(ctx)
+        assert out is not None
+        self.assertEqual([q.label for q in out], ["Bybit P2P (перевод) → TrueMoney USDT"])
 
     def test_direct_formula_helper(self) -> None:
         out = tm.quotes_from_transfer(
