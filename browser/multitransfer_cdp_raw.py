@@ -64,6 +64,7 @@ def _chromium_start_cmd(
     start_url: str,
     user_data_dir: Path,
     profile_directory: str,
+    proxy_server: Optional[str] = None,
 ) -> list[str]:
     """
     Запуск с явным профилем, без guest и без окна выбора профилей.
@@ -85,6 +86,8 @@ def _chromium_start_cmd(
         "--window-position=0,0",
         f"--remote-debugging-port={port}",
     ]
+    if proxy_server:
+        cmd.append("--proxy-server=%s" % proxy_server)
     if start_url:
         cmd.append(start_url)
     return cmd
@@ -317,6 +320,7 @@ def _start_chromium_browser(
     start_url: str,
     user_data_dir: Path,
     profile_directory: str,
+    proxy_server: Optional[str] = None,
 ) -> subprocess.Popen:
     env = os.environ.copy()
     env["DISPLAY"] = display
@@ -328,6 +332,7 @@ def _start_chromium_browser(
         start_url=start_url,
         user_data_dir=user_data_dir,
         profile_directory=profile_directory,
+        proxy_server=proxy_server,
     )
     return subprocess.Popen(
         cmd,
@@ -556,9 +561,19 @@ class CDPSession:
         return msg
 
 
-_FIELD_RECT_JS = """
-(() => {
-  const inp = document.querySelector('input[name="amount"]');
+# Raw-инпут виджета не получает name и data-testid: оба остаются на React-пропсах.
+# Видимый узел — input внутри transfer_amount_debit-field.
+_AMOUNT_INPUT_QUERY_JS = """
+  const inp = document.querySelector('[data-testid="transfer_amount_debit-field"] input')
+    || document.querySelector('[data-testid="transfer_amount_debit-field_input"]')
+    || document.querySelector('[data-testid="transfer_widget_debit-amount-field_input"]')
+    || document.querySelector('input[name="amount"]');
+"""
+
+_FIELD_RECT_JS = (
+    "(() => {\n"
+    + _AMOUNT_INPUT_QUERY_JS
+    + """
   if (!inp) return null;
   inp.scrollIntoView({block: 'center', inline: 'nearest'});
   const r = inp.getBoundingClientRect();
@@ -566,16 +581,19 @@ _FIELD_RECT_JS = """
   return {x: r.x + r.width / 2, y: r.y + r.height / 2};
 })()
 """
+)
 
-_FIELD_VALUE_JS = """
-(() => {
-  const inp = document.querySelector('input[name="amount"]');
+_FIELD_VALUE_JS = (
+    "(() => {\n"
+    + _AMOUNT_INPUT_QUERY_JS
+    + """
   return inp ? {
     value: inp.value || '',
     active: document.activeElement === inp,
   } : null;
 })()
 """
+)
 
 
 def _eval_value(cdp: "CDPSession", expression: str, timeout_sec: float) -> Any:
@@ -596,7 +614,7 @@ def _wait_amount_field_center(cdp: "CDPSession", timeout_sec: float) -> Dict[str
         if isinstance(rect, dict) and rect.get("x") is not None and rect.get("y") is not None:
             return {"x": float(rect["x"]), "y": float(rect["y"])}
         time.sleep(0.25)
-    raise RuntimeError("Timeout waiting for input[name=amount] field")
+    raise RuntimeError("Timeout waiting for transfer amount field")
 
 
 def _mouse_click(cdp: "CDPSession", x: float, y: float, *, click_count: int = 1) -> None:
@@ -637,11 +655,13 @@ def _key_down_up(
 # Комиссии уходят из addToQueue(amount, "RUB", currency).
 # onChange с debounce пропускает запрос, если значение уже записано в форму,
 # а blur сбрасывает очередь.
-_AMOUNT_ONCHANGE_JS = """
+_AMOUNT_ONCHANGE_JS = (
+    """
 ((digits) => {
-  const inp = document.querySelector('[data-testid="transfer_widget_debit-amount-field_input"]')
-    || document.querySelector('input[name="amount"]');
-  if (!inp) return {ok: false, reason: 'no input[name=amount]'};
+"""
+    + _AMOUNT_INPUT_QUERY_JS
+    + """
+  if (!inp) return {ok: false, reason: 'no amount input'};
   inp.focus();
   const fiberKey = Object.keys(inp).find((k) => k.indexOf('__reactFiber') === 0);
   let fiber = fiberKey ? inp[fiberKey] : null;
@@ -650,9 +670,18 @@ _AMOUNT_ONCHANGE_JS = """
   while (fiber) {
     const props = fiber.memoizedProps || null;
     if (props && !queue && typeof props.addToQueue === 'function') queue = props.addToQueue;
+    const ctx = props && props.value;
+    if (
+      props && !queue && ctx
+      && typeof ctx.addToQueue === 'function'
+      && typeof ctx.chooseCommission === 'function'
+    ) queue = ctx.addToQueue;
     if (props && !handler && typeof props.onChange === 'function') {
-      const src = Function.prototype.toString.call(props.onChange);
-      if (src.indexOf('transfer_widget_debit-amount-field_input') !== -1) handler = props.onChange;
+      const testid = props['data-testid'];
+      if (
+        testid === 'transfer_amount_debit-field_input'
+        || testid === 'transfer_widget_debit-amount-field_input'
+      ) handler = props.onChange;
     }
     fiber = fiber.return;
   }
@@ -667,6 +696,7 @@ _AMOUNT_ONCHANGE_JS = """
   return {ok: false, reason: 'no addToQueue', value: inp.value || ''};
 })
 """
+)
 
 
 def _amount_onchange_js(digits: str) -> str:
