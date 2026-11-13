@@ -97,18 +97,14 @@ def quotes_from_transfer(
     return out or None
 
 
-def _transfer_warnings(warnings: list) -> list:
-    return [w for w in warnings if "Cash Deposit" not in w]
-
-
-def _read_bybit_transfer(doc) -> tuple:
+def _read_bybit_transfer(doc) -> Optional[float]:
     from rates_primitives import read_bybit_p2p
 
-    _cash, transfer, warnings = read_bybit_p2p(doc)
-    return transfer, _transfer_warnings(warnings)
+    _cash, transfer, _warnings = read_bybit_p2p(doc)
+    return transfer
 
 
-def _fetch_bybit_transfer() -> tuple:
+def _fetch_bybit_transfer() -> Optional[float]:
     from sources.bybit_bitkub import bybit_p2p_usdt_rub as bp
 
     try:
@@ -118,20 +114,15 @@ def _fetch_bybit_transfer() -> tuple:
             target_usdt=bp.DEFAULT_TARGET_USDT,
             min_completion=99.0,
         )
-    except RuntimeError as exc:
-        return None, [f"Bybit P2P: {exc}"]
+    except RuntimeError:
+        return None
     if not transfer:
-        return None, [
-            "Bybit: нет объявлений только перевод (14, без 18) с completion≥99 "
-            f"({bp.DEFAULT_TARGET_USDT:g} USDT, minAmount≥{bp.DEFAULT_TARGET_USDT:g}·price)"
-        ]
+        return None
     try:
         price = float(transfer["price"])
     except (TypeError, ValueError, KeyError):
-        return None, ["Bybit P2P: нет цены перевода"]
-    if price <= 0:
-        return None, ["Bybit P2P: нет цены перевода"]
-    return price, []
+        return None
+    return price if price > 0 else None
 
 
 def _warn_if_silent(ctx, *, needle: str, text: str) -> None:
@@ -147,18 +138,16 @@ def summary(ctx) -> Optional[list]:
 
         usdt_out, usdc_out, w_tm = read_truemoney_thbt(doc)
         ask, w_ask = read_bybit_usdc_usdt_ask(doc)
-        transfer_rub, w_p2p = _read_bybit_transfer(doc)
+        transfer_rub = _read_bybit_transfer(doc)
         ctx.warnings.extend(w_tm)
         ctx.warnings.extend(w_ask)
-        ctx.warnings.extend(w_p2p)
         ask_raw: object = ask
     else:
         tm = fetch_thbt_quote_payload()
         spot = fetch_ask_payload()
-        transfer_rub, w_p2p = _fetch_bybit_transfer()
+        transfer_rub = _fetch_bybit_transfer()
         ctx.warnings.extend(list(tm.get("warnings") or []))
         ctx.warnings.extend(list(spot.get("warnings") or []))
-        ctx.warnings.extend(w_p2p)
         usdt_out = tm.get("usdt_amount_out")
         usdc_out = tm.get("usdc_amount_out")
         ask_raw = spot.get("ask_usdt_per_usdc")

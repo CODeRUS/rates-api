@@ -102,23 +102,12 @@ def _usdt_fetch_bybit_branch() -> _UsdtParallelBranch:
             target_usdt=bp.DEFAULT_TARGET_USDT,
             min_completion=99.0,
         )
-    except RuntimeError as e:
-        w.append(f"Bybit P2P: {e}")
+    except RuntimeError:
         return rub, {}, w
     if ia:
         rub["bybit_cash"] = float(ia["price"])
-    else:
-        w.append(
-            "Bybit: нет объявлений Cash Deposit (18) с completion≥99 "
-            "(100 USDT, minAmount≥100·price)"
-        )
     if ib:
         rub["bybit_transfer"] = float(ib["price"])
-    else:
-        w.append(
-            "Bybit: нет объявлений только перевод (14, без 18) с completion≥99 "
-            "(100 USDT, minAmount≥100·price)"
-        )
     return rub, {}, w
 
 

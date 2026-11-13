@@ -66,12 +66,13 @@ def _doc(
     htx_transfer: Optional[float] = None,
     quote_warnings: Optional[list] = None,
     ask_warnings: Optional[list] = None,
+    p2p_warnings: Optional[list] = None,
 ) -> dict:
     doc = ucc._empty_doc()
     ucc.prim_set(
         doc,
         PRIM_BYBIT_P2P_RUB,
-        {"cash_price": cash, "transfer_price": transfer, "warnings": []},
+        {"cash_price": cash, "transfer_price": transfer, "warnings": list(p2p_warnings or [])},
         ttl_sec=3600,
     )
     ucc.prim_set(
@@ -279,9 +280,14 @@ class TestBybitTrueMoneySummary(unittest.TestCase):
             ask=_ASK,
             htx_cash=91.0,
             htx_transfer=80.0,
+            p2p_warnings=[
+                "Bybit: нет объявлений только перевод (14, без 18) с completion≥99 "
+                "(100 USDT, minAmount≥100·price)"
+            ],
         )
         ctx = _ctx(doc)
         self.assertIsNone(tm.summary(ctx))
+        self.assertFalse(any("Bybit" in w for w in ctx.warnings))
 
     def test_direct_formula_helper(self) -> None:
         out = tm.quotes_from_transfer(
