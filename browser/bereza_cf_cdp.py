@@ -4,13 +4,14 @@
 Снять cf_clearance Bereza из уже пройденного Chromium-профиля и записать
 ``.rates_cache/bereza_cf.json`` для источника ``bereza``.
 
-Запуск snap Chromium (профиль ``~/snap/chromium/common/chromium``, DISPLAY :1)::
+Запуск snap Chromium через прокси из ``.ex24_proxies`` (прямой выход Cloudflare
+режет пустым 403). Профиль ``~/snap/chromium/common/chromium``, DISPLAY :1::
 
     python3.7 browser/bereza_cf_cdp.py --start-browser
 
 Cron (со сдвигом от multitransfer, тот же профиль нельзя открывать одновременно)::
 
-    30 * * * * cd /home/coderus/rates-api && /usr/bin/python3.7 browser/bereza_cf_cdp.py --start-browser
+    0,20,40 * * * * cd /home/coderus/rates-api && /usr/bin/python3.7 browser/bereza_cf_cdp.py --start-browser
 """
 from __future__ import annotations
 
@@ -18,11 +19,14 @@ import argparse
 import importlib.util
 import json
 import os
+import ssl
 import sys
 import time
 import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import urlparse
 
 _ROOT = Path(__file__).resolve().parents[1]
 _CDP_PATH = Path(__file__).resolve().parent / "multitransfer_cdp_raw.py"
@@ -90,29 +94,129 @@ def live_chromium_pid(user_data_dir: Path) -> Optional[int]:
     return pid
 
 
-def debug_url_from_cmdline(argv: Any) -> Optional[str]:
+def _cmdline_text(argv: Any) -> str:
     if isinstance(argv, bytes):
-        text = argv.replace(b"\0", b" ").decode("utf-8", "replace")
-    elif isinstance(argv, str):
-        text = argv
-    else:
-        chunks = []
-        for part in argv:
-            chunks.append(part.decode("utf-8", "replace") if isinstance(part, bytes) else str(part))
-        text = " ".join(chunks)
-    marker = "--remote-debugging-port="
+        return argv.replace(b"\0", b" ").decode("utf-8", "replace")
+    if isinstance(argv, str):
+        return argv
+    chunks = []
+    for part in argv:
+        chunks.append(part.decode("utf-8", "replace") if isinstance(part, bytes) else str(part))
+    return " ".join(chunks)
+
+
+def _cmdline_flag_value(text: str, marker: str) -> Optional[str]:
     start = text.find(marker)
     if start < 0:
         return None
-    port = []
-    for ch in text[start + len(marker) :]:
-        if ch.isdigit():
-            port.append(ch)
-        else:
+    rest = text[start + len(marker) :]
+    end = len(rest)
+    for i, ch in enumerate(rest):
+        if ch.isspace():
+            end = i
             break
-    if not port:
+    value = rest[:end].strip()
+    return value or None
+
+
+def debug_url_from_cmdline(argv: Any) -> Optional[str]:
+    port = _cmdline_flag_value(_cmdline_text(argv), "--remote-debugging-port=")
+    if not port or not port.isdigit():
         return None
-    return "http://127.0.0.1:%s" % "".join(port)
+    return "http://127.0.0.1:%s" % port
+
+
+def proxy_from_cmdline(argv: Any) -> Optional[str]:
+    return _cmdline_flag_value(_cmdline_text(argv), "--proxy-server=")
+
+
+def normalize_proxy_url(proxy: str) -> str:
+    """Схема по умолчанию ``http://``, как в ``.ex24_proxies``."""
+    proxy = (proxy or "").strip()
+    if not proxy:
+        return ""
+    if proxy.startswith(("http://", "https://")):
+        return proxy
+    return "http://" + proxy
+
+
+def proxy_label(proxy: str) -> str:
+    """host:port без логина и пароля."""
+    parsed = urlparse(normalize_proxy_url(proxy))
+    host = parsed.hostname or proxy
+    if parsed.port:
+        return "%s:%s" % (host, parsed.port)
+    return host
+
+
+def load_proxy_urls(path: Optional[Path] = None) -> list:
+    """Прокси ex24: ``EX24_PROXIES_FILE`` или ``<корень>/.ex24_proxies``."""
+    if path is None:
+        raw = (os.environ.get("EX24_PROXIES_FILE") or "").strip()
+        path = Path(raw).expanduser() if raw else _ROOT / ".ex24_proxies"
+    if not path.is_file():
+        return []
+    out = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    for line in lines:
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        proxy = normalize_proxy_url(text)
+        if proxy:
+            out.append(proxy)
+    return out
+
+
+def proxy_response_usable(status: int, headers: Any, body: bytes) -> bool:
+    """Прокси дошёл до сайта. Пустой 403 — тот же блок, что без прокси."""
+    mitigated = ""
+    if headers is not None:
+        try:
+            mitigated = str(headers.get("cf-mitigated") or "")
+        except AttributeError:
+            mitigated = ""
+    if mitigated.strip():
+        return True
+    sample = bytes(body or b"")[:1200].lower()
+    if b"just a moment" in sample or b"challenge-platform" in sample or b"_cf_chl" in sample:
+        return True
+    if status == 403 and not sample.strip():
+        return False
+    if status in (407, 502, 503, 504) or status <= 0 or status >= 500:
+        return False
+    return True
+
+
+def proxy_reaches_bereza(proxy_url: str, timeout: float = 8.0) -> bool:
+    """CONNECT до Bereza. Мёртвый прокси и пустой 403 не годятся для Chromium."""
+    proxy = normalize_proxy_url(proxy_url)
+    if not proxy:
+        return False
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": proxy, "https": proxy}),
+        urllib.request.HTTPSHandler(context=ssl.create_default_context()),
+    )
+    req = urllib.request.Request(
+        TARGET_URL,
+        headers={"User-Agent": "Mozilla/5.0", "Accept": "text/html"},
+    )
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            body = resp.read(1200)
+            status = getattr(resp, "status", 200)
+            return proxy_response_usable(int(status), getattr(resp, "headers", None), body)
+    except urllib.error.HTTPError as exc:
+        try:
+            body = exc.read(1200)
+        except OSError:
+            body = b""
+        return proxy_response_usable(int(exc.code), exc.headers, body)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
 
 
 def debug_url_of_pid(pid: int) -> Optional[str]:
@@ -517,54 +621,16 @@ def main() -> int:
     parser.add_argument("--display", default=":1")
     parser.add_argument("--start-url", default=TARGET_URL)
     parser.add_argument("--browser-ready-timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--proxy",
+        default=(os.environ.get("BEREZA_PROXY") or "").strip(),
+        help="Один прокси. По умолчанию перебор .ex24_proxies.",
+    )
     args = parser.parse_args()
 
     cdp_mod = _cdp()
-    browser_proc = None
     debug_url = args.debug_url
-    try:
-        if args.start_browser:
-            user_data = Path(args.user_data_dir).expanduser()
-            pid = live_chromium_pid(user_data)
-            if pid:
-                exe = cdp_mod._proc_exe(pid)
-                if not cdp_mod.is_snap_chromium_exe(exe):
-                    print("уже запущен не snap chromium: %s" % exe, file=sys.stderr)
-                    return 1
-                existing = debug_url_of_pid(pid)
-                if not existing:
-                    print(
-                        "Chromium уже запущен без remote debugging, второй экземпляр не открываю.",
-                        file=sys.stderr,
-                    )
-                    return 1
-                debug_url = existing
-                print("браузер уже запущен: %s exe %s" % (debug_url, exe))
-            else:
-                # Без URL: вкладки восстанавливает сессия. Новую откроем ниже, если Bereza нет.
-                print("starting %s" % args.chromium_binary, file=sys.stderr)
-                browser_proc = cdp_mod._start_chromium_browser(
-                    chromium_binary=args.chromium_binary,
-                    display=args.display,
-                    debug_url=debug_url,
-                    start_url="",
-                    user_data_dir=user_data,
-                    profile_directory=(args.profile_directory or "Default").strip() or "Default",
-                )
-                try:
-                    cdp_mod._wait_cdp_ready(debug_url, timeout_sec=args.browser_ready_timeout)
-                except TimeoutError as exc:
-                    print(str(exc), file=sys.stderr)
-                    return 1
-                ok, detail = cdp_mod.cdp_owner_ok(
-                    cdp_mod._debug_port_from_url(debug_url),
-                    browser_proc.pid,
-                    user_data,
-                )
-                if not ok:
-                    print(detail, file=sys.stderr)
-                    return 1
-                print("chromium exe %s" % detail, file=sys.stderr)
+    if not args.start_browser:
         return run(
             debug_url=debug_url,
             timeout_sec=max(1.0, args.timeout_ms / 1000.0),
@@ -572,9 +638,109 @@ def main() -> int:
             origin=args.origin,
             target_url=args.start_url or TARGET_URL,
         )
-    finally:
-        if browser_proc is not None:
-            cdp_mod._stop_browser_process(browser_proc)
+
+    user_data = Path(args.user_data_dir).expanduser()
+    pid = live_chromium_pid(user_data)
+    if pid:
+        exe = cdp_mod._proc_exe(pid)
+        if not cdp_mod.is_snap_chromium_exe(exe):
+            print("уже запущен не snap chromium: %s" % exe, file=sys.stderr)
+            return 1
+        existing = debug_url_of_pid(pid)
+        if not existing:
+            print(
+                "Chromium уже запущен без remote debugging, второй экземпляр не открываю.",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            cmdline = Path("/proc/%d/cmdline" % pid).read_bytes()
+        except OSError:
+            cmdline = b""
+        running_proxy = proxy_from_cmdline(cmdline)
+        if not running_proxy:
+            print(
+                "Chromium уже запущен без прокси, второй экземпляр не открываю.",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            "браузер уже запущен: %s exe %s proxy %s" % (existing, exe, proxy_label(running_proxy))
+        )
+        return run(
+            debug_url=existing,
+            timeout_sec=max(1.0, args.timeout_ms / 1000.0),
+            out_path=Path(args.out),
+            origin=args.origin,
+            target_url=args.start_url or TARGET_URL,
+        )
+
+    chosen = normalize_proxy_url(args.proxy)
+    if chosen:
+        candidates = [chosen]
+    else:
+        candidates = load_proxy_urls()
+    if not candidates:
+        print("нет прокси: .ex24_proxies пуст", file=sys.stderr)
+        return 1
+    reachable = []
+    for proxy in candidates:
+        if proxy_reaches_bereza(proxy):
+            reachable.append(proxy)
+        else:
+            print("прокси не открывает Bereza: %s" % proxy_label(proxy), file=sys.stderr)
+    if not reachable:
+        print("нет рабочего прокси ex24 для Bereza", file=sys.stderr)
+        return 1
+
+    profile = (args.profile_directory or "Default").strip() or "Default"
+    timeout_sec = max(1.0, args.timeout_ms / 1000.0)
+    last = 1
+    for proxy in reachable:
+        browser_proc = None
+        try:
+            print(
+                "starting %s proxy %s" % (args.chromium_binary, proxy_label(proxy)),
+                file=sys.stderr,
+            )
+            browser_proc = cdp_mod._start_chromium_browser(
+                chromium_binary=args.chromium_binary,
+                display=args.display,
+                debug_url=debug_url,
+                start_url="",
+                user_data_dir=user_data,
+                profile_directory=profile,
+                proxy_server=proxy,
+            )
+            try:
+                cdp_mod._wait_cdp_ready(debug_url, timeout_sec=args.browser_ready_timeout)
+            except TimeoutError as exc:
+                print(str(exc), file=sys.stderr)
+                last = 1
+                continue
+            ok, detail = cdp_mod.cdp_owner_ok(
+                cdp_mod._debug_port_from_url(debug_url),
+                browser_proc.pid,
+                user_data,
+            )
+            if not ok:
+                print(detail, file=sys.stderr)
+                last = 1
+                continue
+            print("chromium exe %s" % detail, file=sys.stderr)
+            last = run(
+                debug_url=debug_url,
+                timeout_sec=timeout_sec,
+                out_path=Path(args.out),
+                origin=args.origin,
+                target_url=args.start_url or TARGET_URL,
+            )
+            if last == 0:
+                return 0
+        finally:
+            if browser_proc is not None:
+                cdp_mod._stop_browser_process(browser_proc)
+    return last
 
 
 if __name__ == "__main__":

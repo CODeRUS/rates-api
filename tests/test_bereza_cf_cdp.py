@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from browser.bereza_cf_cdp import (
     DEFAULT_USER_DATA_DIR,
@@ -14,6 +16,10 @@ from browser.bereza_cf_cdp import (
     find_bereza_tab,
     is_cloudflare_stub,
     is_turnstile_iframe,
+    load_proxy_urls,
+    proxy_from_cmdline,
+    proxy_label,
+    proxy_response_usable,
     _pass_cloudflare_stub,
 )
 
@@ -49,6 +55,24 @@ class TestBerezaCfExport(unittest.TestCase):
             "http://127.0.0.1:9222",
         )
         self.assertIsNone(debug_url_from_cmdline([b"chromium"]))
+
+    def test_proxy_from_cmdline_and_file(self) -> None:
+        self.assertEqual(
+            proxy_from_cmdline([b"chromium", b"--proxy-server=http://10.0.0.8:3128"]),
+            "http://10.0.0.8:3128",
+        )
+        self.assertIsNone(proxy_from_cmdline([b"chromium"]))
+        self.assertEqual(proxy_label("user:secret@10.1.2.3:3128"), "10.1.2.3:3128")
+        self.assertTrue(proxy_response_usable(403, {"cf-mitigated": "challenge"}, b""))
+        self.assertFalse(proxy_response_usable(403, {}, b""))
+        self.assertTrue(proxy_response_usable(403, {}, b"<title>Just a moment...</title>"))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "proxies"
+            path.write_text("# c\n\n10.0.0.1:3128\nhttp://10.0.0.2:8080\n", encoding="utf-8")
+            self.assertEqual(
+                load_proxy_urls(path),
+                ["http://10.0.0.1:3128", "http://10.0.0.2:8080"],
+            )
 
     def test_default_browser_is_snap(self) -> None:
         self.assertEqual(SNAP_CHROMIUM, "/snap/bin/chromium")

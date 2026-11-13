@@ -124,7 +124,7 @@ USERBOT_SOURCES: tuple[SourceConfig, ...] = (
             ),
         ),
         city="",
-        summary_note="минимальнsый курс",
+        summary_note="минимальный курс",
     ),
     SourceConfig(
         source_id="exasia_exthailand",

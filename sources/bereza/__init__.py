@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import ssl
 import time
 import urllib.error
@@ -30,6 +31,8 @@ _CF_FILE = Path(__file__).resolve().parents[2] / ".rates_cache" / "bereza_cf.jso
 
 # Короткоживущий токен из /api/access-token (кэш процесса).
 _token_cache: Tuple[str, float] = ("", 0.0)  # token, expires_unix
+# Прокси из .ex24_proxies, через который последний запрос прошёл.
+_preferred_proxy: Optional[str] = None
 
 
 def help_text() -> str:
@@ -67,15 +70,21 @@ def load_cf_clearance() -> Dict[str, str]:
     return out
 
 
+def _chromium_major(user_agent: str) -> str:
+    match = re.search(r"(?:Chrome|Chromium)/(\d+)", user_agent or "")
+    return match.group(1) if match else "112"
+
+
 def _browser_headers(*, access_token: Optional[str] = None) -> Dict[str, str]:
     cf = load_cf_clearance()
+    user_agent = cf.get("user_agent") or _UA
     hdr = {
         "Accept": "*/*",
         "Accept-Language": "en-US,en;q=0.9",
-        "User-Agent": cf.get("user_agent") or _UA,
+        "User-Agent": user_agent,
         "Referer": f"{_SITE}/",
         "Origin": _SITE,
-        "sec-ch-ua": '"Not:A-Brand";v="99", "Chromium";v="112"',
+        "sec-ch-ua": '"Not:A-Brand";v="99", "Chromium";v="%s"' % _chromium_major(user_agent),
         "sec-ch-ua-mobile": "?0",
         "sec-ch-ua-platform": '"Linux"',
         "sec-fetch-dest": "empty",
@@ -139,11 +148,43 @@ def _http_error(status: int, body: str) -> RuntimeError:
     return RuntimeError(f"Bereza HTTP {status}: {detail}")
 
 
-def _http_json(url: str, *, headers: Dict[str, str], timeout: float) -> Any:
+def _load_proxy_urls() -> List[str]:
+    """Тот же файл, что у ex24: ``EX24_PROXIES_FILE`` или ``.ex24_proxies``."""
+    from sources.ex24.ex24_rub_thb import load_ex24_proxy_urls
+
+    return load_ex24_proxy_urls()
+
+
+def _ordered_proxy_urls() -> List[str]:
+    urls = _load_proxy_urls()
+    if _preferred_proxy and _preferred_proxy in urls:
+        return [_preferred_proxy] + [url for url in urls if url != _preferred_proxy]
+    return urls
+
+
+def _proxy_opener(proxy_url: str, ctx: ssl.SSLContext) -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url}),
+        urllib.request.HTTPSHandler(context=ctx),
+    )
+
+
+def _read_json(
+    url: str,
+    *,
+    headers: Dict[str, str],
+    timeout: float,
+    ctx: ssl.SSLContext,
+    opener: Optional[urllib.request.OpenerDirector],
+) -> Any:
     req = urllib.request.Request(url, headers=headers)
     try:
         with urlopen_retriable(
-            req, timeout=timeout, context=ssl.create_default_context()
+            req,
+            timeout=timeout,
+            context=ctx,
+            opener=opener,
+            max_attempts_override=2,
         ) as resp:
             raw = resp.read().decode(
                 resp.headers.get_content_charset() or "utf-8", errors="replace"
@@ -155,6 +196,28 @@ def _http_json(url: str, *, headers: Dict[str, str], timeout: float) -> Any:
         return json.loads(raw)
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Bereza: не JSON в ответе {raw[:120]!r}") from e
+
+
+def _http_json(url: str, *, headers: Dict[str, str], timeout: float) -> Any:
+    """Запрос через прокси ex24. Прямой выход только если список пуст."""
+    global _preferred_proxy
+    ctx = ssl.create_default_context()
+    proxies = _ordered_proxy_urls()
+    targets: List[Optional[str]] = list(proxies) if proxies else [None]
+    last: Optional[BaseException] = None
+    for proxy in targets:
+        opener = _proxy_opener(proxy, ctx) if proxy else None
+        try:
+            data = _read_json(url, headers=headers, timeout=timeout, ctx=ctx, opener=opener)
+        except (RuntimeError, urllib.error.URLError, TimeoutError, OSError) as exc:
+            last = exc
+            continue
+        if proxy:
+            _preferred_proxy = proxy
+        return data
+    if isinstance(last, RuntimeError):
+        raise last
+    raise RuntimeError(f"Bereza: прокси ex24 недоступны: {last}")
 
 
 def fetch_access_token(*, timeout: float = 20.0, force: bool = False) -> str:

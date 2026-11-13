@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import io
 import json
 import os
 import tempfile
 import time
 import unittest
+import urllib.error
 from unittest import mock
 
 from rates_sources import FetchContext, SourceCategory
-from sources.bereza import _browser_headers, _extract_to_amount, _http_error, summary
+from sources.bereza import _browser_headers, _extract_to_amount, _http_error, _http_json, summary
 
 
 def _ctx(*, receiving_thb: float | None = None) -> FetchContext:
@@ -32,14 +34,55 @@ class TestBerezaSource(unittest.TestCase):
             path = os.path.join(tmp, "bereza_cf.json")
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(
-                    {"cf_clearance": "clearance-token", "user_agent": "UA-Test"},
+                    {
+                        "cf_clearance": "clearance-token",
+                        "user_agent": "Mozilla/5.0 Chrome/157.0.0.0 Safari/537.36",
+                    },
                     fh,
                 )
             with mock.patch.dict(os.environ, {"BEREZA_CF_FILE": path}):
                 headers = _browser_headers()
         self.assertEqual(headers["Cookie"], "cf_clearance=clearance-token")
-        self.assertEqual(headers["User-Agent"], "UA-Test")
+        self.assertEqual(headers["User-Agent"], "Mozilla/5.0 Chrome/157.0.0.0 Safari/537.36")
+        self.assertIn('Chromium";v="157"', headers["sec-ch-ua"])
         self.assertEqual(headers["sec-fetch-site"], "same-origin")
+
+    def test_http_json_skips_failed_proxy(self) -> None:
+        import sources.bereza as bz
+
+        class _Body:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'{"token":"ok"}'
+
+            class headers:
+                @staticmethod
+                def get_content_charset():
+                    return "utf-8"
+
+        challenge = urllib.error.HTTPError(
+            "https://bereza-exchange.com/api/access-token",
+            403,
+            "Forbidden",
+            hdrs=None,
+            fp=io.BytesIO(b"<html>Just a moment... _cf_chl_opt"),
+        )
+        bz._preferred_proxy = None
+        with mock.patch.object(bz, "_ordered_proxy_urls", return_value=["http://a:1", "http://b:2"]):
+            with mock.patch.object(bz, "urlopen_retriable", side_effect=[challenge, _Body()]) as opener:
+                data = _http_json("https://bereza-exchange.com/api/access-token", headers={}, timeout=5)
+        self.assertEqual(data["token"], "ok")
+        self.assertEqual(opener.call_count, 2)
+        self.assertIsNot(
+            opener.call_args_list[0].kwargs["opener"],
+            opener.call_args_list[1].kwargs["opener"],
+        )
+        self.assertEqual(bz._preferred_proxy, "http://b:2")
 
     def test_cloudflare_403_is_short(self) -> None:
         err = _http_error(403, "<html><title>Just a moment...</title><script>_cf_chl_opt")

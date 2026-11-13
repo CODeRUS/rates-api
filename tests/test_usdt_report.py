@@ -90,6 +90,14 @@ class TestUsdtReport(unittest.TestCase):
         )
         self.assertEqual(usdt_report._parse_exasia_usdt_from_text(sample), 32.40)
 
+    def test_format_includes_askmoney_usd_row(self):
+        data = {
+            "rub_per_usdt": {},
+            "thb_per_usdt": {"askmoney_usd_thb": 32.59},
+        }
+        text = usdt_report.format_usdt_report_text(data, [])
+        self.assertIn("32.59 | askmoney (USD перевод ≈ USDT)", text)
+
     def test_format_includes_novawallet_rows(self):
         data = {
             "rub_per_usdt": {},

@@ -75,6 +75,7 @@ _USDT_BRANCH_KEYS: Tuple[str, ...] = (
     "it_obmen",
     "bereza_usdt",
     "novawallet",
+    "askmoney",
     # senate временно исключён (нет публичного exchange_prices); CLI/плагин sources.senate остаётся.
     "xaacta",
     "exasia",
@@ -206,6 +207,33 @@ def _usdt_fetch_novawallet_branch() -> _UsdtParallelBranch:
         thb["novawallet_cash_thb"] = _NOVAWALLET_CASH_THB / usd_for_target
     else:
         w.append("NovaWallet cash: невалидный расчёт USDT на 20 000 THB")
+    return {}, thb, w
+
+
+def _usdt_fetch_askmoney_branch() -> _UsdtParallelBranch:
+    """THB/USDT через askmoney transfer USD (как USDT, см. REST transfer.USD)."""
+    from sources.askmoney.askmoney_rub_thb import fetch_rest_rates
+
+    thb: Dict[str, Optional[float]] = {"askmoney_usd_thb": None}
+    w: List[str] = []
+    try:
+        data = fetch_rest_rates()
+    except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as e:
+        w.append(f"askmoney: {e}")
+        return {}, thb, w
+    transfer = data.get("transfer")
+    usd = transfer.get("USD") if isinstance(transfer, dict) else None
+    if not isinstance(usd, dict):
+        w.append("askmoney: нет transfer.USD в REST")
+        return {}, thb, w
+    try:
+        rate = float(usd.get("rate") or 0)
+    except (TypeError, ValueError):
+        rate = 0.0
+    if rate <= 0:
+        w.append(f"askmoney: невалидный transfer.USD.rate={usd.get('rate')!r}")
+        return {}, thb, w
+    thb["askmoney_usd_thb"] = rate
     return {}, thb, w
 
 
@@ -512,6 +540,8 @@ def _usdt_parallel_worker(branch: str) -> _UsdtParallelBranch:
         return _usdt_fetch_bereza_usdt_branch()
     if branch == "novawallet":
         return _usdt_fetch_novawallet_branch()
+    if branch == "askmoney":
+        return _usdt_fetch_askmoney_branch()
     if branch == "senate":
         return _usdt_fetch_senate_branch()
     if branch == "xaacta":
@@ -544,6 +574,7 @@ def fetch_usdt_payload(
         "bereza_bid": None,
         "novawallet_thb": None,
         "novawallet_cash_thb": None,
+        "askmoney_usd_thb": None,
         "xaacta_bid": None,
         "exasia_bid": None,
     }
@@ -607,6 +638,7 @@ def _empty_usdt_data() -> Dict[str, Any]:
             "bereza_bid": None,
             "novawallet_thb": None,
             "novawallet_cash_thb": None,
+            "askmoney_usd_thb": None,
             "xaacta_bid": None,
             "exasia_bid": None,
         },
@@ -771,6 +803,7 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
     bereza = thb.get("bereza_bid")
     nw = thb.get("novawallet_thb")
     nw_cash = thb.get("novawallet_cash_thb")
+    askmoney_usd = thb.get("askmoney_usd_thb")
     xaacta = thb.get("xaacta_bid")
     exasia = thb.get("exasia_bid")
 
@@ -796,6 +829,12 @@ def format_usdt_report_text(data: Dict[str, Any], warnings: List[str]) -> str:
         (
             "NovaWallet cash (20 000 THB)",
             float(nw_cash) if isinstance(nw_cash, (int, float)) and nw_cash and nw_cash > 0 else None,
+        ),
+        (
+            "askmoney (USD перевод ≈ USDT)",
+            float(askmoney_usd)
+            if isinstance(askmoney_usd, (int, float)) and askmoney_usd and askmoney_usd > 0
+            else None,
         ),
         ("XAACTA (1000 USDT)", float(xaacta) if isinstance(xaacta, (int, float)) and xaacta and xaacta > 0 else None),
         ("Exasia (от 10k THB)", float(exasia) if isinstance(exasia, (int, float)) and exasia and exasia > 0 else None),

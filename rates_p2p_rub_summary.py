@@ -7,25 +7,6 @@ from typing import Dict, List, Optional, Tuple
 
 from rates_primitives import read_bybit_p2p, read_htx_p2p
 
-SUMMARY_P2P_FALLBACK_NOTE = (
-    "Bybit P2P недоступен — для сводки использован HTX P2P (RUB/USDT)"
-)
-
-WARN_BYBIT_NO_CASH = (
-    "Bybit: нет объявлений Cash Deposit (18) с completion≥99 "
-    "(100 USDT, minAmount≥100·price)"
-)
-WARN_BYBIT_NO_TRANSFER = (
-    "Bybit: нет объявлений только перевод (14, без 18) с completion≥99 "
-    "(100 USDT, minAmount≥100·price)"
-)
-WARN_HTX_NO_CASH = (
-    "HTX: нет объявлений с наличными под фильтры (100 USDT, minTradeLimit≥100·price)"
-)
-WARN_HTX_NO_TRANSFER = (
-    "HTX: нет объявлений без наличных под фильтры (100 USDT, minTradeLimit≥100·price)"
-)
-
 
 @dataclass(frozen=True)
 class SummaryP2pRubLegs:
@@ -51,50 +32,28 @@ def _build_summary_legs(
     t_b: Optional[float],
     c_h: Optional[float],
     t_h: Optional[float],
-    *,
-    tried_htx: bool,
 ) -> SummaryP2pRubLegs:
-    warnings: List[str] = []
     cash = _positive(c_b)
     transfer = _positive(t_b)
     cash_htx = transfer_htx = False
-    used_htx = False
 
     if cash is None:
         ch = _positive(c_h)
         if ch is not None:
             cash = ch
             cash_htx = True
-            used_htx = True
     if transfer is None:
         th = _positive(t_h)
         if th is not None:
             transfer = th
             transfer_htx = True
-            used_htx = True
-
-    if used_htx:
-        warnings.append(SUMMARY_P2P_FALLBACK_NOTE)
-
-    if cash is None:
-        warnings.append(WARN_HTX_NO_CASH if tried_htx else WARN_BYBIT_NO_CASH)
-    if transfer is None:
-        warnings.append(WARN_HTX_NO_TRANSFER if tried_htx else WARN_BYBIT_NO_TRANSFER)
-
-    # Dedupe while preserving order
-    seen: set[str] = set()
-    uniq: List[str] = []
-    for w in warnings:
-        if w not in seen:
-            seen.add(w)
-            uniq.append(w)
 
     return SummaryP2pRubLegs(
         cash_rub_per_usdt=cash,
         transfer_rub_per_usdt=transfer,
         cash_via_htx=cash_htx,
         transfer_via_htx=transfer_htx,
-        warnings=tuple(uniq),
+        warnings=(),
     )
 
 
@@ -107,7 +66,7 @@ def read_summary_p2p_rub_legs(doc: Optional[Dict[str, object]]) -> SummaryP2pRub
     c_h = t_h = None
     if need_htx:
         c_h, t_h, _w_h = read_htx_p2p(doc)
-    return _build_summary_legs(c_b, t_b, c_h, t_h, tried_htx=need_htx)
+    return _build_summary_legs(c_b, t_b, c_h, t_h)
 
 
 def fetch_summary_p2p_rub_legs_live() -> SummaryP2pRubLegs:
@@ -140,7 +99,7 @@ def fetch_summary_p2p_rub_legs_live() -> SummaryP2pRubLegs:
                 t_h = float(hb["price"])
         except RuntimeError:
             pass
-    return _build_summary_legs(c_b, t_b, c_h, t_h, tried_htx=need_htx)
+    return _build_summary_legs(c_b, t_b, c_h, t_h)
 
 
 def cash_label(*, via_htx: bool, dest: str) -> str:
