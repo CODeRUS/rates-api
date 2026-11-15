@@ -35,6 +35,8 @@ from rates_http import urlopen_retriable
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 HOME_URL = "https://kwikpay.ru/"
+# Сводка без суммы «получить N THB»: amount выше порога, где комиссия 0.
+_DEFAULT_SUMMARY_RUB = 50_000.0
 # Значения для поля amount калькулятора (в тестах — рублёвый ориентир к оплате).
 DEFAULT_AMOUNTS = (
     500,
@@ -52,7 +54,7 @@ DEFAULT_AMOUNTS = (
 
 @dataclass
 class KwikQuote:
-    amount_input: int
+    amount_input: float
     withdraw_thb: float
     pay_rub: float
     fee_rub: float
@@ -151,17 +153,36 @@ def _extract_fee_row(snap: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return None
 
 
-def fetch_quotes_for_amounts(
-    amounts: Sequence[int],
+def _amount_text(amount: float) -> str:
+    # Дробная строка вслед за успешным calculate оставляет fee пустым.
+    return str(int(round(float(amount))))
+
+
+def _quote_from_row(amount_input: float, row: Dict[str, Any]) -> KwikQuote:
+    w = float(row["withdrawAmount"])
+    pay = float(row["acceptedTransferAmount"])
+    fee = float(row["acceptedTotalFee"])
+    api_rate = float(row["rate"])
+    rub_per = pay / w if w else float("nan")
+    return KwikQuote(
+        amount_input=amount_input,
+        withdraw_thb=w,
+        pay_rub=pay,
+        fee_rub=fee,
+        rub_per_thb=rub_per,
+        api_rate=api_rate,
+    )
+
+
+def _open_calculator(
     *,
-    country: str = "THA",
-    currency: str = "THB",
-    timeout: float = 45.0,
-) -> List[KwikQuote]:
+    country: str,
+    currency: str,
+    timeout: float,
+) -> Tuple[str, str, Dict[str, Any]]:
     page = _fetch(HOME_URL, timeout=timeout)
     update_uri, csrf = _parse_livewire_config(page)
     snap = _parse_calculator_snapshot(page)
-
     snap = _snapshot_from_response(
         _livewire_post(
             update_uri,
@@ -172,40 +193,78 @@ def fetch_quotes_for_amounts(
             timeout=timeout,
         )
     )
+    return update_uri, csrf, snap
 
+
+def _quote_on_snapshot(
+    update_uri: str,
+    csrf: str,
+    snap: Dict[str, Any],
+    amount: float,
+    *,
+    timeout: float,
+) -> Tuple[KwikQuote, Dict[str, Any]]:
+    """Только ``amount``. Страна и валюта в том же апдейте обнуляют расчёт."""
+    text = _amount_text(amount)
+    resp = _livewire_post(
+        update_uri,
+        csrf,
+        snap,
+        {"amount": text},
+        [{"path": "", "method": "calculate", "params": []}],
+        timeout=timeout,
+    )
+    snap = _snapshot_from_response(resp)
+    row = _extract_fee_row(snap)
+    if not row:
+        raise RuntimeError(f"Нет блока fee для amount={text}, data={snap.get('data')}")
+    return _quote_from_row(float(text), row), snap
+
+
+def fetch_quotes_for_amounts(
+    amounts: Sequence[float],
+    *,
+    country: str = "THA",
+    currency: str = "THB",
+    timeout: float = 45.0,
+) -> List[KwikQuote]:
+    update_uri, csrf, snap = _open_calculator(
+        country=country, currency=currency, timeout=timeout
+    )
     out: List[KwikQuote] = []
     for raw in amounts:
-        amt = int(raw)
-        resp = _livewire_post(
-            update_uri,
-            csrf,
-            snap,
-            # В Livewire-снапшоте kwikpay значение currency может сбрасываться в None,
-            # если отправлять только amount. Явно дублируем country/currency на каждом шаге.
-            {"country": country, "currency": currency, "amount": str(amt)},
-            [{"path": "", "method": "calculate", "params": []}],
-            timeout=timeout,
+        quote, snap = _quote_on_snapshot(
+            update_uri, csrf, snap, float(raw), timeout=timeout
         )
-        snap = _snapshot_from_response(resp)
-        row = _extract_fee_row(snap)
-        if not row:
-            raise RuntimeError(f"Нет блока fee для amount={amt}, data={snap.get('data')}")
-        w = float(row["withdrawAmount"])
-        pay = float(row["acceptedTransferAmount"])
-        fee = float(row["acceptedTotalFee"])
-        api_rate = float(row["rate"])
-        rub_per = pay / w if w else float("nan")
-        out.append(
-            KwikQuote(
-                amount_input=amt,
-                withdraw_thb=w,
-                pay_rub=pay,
-                fee_rub=fee,
-                rub_per_thb=rub_per,
-                api_rate=api_rate,
-            )
-        )
+        out.append(quote)
     return out
+
+
+def fetch_summary_quote(
+    *,
+    amount_rub: float = _DEFAULT_SUMMARY_RUB,
+    receiving_thb: Optional[float] = None,
+    timeout: float = 45.0,
+) -> KwikQuote:
+    """
+    Одна котировка счёта RUB→THB для сводки.
+
+    При ``receiving_thb`` второй запрос подбирает ``amount`` по курсу пробы.
+    """
+    update_uri, csrf, snap = _open_calculator(
+        country="THA", currency="THB", timeout=timeout
+    )
+    quote, snap = _quote_on_snapshot(
+        update_uri, csrf, snap, float(amount_rub), timeout=timeout
+    )
+    target = float(receiving_thb) if receiving_thb is not None else 0.0
+    if target > 0 and quote.withdraw_thb > 0 and quote.rub_per_thb > 0:
+        scaled = max(1000.0, target * quote.rub_per_thb)
+        if abs(scaled - quote.amount_input) > 1.0:
+            quote, _snap = _quote_on_snapshot(
+                update_uri, csrf, snap, scaled, timeout=timeout
+            )
+    return quote
 
 
 def _print_table(rows: List[KwikQuote]) -> None:

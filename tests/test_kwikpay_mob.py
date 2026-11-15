@@ -24,19 +24,6 @@ _ACCOUNT_RESP = {
     ]
 }
 
-_CARD_RESP = {
-    "fees": [
-        {
-            "acceptedTransferAmount": 36526.65,
-            "withdrawAmount": 500.0,
-            "withdrawCurrency": "USD",
-            "rate": 0.0136886355578735,
-            "acceptedTotalFee": 438.32,
-        }
-    ]
-}
-
-
 class TestKwikpayMob(unittest.TestCase):
     def setUp(self) -> None:
         self._env = mock.patch.dict(
@@ -165,25 +152,27 @@ class TestKwikpayMob(unittest.TestCase):
         self.assertEqual(hdr.get("x-app-version"), "3.31.0")
         self.assertEqual(hdr.get("user-agent"), "okhttp/4.12.0")
 
-    @mock.patch(
-        "sources.unired_bkb.bbl_latest_fx.subscription_key_from_env",
-        return_value="test-bbl-key",
-    )
-    @mock.patch("sources.unired_bkb.bbl_latest_fx.fetch_usd50_tt_thb", return_value=35.0)
-    @mock.patch("sources.kwikpay.kwikpay_mob.post_commissions")
-    def test_summary_card_rub_per_thb_via_bbl(self, post_mock, bbl_mock, _key_mock) -> None:
-        post_mock.side_effect = [_ACCOUNT_RESP, _CARD_RESP]
+    @mock.patch("sources.kwikpay.kwikpay_rates.fetch_summary_quote")
+    def test_summary_uses_site_account_quote(self, quote_mock) -> None:
+        rates = importlib.import_module("sources.kwikpay.kwikpay_rates")
+        quote_mock.return_value = rates.KwikQuote(
+            amount_input=50_000,
+            withdraw_thb=19_805.98,
+            pay_rub=50_000,
+            fee_rub=0,
+            rub_per_thb=50_000 / 19_805.98,
+            api_rate=0.3961165932,
+        )
         kw = importlib.import_module("sources.kwikpay")
         ctx = FetchContext(30_000, 250, 0, 40_000, 10_000, None, None)
         quotes = kw.summary(ctx)
-        self.assertEqual(len(quotes), 2)
+        self.assertEqual(len(quotes), 1)
         self.assertEqual(quotes[0].category, SourceCategory.TRANSFER)
         self.assertEqual(quotes[0].label, "KwikPay счёт")
-        self.assertEqual(quotes[1].label, "KwikPay карта")
-        rub_per_usd = 36526.65 / 500.0
-        self.assertAlmostEqual(quotes[1].rate, rub_per_usd / 35.0, places=3)
-        self.assertTrue(quotes[1].compare_to_baseline)
-        bbl_mock.assert_called_once()
+        self.assertAlmostEqual(quotes[0].rate, 50_000 / 19_805.98, places=6)
+        self.assertIn("50 000", quotes[0].note)
+        self.assertTrue(quotes[0].compare_to_baseline)
+        quote_mock.assert_called_once_with(receiving_thb=None)
 
     @mock.patch("sources.kwikpay.kwikpay_mob.fetch_visa_direct_usd")
     @mock.patch("sources.kwikpay.kwikpay_mob.fetch_overseas_deposits_thb")
@@ -225,28 +214,100 @@ class TestKwikpayMob(unittest.TestCase):
         self.assertEqual(fees[1].withdraw_amount, mob._VISA_DIRECT_USD_MAX)
         self.assertTrue(all(u <= mob._VISA_DIRECT_USD_MAX for u in seen))
 
-    @mock.patch(
-        "sources.unired_bkb.bbl_latest_fx.subscription_key_from_env",
-        return_value="test-bbl-key",
-    )
-    @mock.patch("sources.unired_bkb.bbl_latest_fx.fetch_usd50_tt_thb", return_value=35.0)
-    @mock.patch("sources.kwikpay.kwikpay_mob.fetch_summary_fees")
-    def test_summary_receiving_thb_passes_bbl_to_fees(
-        self, fees_mock, _bbl_mock, _key_mock
-    ) -> None:
-        fees_mock.return_value = [
-            mob.KwikpayMobFee("OverseasDeposits", 1, 1, "THB", 0, 0),
-            mob.KwikpayMobFee("VisaDirect", 1, 1, "USD", 0, 0),
-        ]
+    @mock.patch("sources.kwikpay.kwikpay_rates.fetch_summary_quote")
+    def test_summary_receiving_thb_uses_site_quote(self, quote_mock) -> None:
+        rates = importlib.import_module("sources.kwikpay.kwikpay_rates")
+        quote_mock.return_value = rates.KwikQuote(
+            amount_input=75_684,
+            withdraw_thb=30_000,
+            pay_rub=75_684,
+            fee_rub=0,
+            rub_per_thb=75_684 / 30_000,
+            api_rate=0.39,
+        )
         kw = importlib.import_module("sources.kwikpay")
         ctx = FetchContext(30_000, 250, 0, 40_000, 10_000, None, None, receiving_thb=30_000)
         quotes = kw.summary(ctx)
-        self.assertEqual(len(quotes), 2)
-        self.assertIn("30 000", quotes[1].note)
-        fees_mock.assert_called_once()
-        _args, kwargs = fees_mock.call_args
-        self.assertEqual(kwargs.get("receiving_thb"), 30_000.0)
-        self.assertEqual(kwargs.get("thb_per_usd"), 35.0)
+        self.assertEqual(len(quotes), 1)
+        self.assertEqual(quotes[0].label, "KwikPay счёт")
+        self.assertIn("30 000", quotes[0].note)
+        quote_mock.assert_called_once_with(receiving_thb=30_000.0)
+
+
+class TestKwikpaySiteCalculator(unittest.TestCase):
+    def _post(self, updates: list):
+        def post(_uri, _csrf, current, upd, _calls, timeout=45.0):
+            updates.append(dict(upd))
+            data = dict(current["data"])
+            data.update(upd)
+            amount = upd.get("amount")
+            if amount is not None:
+                principal = float(amount)
+                fee = 0.0 if principal >= 50_000 else 250.0
+                data["fee"] = [
+                    {
+                        "withdrawAmount": (principal / 2.52449) if principal else 0,
+                        "acceptedTransferAmount": principal + fee,
+                        "acceptedTotalFee": fee,
+                        "rate": 0.3961165932,
+                    }
+                ]
+            else:
+                data["fee"] = None
+            new = {"data": data, "memo": {}, "checksum": "a"}
+            return {"components": [{"snapshot": json.dumps(new)}]}
+
+        return post
+
+    def _patches(self, rates, post):
+        snap = {
+            "data": {
+                "fee": None,
+                "country": None,
+                "currency": None,
+                "amount": None,
+            },
+            "memo": {},
+            "checksum": "a",
+        }
+        return (
+            mock.patch.object(rates, "_fetch", return_value="page"),
+            mock.patch.object(
+                rates, "_parse_livewire_config", return_value=("https://kwikpay.ru/x", "csrf")
+            ),
+            mock.patch.object(rates, "_parse_calculator_snapshot", return_value=snap),
+            mock.patch.object(rates, "_livewire_post", side_effect=post),
+        )
+
+    def test_amount_step_does_not_resend_country(self) -> None:
+        rates = importlib.import_module("sources.kwikpay.kwikpay_rates")
+        updates: list = []
+        patches = self._patches(rates, self._post(updates))
+        for p in patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in patches])
+        quotes = rates.fetch_quotes_for_amounts([50_000, 1_000])
+        self.assertEqual(updates[0], {"country": "THA", "currency": "THB"})
+        self.assertEqual(updates[1], {"amount": "50000"})
+        self.assertEqual(updates[2], {"amount": "1000"})
+        self.assertAlmostEqual(quotes[0].pay_rub, 50_000)
+        self.assertAlmostEqual(quotes[1].fee_rub, 250)
+        self.assertAlmostEqual(quotes[1].pay_rub, 1_250)
+
+    def test_summary_quote_scales_amount_for_target_thb(self) -> None:
+        rates = importlib.import_module("sources.kwikpay.kwikpay_rates")
+        updates: list = []
+        patches = self._patches(rates, self._post(updates))
+        for p in patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in patches])
+        quote = rates.fetch_summary_quote(receiving_thb=30_000)
+        self.assertEqual(updates[0], {"country": "THA", "currency": "THB"})
+        self.assertEqual(updates[1], {"amount": "50000"})
+        scaled = float(updates[2]["amount"])
+        self.assertGreater(scaled, 50_000)
+        self.assertAlmostEqual(quote.amount_input, scaled)
+        self.assertAlmostEqual(quote.withdraw_thb, scaled / 2.52449, delta=1.0)
 
 
 if __name__ == "__main__":
