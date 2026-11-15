@@ -26,8 +26,6 @@ _COMMISSIONS_URL = "https://mob.kwikpay.ru/ru/api/v1/commissions"
 _REFRESH_SESSION_URL = "https://mob.kwikpay.ru/ru/api/v2/users/refresh_session"
 _DEFAULT_APP_VERSION = "3.31.0"
 _DEFAULT_SENDER_BANK_ID = "9000598"
-# ISO3, как в калькуляторе kwikpay.ru. null → fees=[] «External gate couldn't provide rate».
-_OVERSEAS_COUNTRY_CODE = "THA"
 _DEFAULT_ACCOUNT_RUB = 50_000.0
 _DEFAULT_CARD_USD = 500.0
 # VisaDirect API: сумма WithdrawAmount в USD (эмпирически 5…1000).
@@ -269,7 +267,7 @@ def fetch_overseas_deposits_thb(
         "acceptedCurrency": "RUB",
         "amount": float(amount_rub),
         "amountType": "AcceptedAmount",
-        "countryCode": _OVERSEAS_COUNTRY_CODE,
+        "countryCode": None,
         "operationType": "OverseasDeposits",
         "recipientAccount": None,
         "recipientBankId": None,

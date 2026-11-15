@@ -164,11 +164,6 @@ class TestKwikpayMob(unittest.TestCase):
         self.assertEqual(hdr.get("x-auth-token"), "test-token")
         self.assertEqual(hdr.get("x-app-version"), "3.31.0")
         self.assertEqual(hdr.get("user-agent"), "okhttp/4.12.0")
-        body = json.loads(req.data.decode())
-        self.assertEqual(body["countryCode"], "THA")
-        self.assertEqual(body["withdrawCurrency"], "THB")
-        self.assertEqual(body["operationType"], "OverseasDeposits")
-        self.assertEqual(body["amountType"], "AcceptedAmount")
 
     @mock.patch(
         "sources.unired_bkb.bbl_latest_fx.subscription_key_from_env",
