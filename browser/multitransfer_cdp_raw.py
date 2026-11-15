@@ -507,6 +507,64 @@ def _create_new_tab(debug_url: str, target_url: str) -> Dict[str, Any]:
     return tab
 
 
+def _tab_ids_to_close(pages: Any, target_url: str, own_id: str) -> list:
+    """Вкладка скрипта и все вкладки того же URL. Чужие сайты не трогаем."""
+    ids: list = []
+    seen = set()
+    if own_id:
+        ids.append(own_id)
+        seen.add(own_id)
+    if not isinstance(pages, list):
+        return ids
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        if page.get("type") not in (None, "page"):
+            continue
+        page_id = str(page.get("id") or "")
+        if not page_id or page_id in seen:
+            continue
+        if _url_contains(page.get("url") or "", target_url):
+            ids.append(page_id)
+            seen.add(page_id)
+    return ids
+
+
+def _close_page_tab(debug_url: str, tab_id: str) -> None:
+    if not tab_id:
+        return
+    url = _join(debug_url, "/json/close/%s" % urllib.parse.quote(tab_id, safe=""))
+    for method in ("GET", "PUT"):
+        req = urllib.request.Request(
+            url,
+            method=method,
+            headers={"User-Agent": "cdp-raw-client"},
+        )
+        try:
+            with _http_opener().open(req, timeout=5) as resp:
+                resp.read()
+            return
+        except urllib.error.HTTPError as exc:
+            if exc.code == 405 and method == "GET":
+                continue
+            return
+        except Exception:
+            return
+
+
+def _close_script_tabs(debug_url: str, target_url: str, own_id: str) -> None:
+    try:
+        pages = _list_page_tabs(debug_url)
+    except Exception:
+        pages = []
+    ids = _tab_ids_to_close(pages, target_url, own_id)
+    if not ids:
+        return
+    print("closing %s tab(s)" % len(ids), file=sys.stderr)
+    for tab_id in ids:
+        _close_page_tab(debug_url, tab_id)
+
+
 class CDPSession:
     def __init__(self, websocket_url: str, timeout_sec: float, origin: Optional[str]) -> None:
         conn_kwargs: Dict[str, Any] = {"timeout": timeout_sec}
@@ -748,379 +806,388 @@ def run(
     target_url: str = TARGET_URL,
 ) -> int:
     timeout_sec = max(1.0, timeout_ms / 1000.0)
+    tab: Optional[Dict[str, Any]] = None
+    cdp: Optional[CDPSession] = None
     try:
-        tab = None
-        # Сессия может дорисовать вкладки сразу после старта. Чужую вкладку не перехватываем.
-        discover_deadline = time.monotonic() + 5.0
-        while True:
-            tab = _find_page_tab(debug_url, marker, prefer_url=target_url, fallback=False)
-            if tab is not None or time.monotonic() >= discover_deadline:
-                break
-            time.sleep(0.4)
-        if tab is None:
-            print("opening tab %s" % target_url, file=sys.stderr)
-            try:
-                # URL вешаем после скрипта, который держит ранний commissions.
-                tab = _create_new_tab(debug_url, "about:blank")
-            except urllib.error.HTTPError as exc:
-                raise RuntimeError(
-                    "No page tabs in Chromium and cannot create one via /json/new "
-                    f"(HTTP {exc.code}). Open any page in the browser or pass --start-browser."
-                ) from exc
-            action = "open"
-        else:
-            print("tab already open: %s" % (tab.get("url") or target_url), file=sys.stderr)
-            action = "use-existing"
+        try:
+            # Сессия может дорисовать вкладки сразу после старта. Чужую вкладку не перехватываем.
+            discover_deadline = time.monotonic() + 5.0
+            while True:
+                tab = _find_page_tab(debug_url, marker, prefer_url=target_url, fallback=False)
+                if tab is not None or time.monotonic() >= discover_deadline:
+                    break
+                time.sleep(0.4)
+            if tab is None:
+                print("opening tab %s" % target_url, file=sys.stderr)
+                try:
+                    # URL вешаем после скрипта, который держит ранний commissions.
+                    tab = _create_new_tab(debug_url, "about:blank")
+                except urllib.error.HTTPError as exc:
+                    raise RuntimeError(
+                        "No page tabs in Chromium and cannot create one via /json/new "
+                        f"(HTTP {exc.code}). Open any page in the browser or pass --start-browser."
+                    ) from exc
+                action = "open"
+            else:
+                print("tab already open: %s" % (tab.get("url") or target_url), file=sys.stderr)
+                action = "use-existing"
 
-        ws_url = tab.get("webSocketDebuggerUrl")
-        if not ws_url:
-            raise RuntimeError("Target does not have webSocketDebuggerUrl")
+            ws_url = tab.get("webSocketDebuggerUrl")
+            if not ws_url:
+                raise RuntimeError("Target does not have webSocketDebuggerUrl")
 
-        cdp = CDPSession(websocket_url=ws_url, timeout_sec=timeout_sec, origin=origin)
-    except urllib.error.HTTPError as exc:
-        print(
-            f"Chromium debug HTTP {exc.code} for {exc.url}: {exc.reason}. "
-            "Check --debug-url and that Chromium was started with --remote-debugging-port.",
-            file=sys.stderr,
-        )
-        return 1
-    except urllib.error.URLError as exc:
-        print(
-            f"Cannot reach Chromium debug endpoint {debug_url}: {exc}",
-            file=sys.stderr,
-        )
-        return 1
-    except Exception as exc:
-        print(f"Failed to initialize CDP session: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return 1
+            cdp = CDPSession(websocket_url=ws_url, timeout_sec=timeout_sec, origin=origin)
+        except urllib.error.HTTPError as exc:
+            print(
+                f"Chromium debug HTTP {exc.code} for {exc.url}: {exc.reason}. "
+                "Check --debug-url and that Chromium was started with --remote-debugging-port.",
+                file=sys.stderr,
+            )
+            return 1
+        except urllib.error.URLError as exc:
+            print(
+                f"Cannot reach Chromium debug endpoint {debug_url}: {exc}",
+                file=sys.stderr,
+            )
+            return 1
+        except Exception as exc:
+            print(f"Failed to initialize CDP session: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
 
-    try:
-        cdp.call("Network.enable", timeout_sec=timeout_sec)
-        cdp.call("Page.enable", timeout_sec=timeout_sec)
-        cdp.call("Runtime.enable", timeout_sec=timeout_sec)
-        current_url = tab.get("url") or ""
-        if _url_contains(current_url, target_url):
-            print("tab already open: %s" % current_url, file=sys.stderr)
-            action = "use-existing"
-        else:
-            print("opening %s" % target_url, file=sys.stderr)
-            cdp.call("Page.navigate", {"url": target_url}, timeout_sec=timeout_sec)
-            action = "open"
-        print(
-            "waiting %ss for page requests before entering the amount" % int(_INPUT_DELAY_SEC),
-            file=sys.stderr,
-        )
-        page_ready_at = time.monotonic() + _INPUT_DELAY_SEC
+        try:
+            cdp.call("Network.enable", timeout_sec=timeout_sec)
+            cdp.call("Page.enable", timeout_sec=timeout_sec)
+            cdp.call("Runtime.enable", timeout_sec=timeout_sec)
+            current_url = tab.get("url") or ""
+            if _url_contains(current_url, target_url):
+                print("tab already open: %s" % current_url, file=sys.stderr)
+                action = "use-existing"
+            else:
+                print("opening %s" % target_url, file=sys.stderr)
+                cdp.call("Page.navigate", {"url": target_url}, timeout_sec=timeout_sec)
+                action = "open"
+            print(
+                "waiting %ss for page requests before entering the amount" % int(_INPUT_DELAY_SEC),
+                file=sys.stderr,
+            )
+            page_ready_at = time.monotonic() + _INPUT_DELAY_SEC
 
-        deadline = time.monotonic() + timeout_sec
-        settle_sec = max(0.0, settle_ms / 1000.0)
+            deadline = time.monotonic() + timeout_sec
+            settle_sec = max(0.0, settle_ms / 1000.0)
 
-        latest_commissions_post_id: Optional[str] = None
-        commissions_url_by_id: Dict[str, str] = {}
-        base_headers_by_id: Dict[str, Dict[str, Any]] = {}
-        extra_headers_by_id: Dict[str, Dict[str, Any]] = {}
-        shared_fhp_headers: Dict[str, Any] = {}
-        amount_entered = False
-        amount_entered_at: Optional[float] = None
-        reloaded = False
-
-        pending_emit_mono: Optional[float] = None
-        pending_emit_id: Optional[str] = None
-        pending_emit_out: Optional[Dict[str, Any]] = None
-
-        def _reset_capture_state() -> None:
-            nonlocal latest_commissions_post_id, amount_entered, amount_entered_at
-            nonlocal pending_emit_mono, pending_emit_id, pending_emit_out
-            latest_commissions_post_id = None
-            commissions_url_by_id.clear()
-            base_headers_by_id.clear()
-            extra_headers_by_id.clear()
-            shared_fhp_headers.clear()
+            latest_commissions_post_id: Optional[str] = None
+            commissions_url_by_id: Dict[str, str] = {}
+            base_headers_by_id: Dict[str, Dict[str, Any]] = {}
+            extra_headers_by_id: Dict[str, Dict[str, Any]] = {}
+            shared_fhp_headers: Dict[str, Any] = {}
             amount_entered = False
-            amount_entered_at = None
-            pending_emit_mono = None
-            pending_emit_id = None
-            pending_emit_out = None
+            amount_entered_at: Optional[float] = None
+            reloaded = False
 
-        def _reload_for_retry() -> bool:
-            nonlocal reloaded, page_ready_at, deadline, action, cdp
-            if reloaded:
-                return False
-            reloaded = True
-            print("functionality did not fire, reloading tab", file=sys.stderr)
-            _reset_capture_state()
-            try:
-                cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=min(20.0, timeout_sec))
-            except Exception as exc:
-                print("reload on current socket failed: %s" % exc, file=sys.stderr)
+            pending_emit_mono: Optional[float] = None
+            pending_emit_id: Optional[str] = None
+            pending_emit_out: Optional[Dict[str, Any]] = None
+
+            def _reset_capture_state() -> None:
+                nonlocal latest_commissions_post_id, amount_entered, amount_entered_at
+                nonlocal pending_emit_mono, pending_emit_id, pending_emit_out
+                latest_commissions_post_id = None
+                commissions_url_by_id.clear()
+                base_headers_by_id.clear()
+                extra_headers_by_id.clear()
+                shared_fhp_headers.clear()
+                amount_entered = False
+                amount_entered_at = None
+                pending_emit_mono = None
+                pending_emit_id = None
+                pending_emit_out = None
+
+            def _reload_for_retry() -> bool:
+                nonlocal reloaded, page_ready_at, deadline, action, cdp
+                if reloaded:
+                    return False
+                reloaded = True
+                print("functionality did not fire, reloading tab", file=sys.stderr)
+                _reset_capture_state()
+                try:
+                    cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=min(20.0, timeout_sec))
+                except Exception as exc:
+                    print("reload on current socket failed: %s" % exc, file=sys.stderr)
+                    try:
+                        cdp.close()
+                    except Exception:
+                        pass
+                    fresh = _find_page_tab(debug_url, marker, prefer_url=target_url, fallback=False)
+                    ws = (fresh or {}).get("webSocketDebuggerUrl")
+                    if not ws:
+                        return False
+                    cdp = CDPSession(websocket_url=ws, timeout_sec=timeout_sec, origin=origin)
+                    cdp.call("Network.enable", timeout_sec=timeout_sec)
+                    cdp.call("Page.enable", timeout_sec=timeout_sec)
+                    cdp.call("Runtime.enable", timeout_sec=timeout_sec)
+                    cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=min(20.0, timeout_sec))
+                action = "reload"
+                page_ready_at = time.monotonic() + _INPUT_DELAY_SEC
+                deadline = time.monotonic() + timeout_sec
+                return True
+
+            def _merge_for(rid: str) -> Dict[str, Any]:
+                merged: Dict[str, Any] = {}
+                merged.update(base_headers_by_id.get(rid, {}))
+                merged.update(extra_headers_by_id.get(rid, {}))
+                return merged
+
+            def _merge_best_headers(rid: str) -> Dict[str, Any]:
+                merged = _merge_for(rid)
+                for key in ("fhprequestid", "fhpsessionid", "x-request-id"):
+                    if not merged.get(key) and shared_fhp_headers.get(key):
+                        merged[key] = shared_fhp_headers[key]
+                if _headers_complete(merged):
+                    return merged
+                for other_rid in set(base_headers_by_id) | set(extra_headers_by_id):
+                    if other_rid == rid:
+                        continue
+                    candidate = _merge_for(other_rid)
+                    for key in ("fhprequestid", "fhpsessionid", "x-request-id"):
+                        if not merged.get(key) and candidate.get(key):
+                            merged[key] = candidate[key]
+                return merged
+
+            def _remember_fhp(headers: Dict[str, Any]) -> None:
+                for key in ("fhprequestid", "fhpsessionid", "x-request-id"):
+                    if headers.get(key):
+                        shared_fhp_headers[key] = headers[key]
+
+            def _build_out(rid: str, merged: Dict[str, Any]) -> Dict[str, Any]:
+                return {
+                    "action": action,
+                    "page_url": target_url,
+                    "commissions_url": commissions_url_by_id.get(rid, ""),
+                    "amount": amount,
+                    "fhprequestid": merged.get("fhprequestid"),
+                    "fhpsessionid": merged.get("fhpsessionid"),
+                    "x-request-id": merged.get("x-request-id"),
+                    "user_agent": merged.get("user-agent") or "",
+                }
+
+            def _schedule_emit(rid: str, merged: Dict[str, Any]) -> None:
+                nonlocal pending_emit_mono, pending_emit_id, pending_emit_out
+                pending_emit_id = rid
+                pending_emit_out = _build_out(rid, merged)
+                pending_emit_mono = time.monotonic() + settle_sec
+
+            def _try_emit_pending() -> Optional[int]:
+                nonlocal pending_emit_mono, pending_emit_id, pending_emit_out
+                if pending_emit_mono is None:
+                    return None
+                if time.monotonic() < pending_emit_mono:
+                    return None
+                if pending_emit_id != latest_commissions_post_id or pending_emit_out is None:
+                    pending_emit_mono = None
+                    pending_emit_id = None
+                    pending_emit_out = None
+                    return None
+                print(json.dumps(pending_emit_out, ensure_ascii=False, indent=2))
+                try:
+                    snap = _eval_value(
+                        cdp,
+                        "({debit: (document.querySelector('[data-testid=\"transfer_amount_debit-field\"] input')||{}).value || '',"
+                        " held: window.__mtHeld || 0, installed: !!window.__mtHoldInstalled, amount: window.__mtAmount || 0,"
+                        " text: (document.body && document.body.innerText || '').indexOf('Не удалось') !== -1})",
+                        timeout_sec=5.0,
+                    )
+                    print(
+                        "debit=%s held=%s installed=%s mtAmount=%s error_banner=%s" % (
+                            (snap or {}).get("debit"),
+                            (snap or {}).get("held"),
+                            (snap or {}).get("installed"),
+                            (snap or {}).get("amount"),
+                            (snap or {}).get("text"),
+                        ),
+                        file=sys.stderr,
+                    )
+                except Exception as exc:
+                    print("form snapshot failed: %s" % exc, file=sys.stderr)
+                if save_headers_file is not None:
+                    _save_headers(save_headers_file, pending_emit_out)
+                if keep_open:
+                    print("Keep-open mode enabled. Press Ctrl+C to exit.")
+                    while True:
+                        time.sleep(1)
+                return 0
+
+            def _maybe_schedule_for_latest() -> None:
+                if not latest_commissions_post_id:
+                    return
+                rid = latest_commissions_post_id
+                merged = _merge_best_headers(rid)
+                if _headers_complete(merged):
+                    _schedule_emit(rid, merged)
+
+            def _handle_network_event(event: Dict[str, Any]) -> None:
+                nonlocal latest_commissions_post_id, amount_entered
+                nonlocal pending_emit_mono, pending_emit_id, pending_emit_out
+
+                method = event.get("method")
+                params = event.get("params", {})
+
+                if method == "Network.responseReceived":
+                    resp = params.get("response") or {}
+                    url = resp.get("url") or ""
+                    if _is_commissions_request(url) and str(resp.get("status") or "") not in ("", "0"):
+                        # OPTIONS preflight is also this URL and is always 200.
+                        mime = str((resp.get("headers") or {}).get("content-type") or (resp.get("mimeType") or ""))
+                        if "json" in mime.lower() or str(resp.get("status")) not in ("200", "204"):
+                            print("commissions HTTP %s" % resp.get("status"), file=sys.stderr)
+                    return
+
+                if method == "Network.requestWillBeSentExtraInfo":
+                    req_id_raw = params.get("requestId")
+                    if req_id_raw:
+                        rid = str(req_id_raw)
+                        lowered = _lower_headers(params.get("headers"))
+                        extra_headers_by_id[rid] = lowered
+                        _remember_fhp(lowered)
+                        if amount_entered and rid == latest_commissions_post_id:
+                            _maybe_schedule_for_latest()
+                    return
+
+                if method != "Network.requestWillBeSent":
+                    return
+
+                request = params.get("request", {})
+                req_url = request.get("url", "")
+                rid = str(params.get("requestId") or "")
+                if not rid:
+                    return
+
+                if "api.multitransfer.ru" in (req_url or "").lower():
+                    lowered = _lower_headers(request.get("headers"))
+                    base_headers_by_id[rid] = lowered
+                    _remember_fhp(lowered)
+
+                if not _is_commissions_request(req_url):
+                    return
+                req_method = str(request.get("method") or "").upper()
+                if req_method != "POST":
+                    return
+                if not amount_entered:
+                    return
+
+                latest_commissions_post_id = rid
+                commissions_url_by_id[rid] = req_url
+                pending_emit_mono = None
+                pending_emit_id = None
+                pending_emit_out = None
+                _maybe_schedule_for_latest()
+
+            def _drain_queued_events() -> None:
+                while True:
+                    ev = cdp.pop_event()
+                    if not ev:
+                        break
+                    _handle_network_event(ev)
+
+            def _try_enter_amount() -> None:
+                nonlocal amount_entered, amount_entered_at
+                if amount_entered:
+                    return
+                if time.monotonic() < page_ready_at:
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining < 2.0:
+                    return
+                # Mark before typing so commissions POST during Input.* calls is handled.
+                amount_entered = True
+                amount_entered_at = time.monotonic()
+                try:
+                    _enter_amount(cdp, amount, timeout_sec=min(remaining, 35.0))
+                except Exception:
+                    amount_entered = False
+                    raise
+                _drain_queued_events()
+                # Commissions may arrive slightly after commit; pump briefly.
+                post_deadline = time.monotonic() + 2.0
+                while time.monotonic() < post_deadline:
+                    ev = cdp.recv_event(timeout_sec=0.2)
+                    if ev:
+                        _handle_network_event(ev)
+                    if latest_commissions_post_id:
+                        break
+
+            while True:
+                now = time.monotonic()
+                remaining = deadline - now
+                if remaining <= 0:
+                    if latest_commissions_post_id:
+                        merged = _merge_best_headers(latest_commissions_post_id)
+                        if _headers_complete(merged):
+                            out = _build_out(latest_commissions_post_id, merged)
+                            print(json.dumps(out, ensure_ascii=False, indent=2))
+                            if save_headers_file is not None:
+                                _save_headers(save_headers_file, out)
+                            if keep_open:
+                                print("Keep-open mode enabled. Press Ctrl+C to exit.")
+                                while True:
+                                    time.sleep(1)
+                            return 0
+                    if not reloaded and _reload_for_retry():
+                        continue
+                    if not amount_entered:
+                        print(
+                            "Timed out: transfer amount field did not appear or amount was not entered.",
+                            file=sys.stderr,
+                        )
+                    else:
+                        print(
+                            "Timed out waiting commissions request after amount input. "
+                            "Check page load and network activity in target tab.",
+                            file=sys.stderr,
+                        )
+                    return 2
+
+                done = _try_emit_pending()
+                if done is not None:
+                    return done
+
+                _try_enter_amount()
+
+                if (
+                    not reloaded
+                    and amount_entered
+                    and amount_entered_at is not None
+                    and not latest_commissions_post_id
+                    and time.monotonic() - amount_entered_at >= 10.0
+                ):
+                    if _reload_for_retry():
+                        continue
+
+                recv_timeout = min(1.0, remaining)
+                if pending_emit_mono is not None:
+                    until_emit = pending_emit_mono - now
+                    if until_emit > 0:
+                        recv_timeout = min(recv_timeout, until_emit)
+                    else:
+                        recv_timeout = min(recv_timeout, 0.05)
+
+                event = cdp.recv_event(timeout_sec=max(0.05, recv_timeout))
+                if not event:
+                    continue
+                _handle_network_event(event)
+        except KeyboardInterrupt:
+            return 130
+        except Exception as exc:
+            print(f"CDP runtime error: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 1
+        finally:
+            if cdp is not None:
                 try:
                     cdp.close()
                 except Exception:
                     pass
-                fresh = _find_page_tab(debug_url, marker, prefer_url=target_url, fallback=False)
-                ws = (fresh or {}).get("webSocketDebuggerUrl")
-                if not ws:
-                    return False
-                cdp = CDPSession(websocket_url=ws, timeout_sec=timeout_sec, origin=origin)
-                cdp.call("Network.enable", timeout_sec=timeout_sec)
-                cdp.call("Page.enable", timeout_sec=timeout_sec)
-                cdp.call("Runtime.enable", timeout_sec=timeout_sec)
-                cdp.call("Page.reload", {"ignoreCache": True}, timeout_sec=min(20.0, timeout_sec))
-            action = "reload"
-            page_ready_at = time.monotonic() + _INPUT_DELAY_SEC
-            deadline = time.monotonic() + timeout_sec
-            return True
-
-        def _merge_for(rid: str) -> Dict[str, Any]:
-            merged: Dict[str, Any] = {}
-            merged.update(base_headers_by_id.get(rid, {}))
-            merged.update(extra_headers_by_id.get(rid, {}))
-            return merged
-
-        def _merge_best_headers(rid: str) -> Dict[str, Any]:
-            merged = _merge_for(rid)
-            for key in ("fhprequestid", "fhpsessionid", "x-request-id"):
-                if not merged.get(key) and shared_fhp_headers.get(key):
-                    merged[key] = shared_fhp_headers[key]
-            if _headers_complete(merged):
-                return merged
-            for other_rid in set(base_headers_by_id) | set(extra_headers_by_id):
-                if other_rid == rid:
-                    continue
-                candidate = _merge_for(other_rid)
-                for key in ("fhprequestid", "fhpsessionid", "x-request-id"):
-                    if not merged.get(key) and candidate.get(key):
-                        merged[key] = candidate[key]
-            return merged
-
-        def _remember_fhp(headers: Dict[str, Any]) -> None:
-            for key in ("fhprequestid", "fhpsessionid", "x-request-id"):
-                if headers.get(key):
-                    shared_fhp_headers[key] = headers[key]
-
-        def _build_out(rid: str, merged: Dict[str, Any]) -> Dict[str, Any]:
-            return {
-                "action": action,
-                "page_url": target_url,
-                "commissions_url": commissions_url_by_id.get(rid, ""),
-                "amount": amount,
-                "fhprequestid": merged.get("fhprequestid"),
-                "fhpsessionid": merged.get("fhpsessionid"),
-                "x-request-id": merged.get("x-request-id"),
-                "user_agent": merged.get("user-agent") or "",
-            }
-
-        def _schedule_emit(rid: str, merged: Dict[str, Any]) -> None:
-            nonlocal pending_emit_mono, pending_emit_id, pending_emit_out
-            pending_emit_id = rid
-            pending_emit_out = _build_out(rid, merged)
-            pending_emit_mono = time.monotonic() + settle_sec
-
-        def _try_emit_pending() -> Optional[int]:
-            nonlocal pending_emit_mono, pending_emit_id, pending_emit_out
-            if pending_emit_mono is None:
-                return None
-            if time.monotonic() < pending_emit_mono:
-                return None
-            if pending_emit_id != latest_commissions_post_id or pending_emit_out is None:
-                pending_emit_mono = None
-                pending_emit_id = None
-                pending_emit_out = None
-                return None
-            print(json.dumps(pending_emit_out, ensure_ascii=False, indent=2))
-            try:
-                snap = _eval_value(
-                    cdp,
-                    "({debit: (document.querySelector('[data-testid=\"transfer_amount_debit-field\"] input')||{}).value || '',"
-                    " held: window.__mtHeld || 0, installed: !!window.__mtHoldInstalled, amount: window.__mtAmount || 0,"
-                    " text: (document.body && document.body.innerText || '').indexOf('Не удалось') !== -1})",
-                    timeout_sec=5.0,
-                )
-                print(
-                    "debit=%s held=%s installed=%s mtAmount=%s error_banner=%s" % (
-                        (snap or {}).get("debit"),
-                        (snap or {}).get("held"),
-                        (snap or {}).get("installed"),
-                        (snap or {}).get("amount"),
-                        (snap or {}).get("text"),
-                    ),
-                    file=sys.stderr,
-                )
-            except Exception as exc:
-                print("form snapshot failed: %s" % exc, file=sys.stderr)
-            if save_headers_file is not None:
-                _save_headers(save_headers_file, pending_emit_out)
-            if keep_open:
-                print("Keep-open mode enabled. Press Ctrl+C to exit.")
-                while True:
-                    time.sleep(1)
-            return 0
-
-        def _maybe_schedule_for_latest() -> None:
-            if not latest_commissions_post_id:
-                return
-            rid = latest_commissions_post_id
-            merged = _merge_best_headers(rid)
-            if _headers_complete(merged):
-                _schedule_emit(rid, merged)
-
-        def _handle_network_event(event: Dict[str, Any]) -> None:
-            nonlocal latest_commissions_post_id, amount_entered
-            nonlocal pending_emit_mono, pending_emit_id, pending_emit_out
-
-            method = event.get("method")
-            params = event.get("params", {})
-
-            if method == "Network.responseReceived":
-                resp = params.get("response") or {}
-                url = resp.get("url") or ""
-                if _is_commissions_request(url) and str(resp.get("status") or "") not in ("", "0"):
-                    # OPTIONS preflight is also this URL and is always 200.
-                    mime = str((resp.get("headers") or {}).get("content-type") or (resp.get("mimeType") or ""))
-                    if "json" in mime.lower() or str(resp.get("status")) not in ("200", "204"):
-                        print("commissions HTTP %s" % resp.get("status"), file=sys.stderr)
-                return
-
-            if method == "Network.requestWillBeSentExtraInfo":
-                req_id_raw = params.get("requestId")
-                if req_id_raw:
-                    rid = str(req_id_raw)
-                    lowered = _lower_headers(params.get("headers"))
-                    extra_headers_by_id[rid] = lowered
-                    _remember_fhp(lowered)
-                    if amount_entered and rid == latest_commissions_post_id:
-                        _maybe_schedule_for_latest()
-                return
-
-            if method != "Network.requestWillBeSent":
-                return
-
-            request = params.get("request", {})
-            req_url = request.get("url", "")
-            rid = str(params.get("requestId") or "")
-            if not rid:
-                return
-
-            if "api.multitransfer.ru" in (req_url or "").lower():
-                lowered = _lower_headers(request.get("headers"))
-                base_headers_by_id[rid] = lowered
-                _remember_fhp(lowered)
-
-            if not _is_commissions_request(req_url):
-                return
-            req_method = str(request.get("method") or "").upper()
-            if req_method != "POST":
-                return
-            if not amount_entered:
-                return
-
-            latest_commissions_post_id = rid
-            commissions_url_by_id[rid] = req_url
-            pending_emit_mono = None
-            pending_emit_id = None
-            pending_emit_out = None
-            _maybe_schedule_for_latest()
-
-        def _drain_queued_events() -> None:
-            while True:
-                ev = cdp.pop_event()
-                if not ev:
-                    break
-                _handle_network_event(ev)
-
-        def _try_enter_amount() -> None:
-            nonlocal amount_entered, amount_entered_at
-            if amount_entered:
-                return
-            if time.monotonic() < page_ready_at:
-                return
-            remaining = deadline - time.monotonic()
-            if remaining < 2.0:
-                return
-            # Mark before typing so commissions POST during Input.* calls is handled.
-            amount_entered = True
-            amount_entered_at = time.monotonic()
-            try:
-                _enter_amount(cdp, amount, timeout_sec=min(remaining, 35.0))
-            except Exception:
-                amount_entered = False
-                raise
-            _drain_queued_events()
-            # Commissions may arrive slightly after commit; pump briefly.
-            post_deadline = time.monotonic() + 2.0
-            while time.monotonic() < post_deadline:
-                ev = cdp.recv_event(timeout_sec=0.2)
-                if ev:
-                    _handle_network_event(ev)
-                if latest_commissions_post_id:
-                    break
-
-        while True:
-            now = time.monotonic()
-            remaining = deadline - now
-            if remaining <= 0:
-                if latest_commissions_post_id:
-                    merged = _merge_best_headers(latest_commissions_post_id)
-                    if _headers_complete(merged):
-                        out = _build_out(latest_commissions_post_id, merged)
-                        print(json.dumps(out, ensure_ascii=False, indent=2))
-                        if save_headers_file is not None:
-                            _save_headers(save_headers_file, out)
-                        if keep_open:
-                            print("Keep-open mode enabled. Press Ctrl+C to exit.")
-                            while True:
-                                time.sleep(1)
-                        return 0
-                if not reloaded and _reload_for_retry():
-                    continue
-                if not amount_entered:
-                    print(
-                        "Timed out: transfer amount field did not appear or amount was not entered.",
-                        file=sys.stderr,
-                    )
-                else:
-                    print(
-                        "Timed out waiting commissions request after amount input. "
-                        "Check page load and network activity in target tab.",
-                        file=sys.stderr,
-                    )
-                return 2
-
-            done = _try_emit_pending()
-            if done is not None:
-                return done
-
-            _try_enter_amount()
-
-            if (
-                not reloaded
-                and amount_entered
-                and amount_entered_at is not None
-                and not latest_commissions_post_id
-                and time.monotonic() - amount_entered_at >= 10.0
-            ):
-                if _reload_for_retry():
-                    continue
-
-            recv_timeout = min(1.0, remaining)
-            if pending_emit_mono is not None:
-                until_emit = pending_emit_mono - now
-                if until_emit > 0:
-                    recv_timeout = min(recv_timeout, until_emit)
-                else:
-                    recv_timeout = min(recv_timeout, 0.05)
-
-            event = cdp.recv_event(timeout_sec=max(0.05, recv_timeout))
-            if not event:
-                continue
-            _handle_network_event(event)
-    except KeyboardInterrupt:
-        return 130
-    except Exception as exc:
-        print(f"CDP runtime error: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return 1
     finally:
-        cdp.close()
+        if tab is not None and not keep_open:
+            _close_script_tabs(debug_url, target_url, str(tab.get("id") or ""))
 
 
 def main() -> int:

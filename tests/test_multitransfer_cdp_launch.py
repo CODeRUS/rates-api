@@ -28,6 +28,7 @@ def _load_launch_helpers():
             "_prefer_named_profile",
             "_clear_stale_chromium_singleton",
             "_url_contains",
+            "_tab_ids_to_close",
             "_select_page_tab",
             "debug_url_from_cmdline",
             "live_chromium_pid",
@@ -207,6 +208,26 @@ class TestChromiumStartCmd(unittest.TestCase):
         self.assertIn("functionality did not fire, reloading tab", text)
         self.assertIn("Page.reload", text)
         self.assertIn("_INPUT_DELAY_SEC = 20.0", text)
+        self.assertIn("if tab is not None and not keep_open:", text)
+        self.assertIn("_close_script_tabs", text)
+
+    def test_tab_ids_to_close_keeps_other_sites(self) -> None:
+        ns = _load_launch_helpers()
+        pages = [
+            {"type": "page", "id": "own", "url": "about:blank"},
+            {"type": "page", "id": "th1", "url": "https://multitransfer.ru/transfer/thailand"},
+            {"type": "page", "id": "th2", "url": "https://multitransfer.ru/transfer/thailand?x=1"},
+            {"type": "page", "id": "home", "url": "https://multitransfer.ru/"},
+            {"type": "page", "id": "other", "url": "https://bereza-exchange.com/"},
+        ]
+        self.assertEqual(
+            ns["_tab_ids_to_close"](pages, ns["TARGET_URL"], "own"),
+            ["own", "th1", "th2"],
+        )
+        self.assertEqual(
+            ns["_tab_ids_to_close"](pages, ns["TARGET_URL"], ""),
+            ["th1", "th2"],
+        )
 
 
 if __name__ == "__main__":
