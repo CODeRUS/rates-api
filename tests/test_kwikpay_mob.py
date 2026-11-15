@@ -235,26 +235,41 @@ class TestKwikpayMob(unittest.TestCase):
 
 
 class TestKwikpaySiteCalculator(unittest.TestCase):
-    def _post(self, updates: list):
-        def post(_uri, _csrf, current, upd, _calls, timeout=45.0):
-            updates.append(dict(upd))
+    def _post(self, updates: list, *, fail_first_calculate: bool = False):
+        calculates = {"n": 0}
+
+        def post(_uri, _csrf, current, upd, calls, timeout=45.0):
+            methods = [c.get("method") for c in calls]
+            updates.append((dict(upd), methods))
             data = dict(current["data"])
             data.update(upd)
-            amount = upd.get("amount")
-            if amount is not None:
+            memo: dict = {}
+            amount = data.get("amount")
+            if "calculate" in methods and amount not in (None, ""):
+                calculates["n"] += 1
                 principal = float(amount)
-                fee = 0.0 if principal >= 50_000 else 250.0
-                data["fee"] = [
-                    {
-                        "withdrawAmount": (principal / 2.52449) if principal else 0,
-                        "acceptedTransferAmount": principal + fee,
-                        "acceptedTotalFee": fee,
-                        "rate": 0.3961165932,
+                if fail_first_calculate and calculates["n"] == 1:
+                    data["fee"] = None
+                    memo = {
+                        "errors": {
+                            "amount": [
+                                "Ошибка расчёта. Попробуйте изменить сумму или валюту."
+                            ]
+                        }
                     }
-                ]
+                else:
+                    fee = 0.0 if principal >= 50_000 else 250.0
+                    data["fee"] = [
+                        {
+                            "withdrawAmount": (principal / 2.52449) if principal else 0,
+                            "acceptedTransferAmount": principal + fee,
+                            "acceptedTotalFee": fee,
+                            "rate": 0.3961165932,
+                        }
+                    ]
             else:
                 data["fee"] = None
-            new = {"data": data, "memo": {}, "checksum": "a"}
+            new = {"data": data, "memo": memo, "checksum": "a"}
             return {"components": [{"snapshot": json.dumps(new)}]}
 
         return post
@@ -287,9 +302,11 @@ class TestKwikpaySiteCalculator(unittest.TestCase):
             p.start()
         self.addCleanup(lambda: [p.stop() for p in patches])
         quotes = rates.fetch_quotes_for_amounts([50_000, 1_000])
-        self.assertEqual(updates[0], {"country": "THA", "currency": "THB"})
-        self.assertEqual(updates[1], {"amount": "50000"})
-        self.assertEqual(updates[2], {"amount": "1000"})
+        self.assertEqual(updates[0], ({"country": "THA", "currency": "THB"}, ["calculate"]))
+        self.assertEqual(updates[1], ({"amount": "50000"}, []))
+        self.assertEqual(updates[2], ({}, ["calculate"]))
+        self.assertEqual(updates[3], ({"amount": "1000"}, []))
+        self.assertEqual(updates[4], ({}, ["calculate"]))
         self.assertAlmostEqual(quotes[0].pay_rub, 50_000)
         self.assertAlmostEqual(quotes[1].fee_rub, 250)
         self.assertAlmostEqual(quotes[1].pay_rub, 1_250)
@@ -302,12 +319,29 @@ class TestKwikpaySiteCalculator(unittest.TestCase):
             p.start()
         self.addCleanup(lambda: [p.stop() for p in patches])
         quote = rates.fetch_summary_quote(receiving_thb=30_000)
-        self.assertEqual(updates[0], {"country": "THA", "currency": "THB"})
-        self.assertEqual(updates[1], {"amount": "50000"})
-        scaled = float(updates[2]["amount"])
+        amounts = [upd.get("amount") for upd, _methods in updates if upd.get("amount")]
+        self.assertEqual(amounts[0], "50000")
+        scaled = float(amounts[1])
         self.assertGreater(scaled, 50_000)
         self.assertAlmostEqual(quote.amount_input, scaled)
         self.assertAlmostEqual(quote.withdraw_thb, scaled / 2.52449, delta=1.0)
+
+    def test_calculate_retries_when_first_fee_is_empty(self) -> None:
+        rates = importlib.import_module("sources.kwikpay.kwikpay_rates")
+        updates: list = []
+        patches = self._patches(rates, self._post(updates, fail_first_calculate=True))
+        for p in patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in patches])
+        quote = rates.fetch_summary_quote()
+        empty_calcs = [
+            methods
+            for upd, methods in updates
+            if methods == ["calculate"] and not upd
+        ]
+        self.assertEqual(len(empty_calcs), 2)
+        self.assertAlmostEqual(quote.pay_rub, 50_000)
+        self.assertAlmostEqual(quote.withdraw_thb, 50_000 / 2.52449, delta=1.0)
 
 
 if __name__ == "__main__":

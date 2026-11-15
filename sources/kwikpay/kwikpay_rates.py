@@ -143,6 +143,14 @@ def _snapshot_from_response(resp: Dict[str, Any]) -> Dict[str, Any]:
     return json.loads(resp["components"][0]["snapshot"])
 
 
+_CALCULATE_CALL = [{"path": "", "method": "calculate", "params": []}]
+# Первый calculate часто отвечает «Ошибка расчёта» и fee=null, следующий уже с курсом.
+_CALC_ATTEMPTS = 3
+_LAZY_LOAD_RE = re.compile(
+    r"""__lazyLoad\(&#039;([^&]+)&#039;\)|__lazyLoad\('([^']+)'\)"""
+)
+
+
 def _extract_fee_row(snap: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     fee = snap.get("data", {}).get("fee")
     if not fee or not isinstance(fee, list):
@@ -174,6 +182,28 @@ def _quote_from_row(amount_input: float, row: Dict[str, Any]) -> KwikQuote:
     )
 
 
+def _lazy_payload(page: str) -> Optional[str]:
+    m = _LAZY_LOAD_RE.search(page)
+    if not m:
+        return None
+    return html.unescape(m.group(1) or m.group(2))
+
+
+def _memo_error(snap: Dict[str, Any]) -> str:
+    errs = (snap.get("memo") or {}).get("errors") or {}
+    if not isinstance(errs, dict):
+        return ""
+    parts: List[str] = []
+    for key, val in errs.items():
+        if isinstance(val, list):
+            text = "; ".join(str(x) for x in val if x)
+        else:
+            text = str(val or "")
+        if text:
+            parts.append(f"{key}: {text}")
+    return "; ".join(parts)
+
+
 def _open_calculator(
     *,
     country: str,
@@ -183,13 +213,26 @@ def _open_calculator(
     page = _fetch(HOME_URL, timeout=timeout)
     update_uri, csrf = _parse_livewire_config(page)
     snap = _parse_calculator_snapshot(page)
+    payload = _lazy_payload(page)
+    memo = snap.get("memo") or {}
+    if payload and not memo.get("lazyLoaded"):
+        snap = _snapshot_from_response(
+            _livewire_post(
+                update_uri,
+                csrf,
+                snap,
+                {},
+                [{"path": "", "method": "__lazyLoad", "params": [payload]}],
+                timeout=timeout,
+            )
+        )
     snap = _snapshot_from_response(
         _livewire_post(
             update_uri,
             csrf,
             snap,
             {"country": country, "currency": currency},
-            [{"path": "", "method": "calculate", "params": []}],
+            _CALCULATE_CALL,
             timeout=timeout,
         )
     )
@@ -204,21 +247,38 @@ def _quote_on_snapshot(
     *,
     timeout: float,
 ) -> Tuple[KwikQuote, Dict[str, Any]]:
-    """Только ``amount``. Страна и валюта в том же апдейте обнуляют расчёт."""
+    """Сначала ``amount``, затем ``calculate``. Совместный апдейт страны обнуляет fee."""
     text = _amount_text(amount)
-    resp = _livewire_post(
-        update_uri,
-        csrf,
-        snap,
-        {"amount": text},
-        [{"path": "", "method": "calculate", "params": []}],
-        timeout=timeout,
+    snap = _snapshot_from_response(
+        _livewire_post(
+            update_uri,
+            csrf,
+            snap,
+            {"amount": text},
+            [],
+            timeout=timeout,
+        )
     )
-    snap = _snapshot_from_response(resp)
-    row = _extract_fee_row(snap)
-    if not row:
-        raise RuntimeError(f"Нет блока fee для amount={text}, data={snap.get('data')}")
-    return _quote_from_row(float(text), row), snap
+    last = snap
+    for _ in range(_CALC_ATTEMPTS):
+        last = _snapshot_from_response(
+            _livewire_post(
+                update_uri,
+                csrf,
+                last,
+                {},
+                _CALCULATE_CALL,
+                timeout=timeout,
+            )
+        )
+        row = _extract_fee_row(last)
+        if row:
+            return _quote_from_row(float(text), row), last
+    detail = _memo_error(last)
+    msg = f"Нет блока fee для amount={text}, data={last.get('data')}"
+    if detail:
+        msg += f" ({detail})"
+    raise RuntimeError(msg)
 
 
 def fetch_quotes_for_amounts(
