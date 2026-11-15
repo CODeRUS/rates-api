@@ -549,21 +549,22 @@ def run(
 ) -> int:
     cdp_mod = _cdp()
     tab = _wait_bereza_tab(cdp_mod, debug_url, timeout_sec=5.0)
-    if tab is None:
-        print("открываю вкладку %s" % target_url)
-        try:
-            tab = cdp_mod._create_new_tab(debug_url, target_url)
-        except urllib.error.HTTPError as exc:
-            print("нет вкладки Chromium: HTTP %s" % exc.code, file=sys.stderr)
-            return 1
-    else:
-        print("вкладка уже открыта: %s" % (tab.get("url") or target_url))
-    ws_url = tab.get("webSocketDebuggerUrl")
-    if not ws_url:
-        print("вкладка без webSocketDebuggerUrl", file=sys.stderr)
-        return 1
-    cdp = cdp_mod.CDPSession(websocket_url=ws_url, timeout_sec=timeout_sec, origin=origin)
+    cdp = None
     try:
+        if tab is None:
+            print("открываю вкладку %s" % target_url)
+            try:
+                tab = cdp_mod._create_new_tab(debug_url, target_url)
+            except urllib.error.HTTPError as exc:
+                print("нет вкладки Chromium: HTTP %s" % exc.code, file=sys.stderr)
+                return 1
+        else:
+            print("вкладка уже открыта: %s" % (tab.get("url") or target_url))
+        ws_url = tab.get("webSocketDebuggerUrl")
+        if not ws_url:
+            print("вкладка без webSocketDebuggerUrl", file=sys.stderr)
+            return 1
+        cdp = cdp_mod.CDPSession(websocket_url=ws_url, timeout_sec=timeout_sec, origin=origin)
         cdp.call("Page.enable", timeout_sec=timeout_sec)
         cdp.call("Network.enable", timeout_sec=timeout_sec)
         title = _wait_ready(cdp, min(8.0, timeout_sec))
@@ -594,7 +595,10 @@ def run(
         print("bereza cf saved len=%d status=%s file=%s" % (len(clearance), status, out_path))
         return 0
     finally:
-        cdp.close()
+        if cdp is not None:
+            cdp.close()
+        if tab is not None:
+            cdp_mod._close_script_tabs(debug_url, target_url, str(tab.get("id") or ""))
 
 
 def main() -> int:

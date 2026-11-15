@@ -29,6 +29,8 @@ def _load_launch_helpers():
             "_clear_stale_chromium_singleton",
             "_url_contains",
             "_tab_ids_to_close",
+            "_normalize_proxy_url",
+            "_load_ex24_proxy_urls",
             "_select_page_tab",
             "debug_url_from_cmdline",
             "live_chromium_pid",
@@ -197,6 +199,32 @@ class TestChromiumStartCmd(unittest.TestCase):
                 "https://multitransfer.ru/transfer/thailand",
             ],
         )
+
+    def test_plain_start_puts_proxy_before_url(self) -> None:
+        ns = _load_launch_helpers()
+        cmd = ns["_chromium_start_cmd"](
+            chromium_binary="/snap/bin/chromium",
+            debug_url="http://127.0.0.1:9222",
+            start_url=ns["TARGET_URL"],
+            user_data_dir=ns["DEFAULT_USER_DATA_DIR"],
+            profile_directory="Default",
+            proxy_server="http://10.0.0.8:3128",
+            plain=True,
+        )
+        self.assertEqual(cmd[-2], "--proxy-server=http://10.0.0.8:3128")
+        self.assertEqual(cmd[-1], ns["TARGET_URL"])
+
+    def test_load_ex24_proxy_file(self) -> None:
+        ns = _load_launch_helpers()
+        self.assertEqual(ns["_normalize_proxy_url"]("10.0.0.8:3128"), "http://10.0.0.8:3128")
+        self.assertEqual(ns["_normalize_proxy_url"]("socks5://10.0.0.8:1080"), "socks5://10.0.0.8:1080")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "proxies"
+            path.write_text("# c\n\n10.0.0.1:3128\nhttp://10.0.0.2:8080\n", encoding="utf-8")
+            self.assertEqual(
+                ns["_load_ex24_proxy_urls"](path),
+                ["http://10.0.0.1:3128", "http://10.0.0.2:8080"],
+            )
 
     def test_amount_is_typed_into_debit_field(self) -> None:
         text = _SRC.read_text(encoding="utf-8")

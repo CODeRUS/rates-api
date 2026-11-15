@@ -34,6 +34,13 @@ class TestBerezaCfExport(unittest.TestCase):
     def test_live_token_is_accepted(self) -> None:
         self.assertTrue(clearance_usable("Bereza Exchange", 200, "cookie"))
 
+    def test_run_closes_bereza_tab(self) -> None:
+        text = Path(__file__).resolve().parents[1].joinpath("browser", "bereza_cf_cdp.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("_close_script_tabs", text)
+        self.assertIn("if tab is not None:", text)
+
     def test_find_bereza_tab_skips_other_pages(self) -> None:
         tabs = [
             {"type": "page", "url": "https://multitransfer.ru/transfer/thailand"},

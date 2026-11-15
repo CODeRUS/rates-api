@@ -203,6 +203,87 @@ def _save_headers(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _normalize_proxy_url(proxy: str) -> str:
+    """Схема по умолчанию ``http://``, как в ``.ex24_proxies``."""
+    proxy = (proxy or "").strip()
+    if not proxy:
+        return ""
+    if proxy.startswith(("http://", "https://", "socks5://", "socks4://")):
+        return proxy
+    return "http://" + proxy
+
+
+def _proxy_label(proxy: str) -> str:
+    parsed = urllib.parse.urlparse(_normalize_proxy_url(proxy))
+    host = parsed.hostname or proxy
+    if parsed.port:
+        return "%s:%s" % (host, parsed.port)
+    return host
+
+
+def _proxy_from_cmdline(argv: Any) -> Optional[str]:
+    if isinstance(argv, bytes):
+        text = argv.replace(b"\0", b" ").decode("utf-8", "replace")
+    else:
+        text = str(argv or "")
+    marker = "--proxy-server="
+    start = text.find(marker)
+    if start < 0:
+        return None
+    rest = text[start + len(marker) :]
+    end = len(rest)
+    for i, ch in enumerate(rest):
+        if ch.isspace():
+            end = i
+            break
+    value = rest[:end].strip()
+    return value or None
+
+
+def _ex24_proxies_file() -> Path:
+    raw = (os.environ.get("EX24_PROXIES_FILE") or "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path(__file__).resolve().parents[1] / ".ex24_proxies"
+
+
+def _load_ex24_proxy_urls(path: Optional[Path] = None) -> list:
+    target = path if path is not None else _ex24_proxies_file()
+    if not target.is_file():
+        return []
+    out = []
+    try:
+        lines = target.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    for line in lines:
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        proxy = _normalize_proxy_url(text)
+        if proxy:
+            out.append(proxy)
+    return out
+
+
+def _proxy_reaches(proxy_url: str, url: str, timeout: float = 8.0) -> bool:
+    proxy = _normalize_proxy_url(proxy_url)
+    if not proxy:
+        return False
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({"http": proxy, "https": proxy})
+    )
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            code = getattr(resp, "status", resp.getcode())
+            return int(code) in (200, 301, 302, 403)
+    except urllib.error.HTTPError as exc:
+        return int(exc.code) in (200, 301, 302, 403)
+    except Exception:
+        return False
+
+
 def _http_opener() -> urllib.request.OpenerDirector:
     # Do not route localhost CDP through HTTP_PROXY (often causes 405/connection errors).
     return urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -804,6 +885,7 @@ def run(
     amount: str,
     save_headers_file: Optional[Path],
     target_url: str = TARGET_URL,
+    proxy: Optional[str] = None,
 ) -> int:
     timeout_sec = max(1.0, timeout_ms / 1000.0)
     tab: Optional[Dict[str, Any]] = None
@@ -959,7 +1041,7 @@ def run(
                         shared_fhp_headers[key] = headers[key]
 
             def _build_out(rid: str, merged: Dict[str, Any]) -> Dict[str, Any]:
-                return {
+                out = {
                     "action": action,
                     "page_url": target_url,
                     "commissions_url": commissions_url_by_id.get(rid, ""),
@@ -969,6 +1051,9 @@ def run(
                     "x-request-id": merged.get("x-request-id"),
                     "user_agent": merged.get("user-agent") or "",
                 }
+                if proxy:
+                    out["proxy"] = proxy
+                return out
 
             def _schedule_emit(rid: str, merged: Dict[str, Any]) -> None:
                 nonlocal pending_emit_mono, pending_emit_id, pending_emit_out
@@ -1275,6 +1360,11 @@ def main() -> int:
         help="DISPLAY for --start-browser (default: :1)",
     )
     parser.add_argument(
+        "--proxy",
+        default=(os.environ.get("MULTITRANSFER_PROXY") or "").strip(),
+        help="One proxy. Default: try .ex24_proxies until one opens the transfer page.",
+    )
+    parser.add_argument(
         "--start-url",
         default=TARGET_URL,
         help=f"Initial URL for --start-browser (default: {TARGET_URL})",
@@ -1309,54 +1399,8 @@ def main() -> int:
     args = parser.parse_args()
     save_headers_file = None if args.no_save_headers else Path(args.save_headers_file)
 
-    browser_proc: Optional[subprocess.Popen] = None
     debug_url = args.debug_url
-    try:
-        if args.start_browser:
-            user_data = Path(args.user_data_dir).expanduser()
-            pid = live_chromium_pid(user_data)
-            if pid:
-                exe = _proc_exe(pid)
-                if not is_snap_chromium_exe(exe):
-                    print("already running browser is not snap chromium: %s" % exe, file=sys.stderr)
-                    return 1
-                existing = debug_url_of_pid(pid)
-                if not existing:
-                    print(
-                        "Chromium is already running without remote debugging; not starting another instance.",
-                        file=sys.stderr,
-                    )
-                    return 1
-                debug_url = existing
-                print("browser already running: %s exe %s" % (debug_url, exe), file=sys.stderr)
-            else:
-                profile_directory = (args.profile_directory or DEFAULT_PROFILE_DIRECTORY).strip() or DEFAULT_PROFILE_DIRECTORY
-                # Профиль по умолчанию — тот же, что у ручного /snap/bin/chromium, без --user-data-dir.
-                plain = user_data == DEFAULT_USER_DATA_DIR and profile_directory == DEFAULT_PROFILE_DIRECTORY
-                print("starting %s" % args.chromium_binary, file=sys.stderr)
-                browser_proc = _start_chromium_browser(
-                    chromium_binary=args.chromium_binary,
-                    display=args.display,
-                    debug_url=debug_url,
-                    start_url=args.start_url if plain else "",
-                    user_data_dir=user_data,
-                    profile_directory=profile_directory,
-                    plain=plain,
-                )
-                try:
-                    _wait_cdp_ready(debug_url, timeout_sec=args.browser_ready_timeout)
-                except TimeoutError as exc:
-                    print(str(exc), file=sys.stderr)
-                    return 1
-                ok, detail = cdp_owner_ok(
-                    _debug_port_from_url(debug_url),
-                    browser_proc.pid,
-                    user_data,
-                )
-                if not ok:
-                    print(detail, file=sys.stderr)
-                    return 1
-                print("chromium exe %s" % detail, file=sys.stderr)
+    if not args.start_browser:
         return run(
             debug_url=debug_url,
             marker=args.marker,
@@ -1368,9 +1412,115 @@ def main() -> int:
             save_headers_file=save_headers_file,
             target_url=args.start_url,
         )
-    finally:
-        if browser_proc is not None:
-            _stop_browser_process(browser_proc)
+
+    user_data = Path(args.user_data_dir).expanduser()
+    pid = live_chromium_pid(user_data)
+    if pid:
+        exe = _proc_exe(pid)
+        if not is_snap_chromium_exe(exe):
+            print("already running browser is not snap chromium: %s" % exe, file=sys.stderr)
+            return 1
+        existing = debug_url_of_pid(pid)
+        if not existing:
+            print(
+                "Chromium is already running without remote debugging; not starting another instance.",
+                file=sys.stderr,
+            )
+            return 1
+        running_proxy = _proxy_from_cmdline(_proc_cmdline(pid))
+        if not running_proxy:
+            print(
+                "Chromium is already running without a proxy; not starting another instance.",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            "browser already running: %s exe %s proxy %s"
+            % (existing, exe, _proxy_label(running_proxy)),
+            file=sys.stderr,
+        )
+        return run(
+            debug_url=existing,
+            marker=args.marker,
+            timeout_ms=args.timeout_ms,
+            keep_open=args.keep_open,
+            origin=args.origin,
+            settle_ms=args.settle_ms,
+            amount=args.amount,
+            save_headers_file=save_headers_file,
+            target_url=args.start_url,
+            proxy=running_proxy,
+        )
+
+    chosen = _normalize_proxy_url(args.proxy)
+    candidates = [chosen] if chosen else _load_ex24_proxy_urls()
+    if not candidates:
+        print("no proxies: .ex24_proxies is empty", file=sys.stderr)
+        return 1
+    reachable = []
+    for proxy in candidates:
+        if _proxy_reaches(proxy, args.start_url):
+            reachable.append(proxy)
+        else:
+            print("proxy does not open multitransfer: %s" % _proxy_label(proxy), file=sys.stderr)
+    if not reachable:
+        print("no working ex24 proxy for multitransfer", file=sys.stderr)
+        return 1
+
+    profile_directory = (args.profile_directory or DEFAULT_PROFILE_DIRECTORY).strip() or DEFAULT_PROFILE_DIRECTORY
+    plain = user_data == DEFAULT_USER_DATA_DIR and profile_directory == DEFAULT_PROFILE_DIRECTORY
+    last = 1
+    for proxy in reachable:
+        browser_proc: Optional[subprocess.Popen] = None
+        try:
+            print(
+                "starting %s proxy %s" % (args.chromium_binary, _proxy_label(proxy)),
+                file=sys.stderr,
+            )
+            browser_proc = _start_chromium_browser(
+                chromium_binary=args.chromium_binary,
+                display=args.display,
+                debug_url=debug_url,
+                start_url=args.start_url if plain else "",
+                user_data_dir=user_data,
+                profile_directory=profile_directory,
+                proxy_server=proxy,
+                plain=plain,
+            )
+            try:
+                _wait_cdp_ready(debug_url, timeout_sec=args.browser_ready_timeout)
+            except TimeoutError as exc:
+                print(str(exc), file=sys.stderr)
+                last = 1
+                continue
+            ok, detail = cdp_owner_ok(
+                _debug_port_from_url(debug_url),
+                browser_proc.pid,
+                user_data,
+            )
+            if not ok:
+                print(detail, file=sys.stderr)
+                last = 1
+                continue
+            print("chromium exe %s" % detail, file=sys.stderr)
+            last = run(
+                debug_url=debug_url,
+                marker=args.marker,
+                timeout_ms=args.timeout_ms,
+                keep_open=args.keep_open,
+                origin=args.origin,
+                settle_ms=args.settle_ms,
+                amount=args.amount,
+                save_headers_file=save_headers_file,
+                target_url=args.start_url,
+                proxy=proxy,
+            )
+            if last == 0:
+                return 0
+        finally:
+            if browser_proc is not None:
+                _stop_browser_process(browser_proc)
+    return last
 
 
 if __name__ == "__main__":

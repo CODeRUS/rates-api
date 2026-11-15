@@ -30,19 +30,25 @@ def help_text() -> str:
     return "Мультитрансфер RUB→THB. Полные опции: multitransfer --help"
 
 
+def _headers_cache_path() -> Path:
+    path_raw = (os.environ.get("MULTITRANSFER_HEADERS_FILE") or "").strip()
+    return Path(path_raw) if path_raw else _DEFAULT_HEADERS_CACHE_FILE
+
+
+def _load_capture_payload() -> Dict[str, Any]:
+    try:
+        raw = json.loads(_headers_cache_path().read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
 def _load_dynamic_headers() -> Dict[str, str]:
     """
     Загружает актуальные anti-bot заголовки из файла, который может обновляться
     browser/CDP скриптами. При любой проблеме возвращает пустой словарь.
     """
-    path_raw = (os.environ.get("MULTITRANSFER_HEADERS_FILE") or "").strip()
-    path = Path(path_raw) if path_raw else _DEFAULT_HEADERS_CACHE_FILE
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    if not isinstance(raw, dict):
-        return {}
+    raw = _load_capture_payload()
 
     def _pick(*keys: str) -> Optional[str]:
         for k in keys:
@@ -67,6 +73,20 @@ def _load_dynamic_headers() -> Dict[str, str]:
     return out
 
 
+def _load_capture_proxy() -> Optional[str]:
+    """Прокси, через который CDP снял заголовки. Пусто — прямой запрос."""
+    value = _load_capture_payload().get("proxy")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _proxy_map(proxy: Optional[str]) -> Optional[Dict[str, str]]:
+    if not proxy:
+        return None
+    return {"http": proxy, "https": proxy}
+
+
 def _request_commissions(target_thb: float, *, timeout: float = 25.0) -> Dict[str, Any]:
     body = {
         "countryCode": "THA",
@@ -86,18 +106,22 @@ def _request_commissions(target_thb: float, *, timeout: float = 25.0) -> Dict[st
         "User-Agent": "Mozilla/5.0",
     }
     headers.update(_load_dynamic_headers())
+    proxy = _load_capture_proxy()
+    proxies = _proxy_map(proxy)
     # Для этого API urllib в ряде сред стабильно получает 423 (WAF/anti-bot),
     # а browser-like TLS fingerprint через curl_cffi проходит.
     try:
         from curl_cffi import requests as cffi_requests
 
-        resp = cffi_requests.post(
-            _API_URL,
-            headers=headers,
-            json=body,
-            impersonate="chrome124",
-            timeout=timeout,
-        )
+        post_kwargs: Dict[str, Any] = {
+            "headers": headers,
+            "json": body,
+            "impersonate": "chrome124",
+            "timeout": timeout,
+        }
+        if proxies:
+            post_kwargs["proxies"] = proxies
+        resp = cffi_requests.post(_API_URL, **post_kwargs)
         if int(resp.status_code) >= 400:
             raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
         data = resp.json()
@@ -119,7 +143,14 @@ def _request_commissions(target_thb: float, *, timeout: float = 25.0) -> Dict[st
         method="POST",
         headers=headers,
     )
-    with urlopen_retriable(req, timeout=timeout, context=ssl.create_default_context()) as resp:
+    opener = None
+    ctx = ssl.create_default_context()
+    if proxy:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler(_proxy_map(proxy)),
+            urllib.request.HTTPSHandler(context=ctx),
+        )
+    with urlopen_retriable(req, timeout=timeout, context=ctx, opener=opener) as resp:
         raw = resp.read().decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
     data = json.loads(raw)
     if not isinstance(data, dict):
